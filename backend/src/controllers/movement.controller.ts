@@ -11,6 +11,19 @@ const verifyClientOwnership = async (clientId: string, accountingId: string) => 
 };
 
 /**
+ * Remove diacríticos e normaliza encoding de caracteres especiais
+ * Converte "DeduÃ§Ãµes" para "deducoes"
+ */
+const removeDiacritics = (text: string): string => {
+    if (!text) return '';
+    return text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+};
+
+/**
  * GET /api/clients/:clientId/movements?year=2025&type=dre
  */
 export const getMovements = async (req: AuthRequest, res: Response) => {
@@ -91,7 +104,18 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             const batch = movements.slice(i, i + batchSize);
             const created = await prisma.monthlyMovement.createMany({
                 data: batch.map((m: any) => {
-                    const isMapped = m.category && m.category !== '#REF!' && m.category !== '#REF';
+                    // Normalizar categoria removendo diacríticos e encoding incorreto
+                    let normalizedCategory = null;
+                    if (m.category && m.category !== '#REF!' && m.category !== '#REF') {
+                        const categoryStr = String(m.category).trim();
+                        // Tentar normalizar com remoção de diacríticos
+                        const withoutDiacritics = removeDiacritics(categoryStr);
+                        // Se ficou vazio após normalização, usar original
+                        normalizedCategory = withoutDiacritics || categoryStr;
+                    }
+                    
+                    const isMapped = normalizedCategory && normalizedCategory !== '#ref' && normalizedCategory !== '';
+                    
                     return {
                         accounting_id: req.accountingId!,
                         client_id: clientId,
@@ -100,7 +124,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
                         name: String(m.name).trim(),
                         level: parseInt(m.level) || 1,
                         type: movementType,
-                        category: m.category ? String(m.category).trim() : null,
+                        category: normalizedCategory,
                         values: m.values.map((v: any) => parseFloat(v) || 0),
                         is_mapped: isMapped,
                     };

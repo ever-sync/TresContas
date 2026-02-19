@@ -1,6 +1,7 @@
 /**
  * Constantes de categorias DE-PARA para o SaaS de Contabilidade
  * Baseado na análise das 30 categorias identificadas no Plano de Contas
+ * Com suporte robusto a encoding incorreto e diacríticos
  */
 
 export const VALID_CATEGORIES = [
@@ -37,8 +38,25 @@ export const VALID_CATEGORIES = [
 ];
 
 /**
+ * Remove diacríticos e normaliza encoding de caracteres especiais
+ * Converte "DeduÃ§Ãµes" para "deducoes"
+ * Converte "Deduções" para "deducoes"
+ */
+export const removeDiacritics = (text: string): string => {
+    if (!text) return '';
+    
+    // Normalizar para NFD (decomposição) e remover diacríticos
+    return text
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove diacríticos
+        .toLowerCase()
+        .trim();
+};
+
+/**
  * Mapeamento de aliases para categorias canônicas
  * Ajuda a normalizar variações de nomes de categorias
+ * Todas as chaves devem estar em minúsculas e sem diacríticos
  */
 export const CATEGORY_ALIASES: Record<string, string> = {
     // Receitas
@@ -47,13 +65,15 @@ export const CATEGORY_ALIASES: Record<string, string> = {
     'receita de vendas': 'Receita Bruta',
     'receitas de vendas': 'Receita Bruta',
 
-    // Deduções
-    'deduções': 'Deduções',
+    // Deduções (com suporte a encoding incorreto e diacríticos)
     'deducoes': 'Deduções',
-    'deduções de vendas': 'Deduções',
+    'deducao': 'Deduções',
     'deducoes de vendas': 'Deduções',
-    'devoluções': 'Deduções',
+    'deducao de vendas': 'Deduções',
+    'devolucoes': 'Deduções',
+    'devolucao': 'Deduções',
     'devoluçoes': 'Deduções',
+    'devolução': 'Deduções',
 
     // Custos
     'custos das vendas': 'Custos Das Vendas',
@@ -85,15 +105,12 @@ export const CATEGORY_ALIASES: Record<string, string> = {
 
     // Despesas Tributárias
     'despesas tributarias': 'Despesas Tributarias',
-    'despesas tributárias': 'Despesas Tributarias',
     'despesa tributaria': 'Despesas Tributarias',
-    'despesa tributária': 'Despesas Tributarias',
 
     // IRPJ e CSLL
     'irpj e csll': 'Irpj E Csll',
-    'irpj e csll ': 'Irpj E Csll',
     'imposto de renda': 'Irpj E Csll',
-    'contribuição social': 'Irpj E Csll',
+    'contribuicao social': 'Irpj E Csll',
 
     // Disponível
     'disponivel': 'Disponivel',
@@ -122,7 +139,6 @@ export const CATEGORY_ALIASES: Record<string, string> = {
 
     // Intangível
     'intangivel': 'Intangivel',
-    'intangível': 'Intangivel',
 
     // Outras Receitas
     'outras receitas': 'Outras Receitas',
@@ -142,7 +158,7 @@ export const CATEGORY_ALIASES: Record<string, string> = {
 
     // Empréstimos e Financiamentos CP
     'emprestimos e financiamentos cp': 'Emprestimos E Financiamentos Cp',
-    'empréstimos e financiamentos cp': 'Emprestimos E Financiamentos Cp',
+    'emprestimo e financiamento cp': 'Emprestimos E Financiamentos Cp',
     'emprestimos cp': 'Emprestimos E Financiamentos Cp',
 
     // Parcelamentos CP
@@ -151,13 +167,11 @@ export const CATEGORY_ALIASES: Record<string, string> = {
 
     // Obrigações Trabalhistas
     'obrigacoes trabalhistas': 'Obrigacoes Trabalhistas',
-    'obrigações trabalhistas': 'Obrigacoes Trabalhistas',
-    'salários a pagar': 'Obrigacoes Trabalhistas',
+    'salarios a pagar': 'Obrigacoes Trabalhistas',
     'encargos trabalhistas': 'Obrigacoes Trabalhistas',
 
     // Obrigações Tributárias
     'obrigacoes tributarias': 'Obrigacoes Tributarias',
-    'obrigações tributárias': 'Obrigacoes Tributarias',
     'impostos a pagar': 'Obrigacoes Tributarias',
 
     // Tributos a Compensar CP
@@ -179,7 +193,7 @@ export const CATEGORY_ALIASES: Record<string, string> = {
     // Processos Judiciais
     'processos judiciais': 'Processos Judiciais',
     'processo judicial': 'Processos Judiciais',
-    'contingências': 'Processos Judiciais',
+    'contingencias': 'Processos Judiciais',
 
     // Reserva de Lucros
     'reserva de lucros': 'Reserva De Lucros',
@@ -187,16 +201,33 @@ export const CATEGORY_ALIASES: Record<string, string> = {
 
     // Resultado do Exercício
     'resultado do exercicio': 'Resultado Do Exercicio',
-    'resultado do exercício': 'Resultado Do Exercicio',
-    'lucro do exercício': 'Resultado Do Exercicio',
+    'lucro do exercicio': 'Resultado Do Exercicio',
 };
 
 /**
  * Normaliza um nome de categoria para a forma canônica
+ * Suporta encoding incorreto e diacríticos
+ * Exemplo: "DeduÃ§Ãµes" → "Deduções"
  */
 export const normalizeCategory = (categoryName: string): string | null => {
-    const normalized = categoryName.trim().toLowerCase();
-    return CATEGORY_ALIASES[normalized] || null;
+    if (!categoryName) return null;
+    
+    // Primeiro, tentar normalizar com diacríticos removidos
+    const withoutDiacritics = removeDiacritics(categoryName);
+    
+    // Buscar no mapeamento de aliases
+    if (CATEGORY_ALIASES[withoutDiacritics]) {
+        return CATEGORY_ALIASES[withoutDiacritics];
+    }
+    
+    // Tentar com a versão original (em caso de encoding UTF-8 correto)
+    const originalLower = categoryName.trim().toLowerCase();
+    if (CATEGORY_ALIASES[originalLower]) {
+        return CATEGORY_ALIASES[originalLower];
+    }
+    
+    // Se não encontrou, retornar null
+    return null;
 };
 
 /**
@@ -212,4 +243,17 @@ export const isValidCategory = (categoryName: string): boolean => {
 export const getCanonicalCategory = (categoryName: string): string => {
     const normalized = normalizeCategory(categoryName);
     return normalized || categoryName;
+};
+
+/**
+ * Função de debug para testar normalização
+ * Retorna informações sobre como uma string foi normalizada
+ */
+export const debugNormalization = (categoryName: string) => {
+    return {
+        original: categoryName,
+        withoutDiacritics: removeDiacritics(categoryName),
+        normalized: normalizeCategory(categoryName),
+        isValid: isValidCategory(normalizeCategory(categoryName) || categoryName),
+    };
 };
