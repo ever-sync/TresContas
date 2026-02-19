@@ -1,0 +1,230 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Accounting {
+  id            String   @id @default(uuid())
+  name          String
+  cnpj          String   @unique
+  email         String   @unique
+  phone         String?
+  address       String?
+  logo_url      String?
+  plan          String   @default("free") // 'free', 'basic', 'premium'
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  clients          Client[]
+  users            User[]
+  supportTickets   SupportTicket[]
+  chartOfAccounts  ChartOfAccounts[]
+  monthlyMovements MonthlyMovement[]
+}
+
+model User {
+  id              String   @id @default(uuid())
+  accounting_id   String
+  accounting      Accounting @relation(fields: [accounting_id], references: [id])
+  name            String
+  email           String   @unique
+  password_hash   String
+  role            String   @default("collaborator") // 'admin', 'collaborator'
+  status          String   @default("active") // 'active', 'invited', 'inactive'
+  phone           String?
+  avatar_url      String?
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  @@index([accounting_id])
+  @@index([email])
+}
+
+model Client {
+  id            String             @id @default(uuid())
+  accounting_id String
+  accounting    Accounting       @relation(fields: [accounting_id], references: [id])
+  name          String
+  cnpj          String           @unique
+  email         String?
+  phone         String?
+  industry      String?
+  address       String?
+  status        String           @default("active") // 'active', 'inactive'
+  
+  // Auth & Company Details
+  password_hash       String?
+  tax_regime          String? // 'simples', 'presumido', 'real', 'mei'
+  representative_email String?
+  representative_name  String?
+
+  created_at    DateTime         @default(now())
+  updated_at    DateTime         @updatedAt
+  periods          AccountingPeriod[]
+  chartOfAccounts  ChartOfAccounts[]
+  entries          AccountingEntry[]
+  balanceSheets    BalanceSheet[]
+  incomeStatements IncomeStatement[]
+  cashFlows        CashFlow[]
+  supportTickets   SupportTicket[]
+  monthlyMovements MonthlyMovement[]
+}
+
+model SupportTicket {
+  id            String   @id @default(uuid())
+  accounting_id String
+  client_id     String
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
+  client        Client     @relation(fields: [client_id], references: [id])
+  subject       String
+  message       String
+  priority      String   @default("medium") // 'low', 'medium', 'high'
+  status        String   @default("open") // 'open', 'in_progress', 'closed'
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  closed_at     DateTime?
+
+  @@index([accounting_id])
+  @@index([client_id])
+  @@index([status])
+}
+
+model AccountingPeriod {
+  id        String   @id @default(uuid())
+  client_id String
+  client    Client   @relation(fields: [client_id], references: [id])
+  year      Int
+  month     Int
+  start_date DateTime
+  end_date   DateTime
+  is_closed  Boolean @default(false)
+  entries   AccountingEntry[]
+  balanceSheets BalanceSheet[]
+  incomeStatements IncomeStatement[]
+  cashFlows     CashFlow[]
+}
+
+model ChartOfAccounts {
+  id              String   @id @default(uuid())
+  accounting_id   String?
+  accounting      Accounting? @relation(fields: [accounting_id], references: [id])
+  client_id       String
+  client          Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  code            String   // "01.1.01.02.0001"
+  name            String   // "BANCO DO BRASIL S.A"
+  level           Int      @default(1) // 1, 4, 7, 10, 15
+  type            String   @default("A") // "T" (totalizador) ou "A" (analítica)
+  alias           String?  // Apelido: "BB", "CEF"
+  report_type     String?  // "Balanço patrimonial", "Demonstração do resultado"
+  report_category String?  // "Disponivel", "Despesas Tributarias"
+  parent_id       String?
+  is_analytic     Boolean  @default(true)
+  created_at      DateTime @default(now())
+  items           AccountingEntryItem[]
+
+  @@unique([client_id, code])
+  @@index([accounting_id])
+  @@index([client_id])
+  @@index([code])
+}
+
+model AccountingEntry {
+  id          String   @id @default(uuid())
+  client_id   String
+  client      Client   @relation(fields: [client_id], references: [id])
+  period_id   String
+  period      AccountingPeriod @relation(fields: [period_id], references: [id])
+  date        DateTime
+  description String
+  document_number String?
+  total_value Float
+  created_by  String
+  created_at  DateTime @default(now())
+  items       AccountingEntryItem[]
+}
+
+model AccountingEntryItem {
+  id         String   @id @default(uuid())
+  entry_id   String
+  entry      AccountingEntry @relation(fields: [entry_id], references: [id])
+  account_id String
+  account    ChartOfAccounts @relation(fields: [account_id], references: [id])
+  debit      Float
+  credit     Float
+  history    String?
+}
+
+model BalanceSheet {
+  id              String   @id @default(uuid())
+  client_id       String
+  client          Client   @relation(fields: [client_id], references: [id])
+  period_id       String
+  period          AccountingPeriod @relation(fields: [period_id], references: [id])
+  assets_current  Float
+  assets_non_current Float
+  liabilities_current Float
+  liabilities_non_current Float
+  equity          Float
+  calculated_at   DateTime @default(now())
+}
+
+model IncomeStatement {
+  id              String   @id @default(uuid())
+  client_id       String
+  client          Client   @relation(fields: [client_id], references: [id])
+  period_id       String
+  period          AccountingPeriod @relation(fields: [period_id], references: [id])
+  gross_revenue   Float
+  deductions      Float
+  net_revenue     Float
+  cost_of_goods_sold Float
+  gross_profit    Float
+  operating_expenses Float
+  operating_profit Float
+  financial_result Float
+  net_profit_before_tax Float
+  taxes           Float
+  net_profit      Float
+  calculated_at   DateTime @default(now())
+}
+
+model CashFlow {
+  id                  String   @id @default(uuid())
+  client_id           String
+  client              Client   @relation(fields: [client_id], references: [id])
+  period_id           String
+  period              AccountingPeriod @relation(fields: [period_id], references: [id])
+  operating_activities Float
+  investing_activities Float
+  financing_activities Float
+  net_cash_flow       Float
+  opening_balance     Float
+  closing_balance     Float
+  calculated_at       DateTime @default(now())
+}
+
+model MonthlyMovement {
+  id            String     @id @default(uuid())
+  accounting_id String
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
+  client_id     String
+  client        Client     @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  year          Int        // ex: 2025
+  code          String     // classificador ex: "03.1.01.01.0001"
+  name          String     // nome da conta
+  level         Int        @default(1)
+  type          String     @default("dre") // 'dre' | 'patrimonial'
+  category      String?    // DE-PARA: "Receita Bruta", "Custos das Vendas", etc.
+  values        Float[]    // array de 12 valores [jan, fev, ..., dez]
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+
+  @@unique([client_id, year, code, type])
+  @@index([accounting_id])
+  @@index([client_id])
+  @@index([client_id, year])
+  @@index([type])
+  @@index([client_id, year, type])
+}
