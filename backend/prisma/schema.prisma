@@ -71,6 +71,7 @@ model Client {
   cashFlows        CashFlow[]
   supportTickets   SupportTicket[]
   monthlyMovements MonthlyMovement[]
+  dreMappings      DREMapping[]
 }
 
 model SupportTicket {
