@@ -42,7 +42,8 @@ export const getClients = async (req: AuthRequest, res: Response) => {
 
         res.json(clients);
     } catch (error) {
-        res.status(500).json({ message: 'Erro ao buscar clientes' });
+        console.error('Error fetching clients:', error);
+        res.status(500).json({ message: 'Erro ao buscar clientes', error: String(error) });
     }
 };
 

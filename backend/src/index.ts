@@ -45,6 +45,28 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`Server running on port ${port}`);
+});
+
+process.on('exit', (code) => {
+    console.log(`PROCESS EXIT WITH CODE: ${code}`);
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received');
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received');
+    process.exit(0);
+});
+
+server.on('error', (err) => {
+    console.error('SERVER ERROR:', err);
+});
+
+server.on('close', () => {
+    console.log('SERVER CLOSED');
 });

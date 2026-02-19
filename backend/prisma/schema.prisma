@@ -7,86 +7,83 @@ datasource db {
 }
 
 model Accounting {
-  id            String   @id @default(uuid())
-  name          String
-  cnpj          String   @unique
-  email         String   @unique
-  phone         String?
-  address       String?
-  logo_url      String?
-  plan          String   @default("free") // 'free', 'basic', 'premium'
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
-  clients          Client[]
-  users            User[]
-  supportTickets   SupportTicket[]
+  id               String            @id @default(uuid())
+  name             String
+  cnpj             String            @unique
+  email            String            @unique
+  phone            String?
+  address          String?
+  logo_url         String?
+  plan             String            @default("free")
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
   chartOfAccounts  ChartOfAccounts[]
+  clients          Client[]
   monthlyMovements MonthlyMovement[]
+  supportTickets   SupportTicket[]
+  users            User[]
   dreMappings      DREMapping[]
 }
 
 model User {
-  id              String   @id @default(uuid())
-  accounting_id   String
-  accounting      Accounting @relation(fields: [accounting_id], references: [id])
-  name            String
-  email           String   @unique
-  password_hash   String
-  role            String   @default("collaborator") // 'admin', 'collaborator'
-  status          String   @default("active") // 'active', 'invited', 'inactive'
-  phone           String?
-  avatar_url      String?
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  id            String     @id @default(uuid())
+  accounting_id String
+  name          String
+  email         String     @unique
+  password_hash String
+  role          String     @default("collaborator")
+  status        String     @default("active")
+  phone         String?
+  avatar_url    String?
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
 
   @@index([accounting_id])
   @@index([email])
 }
 
 model Client {
-  id            String             @id @default(uuid())
-  accounting_id String
-  accounting    Accounting       @relation(fields: [accounting_id], references: [id])
-  name          String
-  cnpj          String           @unique
-  email         String?
-  phone         String?
-  industry      String?
-  address       String?
-  status        String           @default("active") // 'active', 'inactive'
-  
-  // Auth & Company Details
-  password_hash       String?
-  tax_regime          String? // 'simples', 'presumido', 'real', 'mei'
+  id                   String             @id @default(uuid())
+  accounting_id        String
+  name                 String
+  cnpj                 String             @unique
+  email                String?
+  phone                String?
+  industry             String?
+  address              String?
+  status               String             @default("active")
+  password_hash        String?
+  tax_regime           String?
   representative_email String?
   representative_name  String?
-
-  created_at    DateTime         @default(now())
-  updated_at    DateTime         @updatedAt
-  periods          AccountingPeriod[]
-  chartOfAccounts  ChartOfAccounts[]
-  entries          AccountingEntry[]
-  balanceSheets    BalanceSheet[]
-  incomeStatements IncomeStatement[]
-  cashFlows        CashFlow[]
-  supportTickets   SupportTicket[]
-  monthlyMovements MonthlyMovement[]
-  dreMappings      DREMapping[]
+  created_at           DateTime           @default(now())
+  updated_at           DateTime           @updatedAt
+  entries              AccountingEntry[]
+  periods              AccountingPeriod[]
+  balanceSheets        BalanceSheet[]
+  cashFlows            CashFlow[]
+  chartOfAccounts      ChartOfAccounts[]
+  accounting           Accounting         @relation(fields: [accounting_id], references: [id])
+  incomeStatements     IncomeStatement[]
+  monthlyMovements     MonthlyMovement[]
+  supportTickets       SupportTicket[]
+  dreMappings          DREMapping[]
 }
 
 model SupportTicket {
-  id            String   @id @default(uuid())
+  id            String     @id @default(uuid())
   accounting_id String
   client_id     String
-  accounting    Accounting @relation(fields: [accounting_id], references: [id])
-  client        Client     @relation(fields: [client_id], references: [id])
   subject       String
   message       String
-  priority      String   @default("medium") // 'low', 'medium', 'high'
-  status        String   @default("open") // 'open', 'in_progress', 'closed'
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  priority      String     @default("medium")
+  status        String     @default("open")
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
   closed_at     DateTime?
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
+  client        Client     @relation(fields: [client_id], references: [id])
 
   @@index([accounting_id])
   @@index([client_id])
@@ -94,138 +91,137 @@ model SupportTicket {
 }
 
 model AccountingPeriod {
-  id        String   @id @default(uuid())
-  client_id String
-  client    Client   @relation(fields: [client_id], references: [id])
-  year      Int
-  month     Int
-  start_date DateTime
-  end_date   DateTime
-  is_closed  Boolean @default(false)
-  entries   AccountingEntry[]
-  balanceSheets BalanceSheet[]
+  id               String            @id @default(uuid())
+  client_id        String
+  year             Int
+  month            Int
+  start_date       DateTime
+  end_date         DateTime
+  is_closed        Boolean           @default(false)
+  entries          AccountingEntry[]
+  balanceSheets    BalanceSheet[]
+  cashFlows        CashFlow[]
   incomeStatements IncomeStatement[]
-  cashFlows     CashFlow[]
+  client           Client            @relation(fields: [client_id], references: [id])
 }
 
 model ChartOfAccounts {
-  id              String   @id @default(uuid())
-  accounting_id   String?
-  accounting      Accounting? @relation(fields: [accounting_id], references: [id])
+  id              String                @id @default(uuid())
   client_id       String
-  client          Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
-  code            String   // "01.1.01.02.0001"
-  name            String   // "BANCO DO BRASIL S.A"
-  level           Int      @default(1) // 1, 4, 7, 10, 15
-  type            String   @default("A") // "T" (totalizador) ou "A" (analítica)
-  alias           String?  // Apelido: "BB", "CEF"
-  report_type     String?  // "Balanço patrimonial", "Demonstração do resultado"
-  report_category String?  // "Disponivel", "Despesas Tributarias" (DE-PARA)
+  code            String
+  name            String
+  type            String                @default("A")
   parent_id       String?
-  is_analytic     Boolean  @default(true)
-  is_mapped       Boolean  @default(false) // Indica se foi mapeado no DE-PARA
-  created_at      DateTime @default(now())
-  updated_at      DateTime @updatedAt
+  is_analytic     Boolean               @default(true)
+  created_at      DateTime              @default(now())
+  updated_at      DateTime              @updatedAt
+  accounting_id   String?
+  level           Int                   @default(1)
+  alias           String?
+  report_type     String?
+  report_category String?
+  is_mapped       Boolean               @default(false)
   items           AccountingEntryItem[]
+  accounting      Accounting?           @relation(fields: [accounting_id], references: [id])
+  client          Client                @relation(fields: [client_id], references: [id], onDelete: Cascade)
 
   @@unique([client_id, code])
   @@index([accounting_id])
   @@index([client_id])
   @@index([code])
-  @@index([report_category])
 }
 
 model AccountingEntry {
-  id          String   @id @default(uuid())
-  client_id   String
-  client      Client   @relation(fields: [client_id], references: [id])
-  period_id   String
-  period      AccountingPeriod @relation(fields: [period_id], references: [id])
-  date        DateTime
-  description String
+  id              String                @id @default(uuid())
+  client_id       String
+  period_id       String
+  date            DateTime
+  description     String
   document_number String?
-  total_value Float
-  created_by  String
-  created_at  DateTime @default(now())
-  items       AccountingEntryItem[]
+  total_value     Float
+  created_by      String
+  created_at      DateTime              @default(now())
+  client          Client                @relation(fields: [client_id], references: [id])
+  period          AccountingPeriod      @relation(fields: [period_id], references: [id])
+  items           AccountingEntryItem[]
 }
 
 model AccountingEntryItem {
-  id         String   @id @default(uuid())
+  id         String          @id @default(uuid())
   entry_id   String
-  entry      AccountingEntry @relation(fields: [entry_id], references: [id])
   account_id String
-  account    ChartOfAccounts @relation(fields: [account_id], references: [id])
   debit      Float
   credit     Float
   history    String?
+  account    ChartOfAccounts @relation(fields: [account_id], references: [id])
+  entry      AccountingEntry @relation(fields: [entry_id], references: [id])
 }
 
 model BalanceSheet {
-  id              String   @id @default(uuid())
-  client_id       String
-  client          Client   @relation(fields: [client_id], references: [id])
-  period_id       String
-  period          AccountingPeriod @relation(fields: [period_id], references: [id])
-  assets_current  Float
-  assets_non_current Float
-  liabilities_current Float
+  id                      String           @id @default(uuid())
+  client_id               String
+  period_id               String
+  assets_current          Float
+  assets_non_current      Float
+  liabilities_current     Float
   liabilities_non_current Float
-  equity          Float
-  calculated_at   DateTime @default(now())
+  equity                  Float
+  calculated_at           DateTime         @default(now())
+  client                  Client           @relation(fields: [client_id], references: [id])
+  period                  AccountingPeriod @relation(fields: [period_id], references: [id])
 }
 
 model IncomeStatement {
-  id              String   @id @default(uuid())
-  client_id       String
-  client          Client   @relation(fields: [client_id], references: [id])
-  period_id       String
-  period          AccountingPeriod @relation(fields: [period_id], references: [id])
-  gross_revenue   Float
-  deductions      Float
-  net_revenue     Float
-  cost_of_goods_sold Float
-  gross_profit    Float
-  operating_expenses Float
-  operating_profit Float
-  financial_result Float
+  id                    String           @id @default(uuid())
+  client_id             String
+  period_id             String
+  gross_revenue         Float
+  deductions            Float
+  net_revenue           Float
+  cost_of_goods_sold    Float
+  gross_profit          Float
+  operating_expenses    Float
+  operating_profit      Float
+  financial_result      Float
   net_profit_before_tax Float
-  taxes           Float
-  net_profit      Float
-  calculated_at   DateTime @default(now())
+  taxes                 Float
+  net_profit            Float
+  calculated_at         DateTime         @default(now())
+  client                Client           @relation(fields: [client_id], references: [id])
+  period                AccountingPeriod @relation(fields: [period_id], references: [id])
 }
 
 model CashFlow {
-  id                  String   @id @default(uuid())
-  client_id           String
-  client              Client   @relation(fields: [client_id], references: [id])
-  period_id           String
-  period              AccountingPeriod @relation(fields: [period_id], references: [id])
+  id                   String           @id @default(uuid())
+  client_id            String
+  period_id            String
   operating_activities Float
   investing_activities Float
   financing_activities Float
-  net_cash_flow       Float
-  opening_balance     Float
-  closing_balance     Float
-  calculated_at       DateTime @default(now())
+  net_cash_flow        Float
+  opening_balance      Float
+  closing_balance      Float
+  calculated_at        DateTime         @default(now())
+  client               Client           @relation(fields: [client_id], references: [id])
+  period               AccountingPeriod @relation(fields: [period_id], references: [id])
 }
 
 model MonthlyMovement {
   id            String     @id @default(uuid())
   accounting_id String
-  accounting    Accounting @relation(fields: [accounting_id], references: [id])
   client_id     String
-  client        Client     @relation(fields: [client_id], references: [id], onDelete: Cascade)
-  year          Int        // ex: 2025
-  code          String     // classificador ex: "03.1.01.01.0001"
-  name          String     // nome da conta
+  year          Int
+  code          String
+  name          String
   level         Int        @default(1)
-  type          String     @default("dre") // 'dre' | 'patrimonial'
-  category      String?    // DE-PARA: "Receita Bruta", "Custos das Vendas", etc.
-  values        Float[]    // array de 12 valores [jan, fev, ..., dez]
-  is_mapped     Boolean    @default(false) // Indica se a conta foi mapeada no Plano de Contas
+  values        Float[]
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
+  type          String     @default("dre")
+  category      String?
+  is_mapped     Boolean    @default(false)
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
+  client        Client     @relation(fields: [client_id], references: [id], onDelete: Cascade)
 
   @@unique([client_id, year, code, type])
   @@index([accounting_id])
@@ -233,22 +229,21 @@ model MonthlyMovement {
   @@index([client_id, year])
   @@index([type])
   @@index([client_id, year, type])
-  @@index([is_mapped])
 }
 
 model DREMapping {
-  id            String   @id @default(uuid())
+  id            String     @id @default(uuid())
   accounting_id String
-  accounting    Accounting @relation(fields: [accounting_id], references: [id])
   client_id     String
-  client        Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
-  account_code  String   // Classificador da conta (ex: "03.1.01.01.0001")
-  account_name  String   // Nome da conta
-  category      String   // Categoria DE-PARA (ex: "Receita Bruta")
-  created_at    DateTime @default(now())
-  updated_at    DateTime @updatedAt
+  account_code  String
+  account_name  String
+  category      String
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
+  client        Client     @relation(fields: [client_id], references: [id], onDelete: Cascade)
 
-  @@unique([client_id, account_code])
+  @@unique([client_id, account_code], name: "client_id_account_code")
   @@index([accounting_id])
   @@index([client_id])
   @@index([category])
