@@ -22,6 +22,7 @@ model Accounting {
   supportTickets   SupportTicket[]
   chartOfAccounts  ChartOfAccounts[]
   monthlyMovements MonthlyMovement[]
+  dreMappings      DREMapping[]
 }
 
 model User {
@@ -118,16 +119,19 @@ model ChartOfAccounts {
   type            String   @default("A") // "T" (totalizador) ou "A" (analítica)
   alias           String?  // Apelido: "BB", "CEF"
   report_type     String?  // "Balanço patrimonial", "Demonstração do resultado"
-  report_category String?  // "Disponivel", "Despesas Tributarias"
+  report_category String?  // "Disponivel", "Despesas Tributarias" (DE-PARA)
   parent_id       String?
   is_analytic     Boolean  @default(true)
+  is_mapped       Boolean  @default(false) // Indica se foi mapeado no DE-PARA
   created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
   items           AccountingEntryItem[]
 
   @@unique([client_id, code])
   @@index([accounting_id])
   @@index([client_id])
   @@index([code])
+  @@index([report_category])
 }
 
 model AccountingEntry {
@@ -218,6 +222,7 @@ model MonthlyMovement {
   type          String     @default("dre") // 'dre' | 'patrimonial'
   category      String?    // DE-PARA: "Receita Bruta", "Custos das Vendas", etc.
   values        Float[]    // array de 12 valores [jan, fev, ..., dez]
+  is_mapped     Boolean    @default(false) // Indica se a conta foi mapeada no Plano de Contas
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
 
@@ -227,4 +232,23 @@ model MonthlyMovement {
   @@index([client_id, year])
   @@index([type])
   @@index([client_id, year, type])
+  @@index([is_mapped])
+}
+
+model DREMapping {
+  id            String   @id @default(uuid())
+  accounting_id String
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
+  client_id     String
+  client        Client   @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  account_code  String   // Classificador da conta (ex: "03.1.01.01.0001")
+  account_name  String   // Nome da conta
+  category      String   // Categoria DE-PARA (ex: "Receita Bruta")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@unique([client_id, account_code])
+  @@index([accounting_id])
+  @@index([client_id])
+  @@index([category])
 }

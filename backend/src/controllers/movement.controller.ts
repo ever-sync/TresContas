@@ -90,17 +90,21 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
         for (let i = 0; i < movements.length; i += batchSize) {
             const batch = movements.slice(i, i + batchSize);
             const created = await prisma.monthlyMovement.createMany({
-                data: batch.map((m: any) => ({
-                    accounting_id: req.accountingId!,
-                    client_id: clientId,
-                    year: Number(year),
-                    code: String(m.code).trim(),
-                    name: String(m.name).trim(),
-                    level: parseInt(m.level) || 1,
-                    type: movementType,
-                    category: m.category ? String(m.category).trim() : null,
-                    values: m.values.map((v: any) => parseFloat(v) || 0),
-                })),
+                data: batch.map((m: any) => {
+                    const isMapped = m.category && m.category !== '#REF!' && m.category !== '#REF';
+                    return {
+                        accounting_id: req.accountingId!,
+                        client_id: clientId,
+                        year: Number(year),
+                        code: String(m.code).trim(),
+                        name: String(m.name).trim(),
+                        level: parseInt(m.level) || 1,
+                        type: movementType,
+                        category: m.category ? String(m.category).trim() : null,
+                        values: m.values.map((v: any) => parseFloat(v) || 0),
+                        is_mapped: isMapped,
+                    };
+                }),
                 skipDuplicates: true,
             });
             totalCreated += created.count;

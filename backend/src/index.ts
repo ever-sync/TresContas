@@ -9,6 +9,7 @@ import clientPortalRoutes from './routes/client-portal.routes';
 import userRoutes from './routes/user.routes';
 import chartOfAccountsRoutes from './routes/chartOfAccounts.routes';
 import movementRoutes from './routes/movement.routes';
+import dreMappingRoutes from './routes/dreMapping.routes';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -35,6 +36,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/clients/:clientId/chart-of-accounts', chartOfAccountsRoutes);
 app.use('/api/clients/:clientId/movements', movementRoutes);
+app.use('/api/clients', dreMappingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
 app.use('/api/users', userRoutes);
