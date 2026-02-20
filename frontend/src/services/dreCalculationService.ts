@@ -1,4 +1,4 @@
-import { CATEGORY_ALIASES, normalizeCategory } from '../lib/categoryConstants';
+import { CATEGORY_ALIASES, normalizeCategory, removeDiacritics } from '../lib/categoryConstants';
 
 export interface MovementRow {
     code: string;
@@ -34,21 +34,13 @@ export interface DREResult {
 export class DRECalculationService {
     /**
      * Normaliza um nome de categoria para o formato canônico
-     * Suporta aliases e variações
+     * Suporta aliases e variações, incluindo encoding incorreto
      */
-    private static normalizeCategory(categoryName: string): string {
-        if (!categoryName) return '';
+    private static normalizeCategoryInternal(categoryName: string): string | null {
+        if (!categoryName) return null;
         
-        const normalized = categoryName.trim().toLowerCase();
-        
-        // Buscar no mapeamento de aliases
-        for (const [key, aliases] of Object.entries(CATEGORY_ALIASES)) {
-            if (aliases.includes(normalized)) {
-                return key;
-            }
-        }
-        
-        return normalized;
+        // Usar a função de normalização do categoryConstants que já trata encoding
+        return normalizeCategory(categoryName);
     }
 
     /**
@@ -60,14 +52,14 @@ export class DRECalculationService {
         monthIdx: number,
         movements: MovementRow[]
     ): number {
-        const normalizedCategory = this.normalizeCategory(categoryName);
+        const normalizedCategory = this.normalizeCategoryInternal(categoryName);
         
         if (!normalizedCategory) return 0;
 
         // Buscar movimentações que correspondem a essa categoria (direto ou por alias)
         const matched = movements.filter(m => {
             if (!m.category) return false;
-            const movNormalized = this.normalizeCategory(m.category);
+            const movNormalized = this.normalizeCategoryInternal(m.category);
             return movNormalized === normalizedCategory;
         });
 
@@ -82,6 +74,7 @@ export class DRECalculationService {
 
     /**
      * Calcula o DRE para um mês específico
+     * Trata corretamente os sinais de débito/crédito
      */
     static calculateDREForMonth(
         monthIdx: number,
@@ -89,38 +82,39 @@ export class DRECalculationService {
     ): DREResult {
         const getSumByCategory = (cat: string) => this.getSumByCategory(cat, monthIdx, movements);
 
-        // Receitas
+        // Receitas (positivas)
         const recBruta = getSumByCategory('Receita Bruta');
-        const deducoes = getSumByCategory('Deduções');
+        const deducoes = Math.abs(getSumByCategory('Deduções')); // Deduções são sempre negativas
         const recLiquida = recBruta - deducoes;
 
-        // Custos
-        const custos = getSumByCategory('Custos Das Vendas');
+        // Custos (sempre negativos, então usamos valor absoluto)
+        const custos = Math.abs(getSumByCategory('Custos Das Vendas'));
         const lucroBruto = recLiquida - custos;
 
-        // Despesas Operacionais
-        const despAdm = getSumByCategory('Despesas Administrativas');
-        const despCom = getSumByCategory('Despesas Comerciais');
-        const despTrib = getSumByCategory('Despesas Tributarias');
-        const despOutras = getSumByCategory('Outras Despesas');
+        // Despesas Operacionais (sempre negativas)
+        const despAdm = Math.abs(getSumByCategory('Despesas Administrativas'));
+        const despCom = Math.abs(getSumByCategory('Despesas Comerciais'));
+        const despTrib = Math.abs(getSumByCategory('Despesas Tributarias'));
+        const despOutras = Math.abs(getSumByCategory('Outras Despesas'));
 
         // Receitas/Despesas Financeiras
         const outrasReceitas = getSumByCategory('Outras Receitas');
         const recFin = getSumByCategory('Receitas Financeiras');
-        const despFin = getSumByCategory('Despesas Financeiras');
+        const despFin = Math.abs(getSumByCategory('Despesas Financeiras'));
 
-        // Resultado Operacional
+        // Resultado Operacional (LAIR)
+        // LAIR = Lucro Bruto - Despesas Operacionais + Outras Receitas + Receitas Financeiras - Despesas Financeiras
         const lair = lucroBruto - despAdm - despCom - despTrib - despOutras + outrasReceitas + recFin - despFin;
 
-        // Impostos
-        const irpjCsll = getSumByCategory('Irpj E Csll');
+        // Impostos (IRPJ e CSLL)
+        const irpjCsll = Math.abs(getSumByCategory('Irpj E Csll'));
 
         // Resultado Líquido
         const lucroLiq = lair - irpjCsll;
 
-        // EBITDA
-        const depreciacao = getSumByCategory('Depreciação e Amortização');
-        const ebtida = lair - (recFin - despFin) + Math.abs(depreciacao);
+        // EBITDA (Lucro Operacional + Depreciação/Amortização)
+        const depreciacao = Math.abs(getSumByCategory('Depreciação e Amortização'));
+        const ebtida = lair + depreciacao;
 
         return {
             recBruta,
@@ -158,13 +152,13 @@ export class DRECalculationService {
         categoryName: string,
         movements: MovementRow[]
     ): MovementRow[] {
-        const normalizedCategory = this.normalizeCategory(categoryName);
+        const normalizedCategory = this.normalizeCategoryInternal(categoryName);
         
         if (!normalizedCategory) return [];
 
         return movements.filter(m => {
             if (!m.category) return false;
-            const movNormalized = this.normalizeCategory(m.category);
+            const movNormalized = this.normalizeCategoryInternal(m.category);
             return movNormalized === normalizedCategory;
         });
     }
@@ -176,8 +170,8 @@ export class DRECalculationService {
         if (!movement.category) return false;
         if (movement.category === '#REF!' || movement.category === '#REF') return false;
         
-        const normalized = this.normalizeCategory(movement.category);
-        return normalized !== '' && normalized !== movement.category.toLowerCase();
+        const normalized = this.normalizeCategoryInternal(movement.category);
+        return normalized !== null && normalized !== '';
     }
 
     /**
