@@ -351,11 +351,13 @@ const ClientDashboard = () => {
         );
 
         if (matched.length > 0) {
-            // Soma apenas contas do nível mais analítico (evita dupla contagem)
-            const maxLevel = Math.max(...matched.map(m => m.level));
-            return matched
-                .filter(m => m.level === maxLevel)
-                .reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
+            // Soma apenas contas-folha: contas que NÃO são prefixo de nenhuma outra
+            // Isso evita dupla contagem quando pai e filhas têm a mesma categoria DE-PARA
+            const allCodes = matched.map(m => m.code);
+            const leaves = matched.filter(m =>
+                !allCodes.some(c => c !== m.code && c.startsWith(m.code + '.'))
+            );
+            return leaves.reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
         }
 
         // 2. Fallback: cruzar com Plano de Contas pelo report_category (também usa aliases)
@@ -365,9 +367,13 @@ const ClientDashboard = () => {
                 .map(a => a.classification)
         );
         if (codesInCategory.size === 0) return 0;
-        return movementsData
-            .filter(m => codesInCategory.has(m.code))
-            .reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
+        // Filtrar por contas-folha no fallback também
+        const matchedByCode = movementsData.filter(m => codesInCategory.has(m.code));
+        const allFallbackCodes = matchedByCode.map(m => m.code);
+        const fallbackLeaves = matchedByCode.filter(m =>
+            !allFallbackCodes.some(c => c !== m.code && c.startsWith(m.code + '.'))
+        );
+        return fallbackLeaves.reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
     };
 
     // Mantém getSumByPrefix para compatibilidade com Patrimonial/DFC/DMPL
@@ -378,10 +384,12 @@ const ClientDashboard = () => {
                 m.code === prefix || m.code.startsWith(prefix + '.')
             );
             if (children.length === 0) return;
-            const maxLevel = Math.max(...children.map(c => c.level));
-            const leafSum = children
-                .filter(c => c.level === maxLevel)
-                .reduce((acc, c) => acc + (c.values[monthIdx] || 0), 0);
+            // Filtrar contas-folha (sem filhos na árvore)
+            const allCodes = children.map(c => c.code);
+            const leaves = children.filter(c =>
+                !allCodes.some(o => o !== c.code && o.startsWith(c.code + '.'))
+            );
+            const leafSum = leaves.reduce((acc, c) => acc + (c.values[monthIdx] || 0), 0);
             totalSum += leafSum;
         });
         return totalSum;
