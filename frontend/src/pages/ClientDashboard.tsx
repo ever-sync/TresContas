@@ -327,11 +327,13 @@ const ClientDashboard = () => {
         'receitas financeiras':      ['receitas financeiras'],
         'irpj e csll':               ['irpj e csll'],
         'depreciacao e amortizacao': ['depreciacao e amortizacao'],
-        'outras despesas':           ['outras despesas'],
-        'outras receitas':           ['outras receitas'],
-        'despesas administrativas':  ['despesas administrativas'],
-        'despesas comerciais':       ['despesas comerciais'],
-        'receita bruta':             ['receita bruta'],
+        'outras despesas':                         ['outras despesas'],
+        'outras receitas':                         ['outras receitas'],
+        'despesas administrativas':                ['despesas administrativas'],
+        'despesas comerciais':                     ['despesas comerciais'],
+        'receita bruta':                           ['receita bruta'],
+        'custos dos servicos':                     ['custos dos servicos', 'custos de servicos', 'custos dos servicos'],
+        'resultado participacoes societarias':     ['resultado participacoes societarias', 'participacoes societarias', 'resultado de participacoes societarias'],
     };
 
     // Função DE-PARA: soma movimentações pela coluna category (DE-PARA do balancete)
@@ -413,45 +415,50 @@ const ClientDashboard = () => {
     const [dreComments, setDreComments] = useState<Record<string, string>>({});
 
     const calcDreForMonth = (monthIdx: number) => {
-        // Usa DE-PARA dinâmico: soma por report_category do plano de contas (dados DRE)
-        const recBruta   = getSumByReportCategory('Receita Bruta', monthIdx, dreMovements);
-        const deducoes   = getSumByReportCategory('Deduções de Vendas', monthIdx, dreMovements);
-        const recLiquida = recBruta - deducoes;
-        const custos     = getSumByReportCategory('Custos das Vendas', monthIdx, dreMovements);
-        const lucroBruto = recLiquida - custos;
-        const despAdm    = getSumByReportCategory('Despesas Administrativas', monthIdx, dreMovements);
-        const despCom    = getSumByReportCategory('Despesas Comerciais', monthIdx, dreMovements);
-        const despTrib   = getSumByReportCategory('Despesas Tributárias', monthIdx, dreMovements);
-        const despOutras = getSumByReportCategory('Outras Despesas', monthIdx, dreMovements);
-        const outrasReceitas = getSumByReportCategory('Outras Receitas', monthIdx, dreMovements);
-        const recFin     = getSumByReportCategory('Receitas Financeiras', monthIdx, dreMovements);
-        const despFin    = getSumByReportCategory('Despesas Financeiras', monthIdx, dreMovements);
-        const lair       = lucroBruto - despAdm - despCom - despTrib - despOutras + outrasReceitas + recFin - despFin;
-        const irpjCsll   = getSumByReportCategory('IRPJ e CSLL', monthIdx, dreMovements);
-        const lucroLiq   = lair - irpjCsll;
-        const depreciacao = getSumByReportCategory('Depreciação e Amortização', monthIdx, dreMovements);
-        const ebtida     = lair - (recFin - despFin) + Math.abs(depreciacao);
-        return { recBruta, deducoes, recLiquida, custos, lucroBruto, despAdm, despCom, despTrib, despOutras, outrasReceitas, recFin, despFin, lair, irpjCsll, lucroLiq, ebtida };
+        const recBruta        = getSumByReportCategory('Receita Bruta', monthIdx, dreMovements);
+        const deducoes        = getSumByReportCategory('Deduções de Vendas', monthIdx, dreMovements);
+        const recLiquida      = recBruta - deducoes;
+        const custos          = getSumByReportCategory('Custos das Vendas', monthIdx, dreMovements);
+        const custosServicos  = getSumByReportCategory('Custos Dos Serviços', monthIdx, dreMovements);
+        const lucroBruto      = recLiquida - custos - custosServicos;
+        const despAdm         = getSumByReportCategory('Despesas Administrativas', monthIdx, dreMovements);
+        const despCom         = getSumByReportCategory('Despesas Comerciais', monthIdx, dreMovements);
+        const despTrib        = getSumByReportCategory('Despesas Tributárias', monthIdx, dreMovements);
+        const partSocietarias = getSumByReportCategory('Resultado Participações Societárias', monthIdx, dreMovements);
+        const outrasReceitas  = getSumByReportCategory('Outras Receitas', monthIdx, dreMovements);
+        const recFin          = getSumByReportCategory('Receitas Financeiras', monthIdx, dreMovements);
+        const despFin         = getSumByReportCategory('Despesas Financeiras', monthIdx, dreMovements);
+        const lair            = lucroBruto - despAdm - despCom - despTrib + partSocietarias + outrasReceitas + recFin - despFin;
+        const irpjCsll        = getSumByReportCategory('IRPJ e CSLL', monthIdx, dreMovements);
+        const lucroLiq        = lair - irpjCsll;
+        const depreciacao     = getSumByReportCategory('Depreciação e Amortização', monthIdx, dreMovements);
+        const resultFin       = recFin - despFin;
+        const ebtida          = lair - resultFin + Math.abs(depreciacao);
+        return { recBruta, deducoes, recLiquida, custos, custosServicos, lucroBruto, despAdm, despCom, despTrib, partSocietarias, outrasReceitas, recFin, despFin, lair, irpjCsll, lucroLiq, depreciacao, resultFin, ebtida };
     };
 
     // Definição das linhas do DRE — category corresponde ao report_category do plano de contas
     const dreLinesDef = [
-        { id: 'rec_bruta', name: 'Receita Bruta', key: 'recBruta', type: 'main', category: 'Receita Bruta' },
-        { id: 'deducoes', name: 'Deduções', key: 'deducoes', type: 'negative', category: 'Deduções de Vendas' },
-        { id: 'rec_liquida', name: 'RECEITA LIQUIDA', key: 'recLiquida', type: 'main', category: '' },
-        { id: 'custos', name: 'Custos Das Vendas', key: 'custos', type: 'negative', category: 'Custos das Vendas' },
-        { id: 'lucro_bruto', name: 'LUCRO OPERACIONAL', key: 'lucroBruto', type: 'main', category: '' },
-        { id: 'desp_adm', name: 'Despesas Administrativas', key: 'despAdm', type: 'negative', category: 'Despesas Administrativas' },
-        { id: 'desp_com', name: 'Despesas Comerciais', key: 'despCom', type: 'negative', category: 'Despesas Comerciais' },
-        { id: 'desp_trib', name: 'Despesas Tributarias', key: 'despTrib', type: 'negative', category: 'Despesas Tributárias' },
-        { id: 'desp_outras', name: 'Outras Despesas', key: 'despOutras', type: 'negative', category: 'Outras Despesas' },
-        { id: 'outras_receitas', name: 'Outras Receitas', key: 'outrasReceitas', type: 'positive', category: 'Outras Receitas' },
-        { id: 'rec_fin', name: 'Receitas Financeiras', key: 'recFin', type: 'positive', category: 'Receitas Financeiras' },
-        { id: 'desp_fin', name: 'Despesas Financeiras', key: 'despFin', type: 'negative', category: 'Despesas Financeiras' },
-        { id: 'lair', name: 'LUCRO ANTES DO IRPJ E CSLL', key: 'lair', type: 'main', category: '' },
-        { id: 'irpj_csll', name: 'Irpj E Csll', key: 'irpjCsll', type: 'negative', category: 'IRPJ e CSLL' },
-        { id: 'lucro_liq', name: 'LUCRO/PREJUÍZO LIQUIDO', key: 'lucroLiq', type: 'highlight', category: '' },
-        { id: 'ebtida', name: 'RESULTADO EBTIDA', key: 'ebtida', type: 'highlight', category: '' },
+        { id: 'rec_bruta',      name: 'Receita Bruta',                       key: 'recBruta',        type: 'main',      category: 'Receita Bruta' },
+        { id: 'deducoes',       name: 'Deduções',                            key: 'deducoes',        type: 'negative',  category: 'Deduções de Vendas' },
+        { id: 'rec_liquida',    name: 'RECEITA LIQUIDA',                     key: 'recLiquida',      type: 'main',      category: '' },
+        { id: 'custos',         name: 'Custos Das Vendas',                   key: 'custos',          type: 'negative',  category: 'Custos das Vendas' },
+        { id: 'custos_serv',    name: 'Custos Dos Serviços',                 key: 'custosServicos',  type: 'negative',  category: 'Custos Dos Serviços' },
+        { id: 'lucro_bruto',    name: 'LUCRO OPERACIONAL',                   key: 'lucroBruto',      type: 'main',      category: '' },
+        { id: 'desp_adm',       name: 'Despesas Administrativas',            key: 'despAdm',         type: 'negative',  category: 'Despesas Administrativas' },
+        { id: 'desp_com',       name: 'Despesas Comerciais',                 key: 'despCom',         type: 'negative',  category: 'Despesas Comerciais' },
+        { id: 'desp_trib',      name: 'Despesas Tributarias',                key: 'despTrib',        type: 'negative',  category: 'Despesas Tributárias' },
+        { id: 'part_soc',       name: 'Resultado Participações Societárias', key: 'partSocietarias', type: 'positive',  category: 'Resultado Participações Societárias' },
+        { id: 'outras_receitas',name: 'Outras Receitas',                     key: 'outrasReceitas',  type: 'positive',  category: 'Outras Receitas' },
+        { id: 'rec_fin',        name: 'Receitas Financeiras',                key: 'recFin',          type: 'positive',  category: 'Receitas Financeiras' },
+        { id: 'desp_fin',       name: 'Despesas Financeiras',                key: 'despFin',         type: 'negative',  category: 'Despesas Financeiras' },
+        { id: 'lair',           name: 'LUCRO ANTES DO IRPJ E CSLL',         key: 'lair',            type: 'main',      category: '' },
+        { id: 'irpj_csll',      name: 'Irpj E Csll',                        key: 'irpjCsll',        type: 'negative',  category: 'IRPJ e CSLL' },
+        { id: 'lucro_liq',      name: 'LUCRO/PREJUÍZO LIQUIDO',             key: 'lucroLiq',        type: 'highlight', category: '' },
+        { id: 'ebtida_lair',    name: 'LUCRO ANTES DO IRPJ E CSLL',         key: 'lair',            type: 'sub',       category: '' },
+        { id: 'ebtida_dep',     name: '(+) Depreciação',                    key: 'depreciacao',     type: 'sub',       category: 'Depreciação e Amortização' },
+        { id: 'ebtida_fin',     name: '(+) Resultado Financeiro',           key: 'resultFin',       type: 'sub',       category: '' },
+        { id: 'ebtida',         name: 'RESULTADO EBTIDA',                   key: 'ebtida',          type: 'highlight', category: '' },
     ];
 
     const reportItems = useMemo(() => {
@@ -489,20 +496,25 @@ const ClientDashboard = () => {
             monthsData.map(d => ({ name: d.month, value: (d as any)[key] as number }));
 
         return {
-            recBruta: mapToChart('recBruta'),
-            deducoes: mapToChart('deducoes'),
-            recLiquida: mapToChart('recLiquida'),
-            custos: mapToChart('custos'),
-            lucroBruto: mapToChart('lucroBruto'),
-            despAdm: mapToChart('despAdm'),
-            despCom: mapToChart('despCom'),
-            despTrib: mapToChart('despTrib'),
-            recFin: mapToChart('recFin'),
-            despFin: mapToChart('despFin'),
-            lair: mapToChart('lair'),
-            irpjCsll: mapToChart('irpjCsll'),
-            lucroLiquido: mapToChart('lucroLiq'),
-            ebtida: mapToChart('ebtida')
+            recBruta:       mapToChart('recBruta'),
+            deducoes:       mapToChart('deducoes'),
+            recLiquida:     mapToChart('recLiquida'),
+            custos:         mapToChart('custos'),
+            custosServicos: mapToChart('custosServicos'),
+            lucroBruto:     mapToChart('lucroBruto'),
+            despAdm:        mapToChart('despAdm'),
+            despCom:        mapToChart('despCom'),
+            despTrib:       mapToChart('despTrib'),
+            partSocietarias: mapToChart('partSocietarias'),
+            outrasReceitas: mapToChart('outrasReceitas'),
+            recFin:         mapToChart('recFin'),
+            despFin:        mapToChart('despFin'),
+            lair:           mapToChart('lair'),
+            irpjCsll:       mapToChart('irpjCsll'),
+            lucroLiquido:   mapToChart('lucroLiq'),
+            depreciacao:    mapToChart('depreciacao'),
+            resultFin:      mapToChart('resultFin'),
+            ebtida:         mapToChart('ebtida'),
         };
     }, [allMonthsDre, months]);
 
@@ -1188,10 +1200,31 @@ const ClientDashboard = () => {
                                             </thead>
                                             <tbody className="divide-y divide-white/5">
                                                 {reportItems.map((item, idx) => {
-                                                    const hasChildren = Boolean(item.category);
+                                                    const isSub = item.type === 'sub';
+                                                    const hasChildren = !isSub && Boolean(item.category);
                                                     const isExpanded = expandedDreRow === item.id;
                                                     const childAccounts = hasChildren ? getChildAccounts(item.category, dreMovements) : [];
                                                     const acumulado = allMonthsDre.reduce((sum, d) => sum + (d[item.key as keyof typeof d] as number), 0);
+
+                                                    // Linhas auxiliares sub (base EBITDA) — sem interação, visual diferenciado
+                                                    if (isSub) return (
+                                                        <tr key={idx} className="border-t border-white/5">
+                                                            <td className="p-3 px-6 text-xs text-white/40 italic sticky left-0 z-10 bg-[#0a1628] pl-10">
+                                                                {item.name}
+                                                            </td>
+                                                            {months.map((_, mi) => {
+                                                                const monthVal = allMonthsDre[mi]?.[item.key as keyof typeof allMonthsDre[0]] as number || 0;
+                                                                return (
+                                                                    <td key={mi} className={`p-3 px-3 text-xs text-right font-mono text-white/30 ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
+                                                                        {formatLocaleNumber(monthVal)}
+                                                                    </td>
+                                                                );
+                                                            })}
+                                                            <td className="p-3 px-3 text-xs text-right font-mono text-white/30 bg-white/5 sticky right-[100px] z-10">{formatLocaleNumber(acumulado)}</td>
+                                                            <td className="p-3 px-3 text-xs text-right sticky right-0 z-10 bg-[#0a1628] text-white/20">-</td>
+                                                            <td className="p-3 px-3" />
+                                                        </tr>
+                                                    );
 
                                                     return (
                                                         <React.Fragment key={idx}>
@@ -1276,20 +1309,23 @@ const ClientDashboard = () => {
                                 ) : dreViewMode === 'graficos' ? (
                                     <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 animate-in zoom-in-95 duration-500 overflow-y-auto max-h-[70vh]">
                                         {[
-                                            { title: 'Receita Bruta', data: monthlyReportData.recBruta, color: '#0ea5e9' },
-                                            { title: 'Deduções', data: monthlyReportData.deducoes, color: '#f43f5e' },
-                                            { title: 'Receita Líquida', data: monthlyReportData.recLiquida, color: '#2563eb' },
-                                            { title: 'Custos Das Vendas', data: monthlyReportData.custos, color: '#f59e0b' },
-                                            { title: 'Lucro Bruto', data: monthlyReportData.lucroBruto, color: '#3b82f6' },
-                                            { title: 'Despesas Adm.', data: monthlyReportData.despAdm, color: '#ec4899' },
-                                            { title: 'Despesas Com.', data: monthlyReportData.despCom, color: '#d946ef' },
-                                            { title: 'Despesas Trib.', data: monthlyReportData.despTrib, color: '#a855f7' },
-                                            { title: 'Receitas Fin.', data: monthlyReportData.recFin, color: '#10b981' },
-                                            { title: 'Despesas Fin.', data: monthlyReportData.despFin, color: '#fb7185' },
-                                            { title: 'LAIR', data: monthlyReportData.lair, color: '#6366f1' },
-                                            { title: 'IRPJ/CSLL', data: monthlyReportData.irpjCsll, color: '#ef4444' },
-                                            { title: 'Lucro Líquido', data: monthlyReportData.lucroLiquido, color: '#059669' },
-                                            { title: 'EBTIDA', data: monthlyReportData.ebtida, color: '#8b5cf6' }
+                                            { title: 'Receita Bruta',                    data: monthlyReportData.recBruta,        color: '#0ea5e9' },
+                                            { title: 'Deduções',                         data: monthlyReportData.deducoes,        color: '#f43f5e' },
+                                            { title: 'Receita Líquida',                  data: monthlyReportData.recLiquida,      color: '#2563eb' },
+                                            { title: 'Custos Das Vendas',                data: monthlyReportData.custos,          color: '#f59e0b' },
+                                            { title: 'Custos Dos Serviços',              data: monthlyReportData.custosServicos,  color: '#f97316' },
+                                            { title: 'Lucro Operacional',                data: monthlyReportData.lucroBruto,      color: '#3b82f6' },
+                                            { title: 'Despesas Adm.',                    data: monthlyReportData.despAdm,         color: '#ec4899' },
+                                            { title: 'Despesas Com.',                    data: monthlyReportData.despCom,         color: '#d946ef' },
+                                            { title: 'Despesas Trib.',                   data: monthlyReportData.despTrib,        color: '#a855f7' },
+                                            { title: 'Result. Participações Soc.',       data: monthlyReportData.partSocietarias, color: '#14b8a6' },
+                                            { title: 'Outras Receitas',                  data: monthlyReportData.outrasReceitas,  color: '#22c55e' },
+                                            { title: 'Receitas Fin.',                    data: monthlyReportData.recFin,          color: '#10b981' },
+                                            { title: 'Despesas Fin.',                    data: monthlyReportData.despFin,         color: '#fb7185' },
+                                            { title: 'LAIR',                             data: monthlyReportData.lair,            color: '#6366f1' },
+                                            { title: 'IRPJ/CSLL',                        data: monthlyReportData.irpjCsll,        color: '#ef4444' },
+                                            { title: 'Lucro Líquido',                    data: monthlyReportData.lucroLiquido,    color: '#059669' },
+                                            { title: 'EBTIDA',                           data: monthlyReportData.ebtida,          color: '#8b5cf6' },
                                         ].map((indicator, i) => {
                                             const currentVal = indicator.data[selectedMonthIndex]?.value || 0;
                                             const prevVal = selectedMonthIndex > 0 ? indicator.data[selectedMonthIndex - 1]?.value : null;
