@@ -24,6 +24,8 @@ import {
     ChevronLeft,
     ChevronRight,
     LayoutList,
+    Sparkles,
+    RefreshCw,
 } from 'lucide-react';
 import {
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -1431,6 +1433,161 @@ const ClientDashboard = () => {
                                             </div>
                                         ))}
                                     </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* ─── CARD DE IA: Análise Financeira Inteligente ─── */}
+                        {(() => {
+                            const [aiText, setAiText] = React.useState('');
+                            const [aiLoading, setAiLoading] = React.useState(false);
+                            const [aiError, setAiError] = React.useState('');
+
+                            const handleAnalyze = async () => {
+                                setAiText('');
+                                setAiError('');
+                                setAiLoading(true);
+
+                                const d = calcDreForMonth(selectedMonthIndex);
+                                const idx = selectedMonthIndex;
+                                const ativoCirc   = patMonthlyData.ativoCirc[idx]?.value    || 0;
+                                const passivoCirc = patMonthlyData.passivoCirc[idx]?.value  || 0;
+                                const passivoNaoC = patMonthlyData.passivoNaoCirc[idx]?.value || 0;
+                                const totalAtivo  = patMonthlyData.totalAtivo[idx]?.value   || 0;
+
+                                const body = {
+                                    year: selectedYear,
+                                    monthIndex: selectedMonthIndex,
+                                    dre: d,
+                                    indicators: {
+                                        margemBruta:   d.recLiquida  !== 0 ? (d.lucroBruto / d.recLiquida) * 100 : 0,
+                                        margemLiq:     d.recBruta    !== 0 ? (d.lucroLiq   / d.recBruta)   * 100 : 0,
+                                        margemEbtida:  d.recLiquida  !== 0 ? (d.ebtida     / d.recLiquida) * 100 : 0,
+                                        liqCorr:       passivoCirc   !== 0 ? ativoCirc / passivoCirc : 0,
+                                        endividamento: totalAtivo    !== 0 ? ((passivoCirc + passivoNaoC) / totalAtivo) * 100 : 0,
+                                    },
+                                };
+
+                                try {
+                                    const token = clientToken || accountingToken;
+                                    const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/+$/, '');
+                                    const apiUrl = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
+
+                                    const response = await fetch(`${apiUrl}/client-portal/ai-analysis`, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': `Bearer ${token}`,
+                                        },
+                                        body: JSON.stringify(body),
+                                    });
+
+                                    if (!response.ok || !response.body) {
+                                        const err = await response.json().catch(() => ({}));
+                                        setAiError((err as any).message || 'Erro ao conectar com a IA');
+                                        setAiLoading(false);
+                                        return;
+                                    }
+
+                                    const reader = response.body.getReader();
+                                    const decoder = new TextDecoder();
+                                    let buffer = '';
+
+                                    while (true) {
+                                        const { done, value } = await reader.read();
+                                        if (done) break;
+                                        buffer += decoder.decode(value, { stream: true });
+                                        const lines = buffer.split('\n');
+                                        buffer = lines.pop() ?? '';
+                                        for (const line of lines) {
+                                            if (!line.startsWith('data: ')) continue;
+                                            const payload = line.slice(6).trim();
+                                            if (payload === '[DONE]') break;
+                                            try {
+                                                const parsed = JSON.parse(payload);
+                                                if (parsed.text) setAiText(prev => prev + parsed.text);
+                                                if (parsed.error) setAiError(parsed.error);
+                                            } catch { /* ignorar linhas inválidas */ }
+                                        }
+                                    }
+                                } catch (err: any) {
+                                    setAiError(err.message || 'Erro inesperado');
+                                } finally {
+                                    setAiLoading(false);
+                                }
+                            };
+
+                            // Renderiza markdown simples (##, **, listas)
+                            const renderMarkdown = (text: string) => {
+                                return text.split('\n').map((line, i) => {
+                                    if (line.startsWith('## ')) {
+                                        return <h3 key={i} className="text-white font-bold text-base mt-4 mb-2">{line.slice(3)}</h3>;
+                                    }
+                                    if (line.startsWith('- ') || line.startsWith('* ')) {
+                                        const content = line.slice(2).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                                        return <li key={i} className="text-white/80 text-sm ml-4 list-disc mb-1" dangerouslySetInnerHTML={{ __html: content }} />;
+                                    }
+                                    if (line.trim() === '') return <br key={i} />;
+                                    const content = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                                    return <p key={i} className="text-white/80 text-sm mb-1" dangerouslySetInnerHTML={{ __html: content }} />;
+                                });
+                            };
+
+                            return (
+                                <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-violet-500/20 rounded-2xl p-6 mb-8">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-xl bg-linear-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+                                                <Sparkles className="w-5 h-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-white font-bold">Análise Inteligente</h4>
+                                                <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">IA financeira — {['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'][selectedMonthIndex]}/{selectedYear}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleAnalyze}
+                                            disabled={aiLoading}
+                                            className="flex items-center gap-2 px-4 py-2 bg-linear-to-r from-violet-500 to-purple-600 hover:from-violet-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all shadow-lg shadow-violet-500/20"
+                                        >
+                                            {aiLoading
+                                                ? <><RefreshCw className="w-4 h-4 animate-spin" /> Analisando...</>
+                                                : <><Sparkles className="w-4 h-4" /> Analisar com IA</>
+                                            }
+                                        </button>
+                                    </div>
+
+                                    {!aiText && !aiLoading && !aiError && (
+                                        <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
+                                            <div className="w-16 h-16 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+                                                <Sparkles className="w-8 h-8 text-violet-400" />
+                                            </div>
+                                            <p className="text-white/60 text-sm">Clique em <strong className="text-white">Analisar com IA</strong> para receber uma análise financeira personalizada do mês selecionado.</p>
+                                            <p className="text-white/30 text-xs">Powered by Groq · Llama 3.3 70B</p>
+                                        </div>
+                                    )}
+
+                                    {aiLoading && !aiText && (
+                                        <div className="flex items-center gap-3 py-6">
+                                            <RefreshCw className="w-4 h-4 text-violet-400 animate-spin" />
+                                            <span className="text-white/50 text-sm">Analisando dados financeiros...</span>
+                                        </div>
+                                    )}
+
+                                    {aiError && (
+                                        <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-sm">
+                                            {aiError}
+                                        </div>
+                                    )}
+
+                                    {aiText && (
+                                        <div className="prose prose-invert max-w-none">
+                                            <ul className="list-none p-0 m-0">
+                                                {renderMarkdown(aiText)}
+                                            </ul>
+                                            {aiLoading && <span className="inline-block w-1.5 h-4 bg-violet-400 animate-pulse ml-1 rounded-sm" />}
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })()}
