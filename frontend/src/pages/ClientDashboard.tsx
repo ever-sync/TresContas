@@ -435,8 +435,8 @@ const ClientDashboard = () => {
         const irpjCsll        = getSumByReportCategory('IRPJ e CSLL', monthIdx, dreMovements);
         const lucroLiq        = lair + irpjCsll;                              // SOMA(C24:C25) — irpj já negativo
         const depreciacao     = getSumByReportCategory('Depreciação e Amortização', monthIdx, dreMovements);
-        const resultFin       = recFin + despFin;                             // resultado financeiro líquido
-        const ebtida          = lair - resultFin + Math.abs(depreciacao);     // EBITDA = LAIR - ResultFin + |Depreciação|
+        const resultFin       = recFin + despFin;                             // resultado financeiro líquido (C30)
+        const ebtida          = lair + Math.abs(depreciacao) + resultFin;     // SOMA(C28:C30) = LAIR + |Depreciação| + ResultFin
         return { recBruta, deducoes, recLiquida, custos, custosServicos, lucroBruto, despAdm, despCom, despTrib, partSocietarias, outrasReceitas, recFin, despFin, lair, irpjCsll, lucroLiq, depreciacao, resultFin, ebtida };
     };
 
