@@ -114,7 +114,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
                         normalizedCategory = withoutDiacritics || categoryStr;
                     }
                     
-                    const isMapped = normalizedCategory && normalizedCategory !== '#ref' && normalizedCategory !== '';
+                    const isMapped = !!(normalizedCategory && normalizedCategory !== '#ref' && normalizedCategory !== '');
                     
                     return {
                         accounting_id: req.accountingId!,
