@@ -23,6 +23,7 @@ import {
     FileText,
     ChevronLeft,
     ChevronRight,
+    LayoutList,
 } from 'lucide-react';
 import {
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -76,7 +77,8 @@ const ClientDashboard = () => {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'contas' | 'dfc' | 'dmpl'>('dre');
     const [dreListMode, setDreListMode] = useState<'mensal' | 'todos'>('todos'); // mensal = mês selecionado, todos = todos meses
-    const [dreViewMode, setDreViewMode] = useState<'lista' | 'graficos'>('lista');
+    const [dreViewMode, setDreViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
+    const [patViewMode, setPatViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
     const [selectedMonthIndex, setSelectedMonthIndex] = useState(0); // Jan by default
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -503,6 +505,21 @@ const ClientDashboard = () => {
             ebtida: mapToChart('ebtida')
         };
     }, [allMonthsDre, months]);
+
+    // Dados mensais do Patrimonial para os gráficos
+    const patMonthlyData = useMemo(() => {
+        const mapLine = (prefixes: string[]) =>
+            months.map((m, i) => ({ name: m.substring(0, 3), value: getSumByPrefix(prefixes, i, patrimonialMovements) }));
+        return {
+            ativoCirc:     mapLine(['01.1']),
+            ativoNaoCirc:  mapLine(['01.2']),
+            totalAtivo:    months.map((m, i) => ({ name: m.substring(0, 3), value: getSumByPrefix(['01.1'], i, patrimonialMovements) + getSumByPrefix(['01.2'], i, patrimonialMovements) })),
+            passivoCirc:   mapLine(['02.1']),
+            passivoNaoCirc: mapLine(['02.2']),
+            patrimonioLiq: mapLine(['02.3']),
+            totalPassivo:  months.map((m, i) => ({ name: m.substring(0, 3), value: getSumByPrefix(['02.1'], i, patrimonialMovements) + getSumByPrefix(['02.2'], i, patrimonialMovements) + getSumByPrefix(['02.3'], i, patrimonialMovements) })),
+        };
+    }, [patrimonialMovements, months]);
 
     // Factory para criar handler de upload de movimentação (DRE ou Patrimonial)
     const createMovementUploadHandler = (
@@ -1129,7 +1146,8 @@ const ClientDashboard = () => {
                                         <div className="flex p-1 bg-black/40 border border-white/5 rounded-2xl">
                                             {[
                                                 { id: 'lista', icon: FileSpreadsheet, label: 'Lista' },
-                                                { id: 'graficos', icon: BarChart3, label: 'Gráficos' }
+                                                { id: 'graficos', icon: BarChart3, label: 'Gráficos' },
+                                                { id: 'fechado', icon: LayoutList, label: 'Fechado' },
                                             ].map(mode => (
                                                 <button
                                                     key={mode.id}
@@ -1255,7 +1273,7 @@ const ClientDashboard = () => {
                                             </tbody>
                                         </table>
                                     </div>
-                                ) : (
+                                ) : dreViewMode === 'graficos' ? (
                                     <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 animate-in zoom-in-95 duration-500 overflow-y-auto max-h-[70vh]">
                                         {[
                                             { title: 'Receita Bruta', data: monthlyReportData.recBruta, color: '#0ea5e9' },
@@ -1348,16 +1366,56 @@ const ClientDashboard = () => {
                                             );
                                         })}
                                     </div>
+                                ) : (
+                                    <div className="p-8 flex flex-col gap-3 animate-in slide-in-from-bottom duration-300">
+                                        {reportItems
+                                            .filter(item => item.type === 'main' || item.type === 'highlight')
+                                            .map((item, i) => (
+                                                <div key={i} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                                                    item.type === 'highlight'
+                                                        ? 'bg-cyan-500/10 border-cyan-500/20'
+                                                        : 'bg-white/5 border-white/5'
+                                                }`}>
+                                                    <span className={`text-sm font-bold tracking-wide ${item.type === 'highlight' ? 'text-cyan-400' : 'text-white'}`}>
+                                                        {item.name}
+                                                    </span>
+                                                    <div className="flex items-center gap-6">
+                                                        <span className="text-xs text-white/30 font-mono">{item.pct}</span>
+                                                        <span className={`font-mono font-bold text-sm min-w-[100px] text-right ${item.rawVal < 0 ? 'text-red-400' : item.type === 'highlight' ? 'text-cyan-400' : 'text-white'}`}>
+                                                            {item.val}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        }
+                                    </div>
                                 )}
                             </div>
                         ) : dreSubTab === 'patrimonial' ? (
                             <div ref={reportRef} className="bg-[#0d1829] border border-white/5 rounded-2xl shadow-2xl flex flex-col animate-in slide-in-from-right duration-500 overflow-visible">
+                                {/* Header Patrimonial */}
                                 <div className="p-8 h-28 border-b border-white/5 flex justify-between items-center bg-[#0d1829] sticky top-20 z-50 rounded-t-2xl">
                                     <div>
                                         <h3 className="text-2xl font-bold text-white tracking-tight">Balanço Patrimonial</h3>
-                                        <p className="text-sm text-white/40">Totalizadores • {months[selectedMonthIndex]}</p>
+                                        <p className="text-sm text-white/40">Resultado Consolidado • {months[selectedMonthIndex]}</p>
                                     </div>
                                     <div className="flex gap-4">
+                                        <div className="flex p-1 bg-black/40 border border-white/5 rounded-2xl">
+                                            {[
+                                                { id: 'lista', icon: FileSpreadsheet, label: 'Lista' },
+                                                { id: 'graficos', icon: BarChart3, label: 'Gráficos' },
+                                                { id: 'fechado', icon: LayoutList, label: 'Fechado' },
+                                            ].map(mode => (
+                                                <button
+                                                    key={mode.id}
+                                                    onClick={() => setPatViewMode(mode.id as any)}
+                                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${patViewMode === mode.id ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                                                >
+                                                    <mode.icon className="w-4 h-4" />
+                                                    {mode.label}
+                                                </button>
+                                            ))}
+                                        </div>
                                         {!isReadOnly && (
                                             <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
@@ -1370,78 +1428,217 @@ const ClientDashboard = () => {
                                         </button>
                                     </div>
                                 </div>
-                                {(() => {
-                                    // Totalizadores do Balanço Patrimonial
-                                    const getBalVal = (prefix: string) => getSumByPrefix([prefix], selectedMonthIndex, patrimonialMovements);
-                                    const ativoCirc = getBalVal('01.1');
-                                    const ativoNaoCirc = getBalVal('01.2');
-                                    const totalAtivo = ativoCirc + ativoNaoCirc;
-                                    const passivoCirc = getBalVal('02.1');
-                                    const passivoNaoCirc = getBalVal('02.2');
-                                    const patrimonioLiq = getBalVal('02.3');
-                                    const totalPassivo = passivoCirc + passivoNaoCirc + patrimonioLiq;
 
-                                    const balLines = [
-                                        { name: 'ATIVO', items: [
-                                            { label: 'Ativo Circulante', val: ativoCirc, prefix: '01.1' },
-                                            { label: 'Ativo Não Circulante', val: ativoNaoCirc, prefix: '01.2' },
-                                            { label: 'TOTAL DO ATIVO', val: totalAtivo, prefix: '', isTotal: true },
-                                        ]},
-                                        { name: 'PASSIVO', items: [
-                                            { label: 'Passivo Circulante', val: passivoCirc, prefix: '02.1' },
-                                            { label: 'Passivo Não Circulante', val: passivoNaoCirc, prefix: '02.2' },
-                                            { label: 'Patrimônio Líquido', val: patrimonioLiq, prefix: '02.3' },
-                                            { label: 'TOTAL DO PASSIVO', val: totalPassivo, prefix: '', isTotal: true },
-                                        ]},
+                                {/* Calcular valores do Patrimonial */}
+                                {(() => {
+                                    const getBalVal = (prefix: string, mi: number) => getSumByPrefix([prefix], mi, patrimonialMovements);
+                                    const patLinesDef = [
+                                        { id: 'ativo_circ',      label: 'Ativo Circulante',        prefix: '01.1', type: 'sub' as const },
+                                        { id: 'ativo_nao_circ',  label: 'Ativo Não Circulante',    prefix: '01.2', type: 'sub' as const },
+                                        { id: 'total_ativo',     label: 'TOTAL DO ATIVO',           prefix: '',     type: 'total' as const },
+                                        { id: 'pass_circ',       label: 'Passivo Circulante',       prefix: '02.1', type: 'sub' as const },
+                                        { id: 'pass_nao_circ',   label: 'Passivo Não Circulante',   prefix: '02.2', type: 'sub' as const },
+                                        { id: 'pat_liq',         label: 'Patrimônio Líquido',       prefix: '02.3', type: 'sub' as const },
+                                        { id: 'total_passivo',   label: 'TOTAL DO PASSIVO',          prefix: '',     type: 'total' as const },
                                     ];
 
-                                    return (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-0 md:divide-x divide-white/5">
-                                            {balLines.map((section) => (
-                                                <div key={section.name} className="p-8">
-                                                    <h4 className="text-xs font-black text-cyan-400 uppercase tracking-[0.2em] mb-6">{section.name}</h4>
-                                                    <div className="space-y-3">
-                                                        {section.items.map((item, i) => {
-                                                            const hasChildren = item.prefix && getChildAccounts(item.prefix, patrimonialMovements).length > 0;
-                                                            const isExpanded = expandedDreRow === `bal-${item.prefix}`;
-                                                            const children = hasChildren ? getChildAccounts(item.prefix, patrimonialMovements) : [];
-                                                            return (
-                                                                <React.Fragment key={i}>
-                                                                    <div
-                                                                        className={`flex items-center justify-between p-4 rounded-xl transition-all ${
-                                                                            item.isTotal
-                                                                                ? 'bg-cyan-500/10 border border-cyan-500/20'
-                                                                                : 'bg-white/5 border border-white/5 hover:border-cyan-500/30 cursor-pointer'
-                                                                        }`}
-                                                                        onClick={() => hasChildren && setExpandedDreRow(isExpanded ? null : `bal-${item.prefix}`)}
-                                                                    >
+                                    // Valores para o mês selecionado
+                                    const ativoCirc     = getBalVal('01.1', selectedMonthIndex);
+                                    const ativoNaoCirc  = getBalVal('01.2', selectedMonthIndex);
+                                    const totalAtivo    = ativoCirc + ativoNaoCirc;
+                                    const passivoCirc   = getBalVal('02.1', selectedMonthIndex);
+                                    const passivoNaoCirc = getBalVal('02.2', selectedMonthIndex);
+                                    const patrimonioLiq = getBalVal('02.3', selectedMonthIndex);
+                                    const totalPassivo  = passivoCirc + passivoNaoCirc + patrimonioLiq;
+
+                                    const patItems = [
+                                        { ...patLinesDef[0], val: ativoCirc },
+                                        { ...patLinesDef[1], val: ativoNaoCirc },
+                                        { ...patLinesDef[2], val: totalAtivo },
+                                        { ...patLinesDef[3], val: passivoCirc },
+                                        { ...patLinesDef[4], val: passivoNaoCirc },
+                                        { ...patLinesDef[5], val: patrimonioLiq },
+                                        { ...patLinesDef[6], val: totalPassivo },
+                                    ];
+
+                                    // Calcular acumulado (soma 12 meses) para cada linha
+                                    const getAccum = (prefix: string) =>
+                                        prefix ? months.reduce((s, _, mi) => s + getBalVal(prefix, mi), 0)
+                                               : 0;
+
+                                    // ── MODO LISTA ──
+                                    if (patViewMode === 'lista') return (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-white/5 border-b border-white/5">
+                                                        <th className="p-4 px-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[260px] sticky left-0 z-20 bg-[#0a1628]">Indicador</th>
+                                                        {months.map((m, i) => (
+                                                            <th key={m} className={`p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[100px] ${i === selectedMonthIndex ? 'bg-cyan-500/10 text-cyan-400' : ''}`}>{m}</th>
+                                                        ))}
+                                                        <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[110px] bg-white/5 sticky right-[70px] z-20 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">Acumulado</th>
+                                                        <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[70px] sticky right-0 z-20 bg-[#0a1628] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">%</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-white/5">
+                                                    {patItems.map((item, idx) => {
+                                                        const isTotal = item.type === 'total';
+                                                        const hasChildren = Boolean(item.prefix) && getChildAccounts(item.prefix, patrimonialMovements).length > 0;
+                                                        const isExpanded = expandedDreRow === `pat-${item.id}`;
+                                                        const childAccounts = hasChildren ? getChildAccounts(item.prefix, patrimonialMovements) : [];
+                                                        const acumulado = isTotal
+                                                            ? (item.id === 'total_ativo'
+                                                                ? months.reduce((s, _, mi) => s + getBalVal('01.1', mi) + getBalVal('01.2', mi), 0)
+                                                                : months.reduce((s, _, mi) => s + getBalVal('02.1', mi) + getBalVal('02.2', mi) + getBalVal('02.3', mi), 0))
+                                                            : getAccum(item.prefix);
+                                                        const pct = totalAtivo !== 0 ? `${Math.round((item.val / totalAtivo) * 100)}%` : '0%';
+                                                        return (
+                                                            <React.Fragment key={idx}>
+                                                                <tr
+                                                                    className={`hover:bg-white/5 transition-colors ${isTotal ? 'bg-cyan-500/10 font-black text-white cursor-default' : 'bg-white/5 font-bold text-white/80 cursor-pointer'}`}
+                                                                    onClick={() => hasChildren && setExpandedDreRow(isExpanded ? null : `pat-${item.id}`)}
+                                                                >
+                                                                    <td className="p-4 px-6 text-sm sticky left-0 z-10 bg-[#0a1628]">
                                                                         <div className="flex items-center gap-2">
                                                                             {hasChildren && (
                                                                                 <span className={`text-[10px] text-cyan-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
                                                                             )}
-                                                                            <span className={`text-sm ${item.isTotal ? 'font-black text-white' : 'font-medium text-white/80'}`}>
-                                                                                {item.label}
-                                                                            </span>
+                                                                            <div className={`w-2 h-2 rounded-full shrink-0 ${isTotal ? 'bg-cyan-400' : 'bg-white/30'}`} />
+                                                                            {item.label}
                                                                         </div>
-                                                                        <span className={`font-mono font-bold text-sm ${item.isTotal ? 'text-cyan-400' : 'text-white'}`}>
-                                                                            R$ {formatLocaleNumber(item.val)}
+                                                                    </td>
+                                                                    {months.map((_, mi) => {
+                                                                        const monthVal = isTotal
+                                                                            ? (item.id === 'total_ativo'
+                                                                                ? getBalVal('01.1', mi) + getBalVal('01.2', mi)
+                                                                                : getBalVal('02.1', mi) + getBalVal('02.2', mi) + getBalVal('02.3', mi))
+                                                                            : getBalVal(item.prefix, mi);
+                                                                        return (
+                                                                            <td key={mi} className={`p-4 px-3 text-xs text-right font-mono font-bold ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''} ${isTotal ? 'text-cyan-400' : 'text-white/80'}`}>
+                                                                                {formatLocaleNumber(monthVal)}
+                                                                            </td>
+                                                                        );
+                                                                    })}
+                                                                    <td className={`p-4 px-3 text-xs text-right font-mono font-bold bg-white/5 sticky right-[70px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)] ${isTotal ? 'text-cyan-400' : 'text-white'}`}>
+                                                                        {formatLocaleNumber(acumulado)}
+                                                                    </td>
+                                                                    <td className="p-4 px-3 text-xs text-right font-black sticky right-0 z-10 bg-[#0a1628] text-cyan-400 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">
+                                                                        {isTotal ? '100%' : pct}
+                                                                    </td>
+                                                                </tr>
+                                                                {isExpanded && childAccounts.map((child, ci) => {
+                                                                    const childTotal = child.values.reduce((s, v) => s + v, 0);
+                                                                    return (
+                                                                        <tr key={`${idx}-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
+                                                                            <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
+                                                                                <div className="flex items-center gap-2" style={{ paddingLeft: `${(child.level - 1) * 12}px` }}>
+                                                                                    <span className="text-cyan-400/60 font-mono text-[10px]">{child.code}</span>
+                                                                                    <span className="truncate">{child.name}</span>
+                                                                                </div>
+                                                                            </td>
+                                                                            {months.map((_, mi) => (
+                                                                                <td key={mi} className={`p-3 px-3 text-right font-mono ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
+                                                                                    {formatLocaleNumber(child.values[mi] || 0)}
+                                                                                </td>
+                                                                            ))}
+                                                                            <td className="p-3 px-3 text-right font-mono bg-white/5 sticky right-[70px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">{formatLocaleNumber(childTotal)}</td>
+                                                                            <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">-</td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </React.Fragment>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    );
+
+                                    // ── MODO GRÁFICOS ──
+                                    if (patViewMode === 'graficos') return (
+                                        <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 animate-in zoom-in-95 duration-500 overflow-y-auto max-h-[70vh]">
+                                            {[
+                                                { title: 'Ativo Circulante',       data: patMonthlyData.ativoCirc,     color: '#0ea5e9' },
+                                                { title: 'Ativo Não Circulante',   data: patMonthlyData.ativoNaoCirc,  color: '#2563eb' },
+                                                { title: 'Total do Ativo',         data: patMonthlyData.totalAtivo,    color: '#06b6d4' },
+                                                { title: 'Passivo Circulante',     data: patMonthlyData.passivoCirc,   color: '#f43f5e' },
+                                                { title: 'Passivo Não Circulante', data: patMonthlyData.passivoNaoCirc, color: '#f59e0b' },
+                                                { title: 'Patrimônio Líquido',     data: patMonthlyData.patrimonioLiq, color: '#10b981' },
+                                                { title: 'Total do Passivo',       data: patMonthlyData.totalPassivo,  color: '#8b5cf6' },
+                                            ].map((indicator, i) => {
+                                                const currentVal = indicator.data[selectedMonthIndex]?.value || 0;
+                                                const prevVal = selectedMonthIndex > 0 ? indicator.data[selectedMonthIndex - 1]?.value : null;
+                                                const diff = prevVal !== null ? currentVal - prevVal : 0;
+                                                const trendPct = prevVal && prevVal !== 0 ? (diff / Math.abs(prevVal)) * 100 : 0;
+                                                return (
+                                                    <div key={i} className="bg-linear-to-br from-[#0d2847]/40 to-[#0a1f3a]/40 border border-white/10 rounded-2xl p-6 hover:border-cyan-500/30 transition-all group shadow-xl shadow-black/20">
+                                                        <div className="flex justify-between items-start mb-4">
+                                                            <div>
+                                                                <h4 className="text-white/60 text-sm font-bold uppercase tracking-widest mb-1">{indicator.title}</h4>
+                                                                <div className="flex items-baseline gap-2">
+                                                                    <span className="text-xl font-bold text-white tracking-tight">
+                                                                        R$ {currentVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </span>
+                                                                    {prevVal !== null && (
+                                                                        <span className={`text-[10px] font-black ${trendPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                                            {trendPct >= 0 ? '↑' : '↓'} {Math.abs(trendPct).toFixed(1)}%
                                                                         </span>
-                                                                    </div>
-                                                                    {isExpanded && children.map((child, ci) => (
-                                                                        <div key={ci} className="flex items-center justify-between px-6 py-2 ml-4 border-l-2 border-white/5 text-xs text-white/40">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <span className="font-mono text-cyan-400/50 text-[10px]">{child.classification}</span>
-                                                                                <span>{child.name}</span>
-                                                                            </div>
-                                                                            <span className="font-mono">{child.values[selectedMonthIndex] || '0,00'}</span>
-                                                                        </div>
-                                                                    ))}
-                                                                </React.Fragment>
-                                                            );
-                                                        })}
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-white/20 group-hover:bg-white/10 transition-colors">
+                                                                <TrendingUp className="w-4 h-4" />
+                                                            </div>
+                                                        </div>
+                                                        <div className="h-32 -mx-2">
+                                                            <ResponsiveContainer width="100%" height="100%">
+                                                                <AreaChart data={indicator.data}>
+                                                                    <defs>
+                                                                        <linearGradient id={`pat-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
+                                                                            <stop offset="5%" stopColor={indicator.color} stopOpacity={0.4}/>
+                                                                            <stop offset="95%" stopColor={indicator.color} stopOpacity={0}/>
+                                                                        </linearGradient>
+                                                                    </defs>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                                                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#ffffff40', fontSize: 13, fontWeight: 700 }} interval={1} />
+                                                                    <YAxis hide />
+                                                                    <Tooltip
+                                                                        contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '16px', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', backdropFilter: 'blur(12px)' }}
+                                                                        itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
+                                                                        labelStyle={{ color: '#ffffff40', fontSize: '10px', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'black' }}
+                                                                        formatter={(val: number | string | undefined) => {
+                                                                            const numericVal = typeof val === 'string' ? parseFloat(val) : val;
+                                                                            return [`R$ ${numericVal?.toLocaleString('pt-BR') || '0,00'}`, 'Valor'];
+                                                                        }}
+                                                                    />
+                                                                    <Area type="monotone" dataKey="value" stroke={indicator.color} strokeWidth={3} fillOpacity={1} fill={`url(#pat-grad-${i})`} activeDot={{ r: 4, fill: '#fff', stroke: indicator.color, strokeWidth: 2 }} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
+                                        </div>
+                                    );
+
+                                    // ── MODO FECHADO ──
+                                    return (
+                                        <div className="p-8 flex flex-col gap-3 animate-in slide-in-from-bottom duration-300">
+                                            {patItems
+                                                .filter(item => item.type === 'total' || item.id === 'pat_liq')
+                                                .map((item, i) => (
+                                                    <div key={i} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                                                        item.type === 'total' ? 'bg-cyan-500/10 border-cyan-500/20' : 'bg-white/5 border-white/5'
+                                                    }`}>
+                                                        <span className={`text-sm font-bold tracking-wide ${item.type === 'total' ? 'text-cyan-400' : 'text-white'}`}>
+                                                            {item.label}
+                                                        </span>
+                                                        <span className={`font-mono font-bold text-sm ${item.type === 'total' ? 'text-cyan-400' : 'text-white'}`}>
+                                                            R$ {formatLocaleNumber(item.val)}
+                                                        </span>
+                                                    </div>
+                                                ))
+                                            }
                                         </div>
                                     );
                                 })()}
