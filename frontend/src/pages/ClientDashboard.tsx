@@ -518,18 +518,34 @@ const ClientDashboard = () => {
         };
     }, [allMonthsDre, months]);
 
-    // Dados mensais do Patrimonial para os gráficos
+    // Dados mensais do Patrimonial para os gráficos (usando getSumByGroup — por nome de grupo)
     const patMonthlyData = useMemo(() => {
-        const mapLine = (prefixes: string[]) =>
-            months.map((m, i) => ({ name: m.substring(0, 3), value: getSumByPrefix(prefixes, i, patrimonialMovements) }));
+        const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+        const mapGrp = (grpLabel: string) =>
+            months.map((m, i) => ({
+                name: m.substring(0, 3),
+                value: patrimonialMovements
+                    .filter(mv => mv.level === 2 && norm(mv.category || '') === norm(grpLabel))
+                    .reduce((sum, mv) => sum + (mv.values[i] || 0), 0),
+            }));
         return {
-            ativoCirc:     mapLine(['01.1']),
-            ativoNaoCirc:  mapLine(['01.2']),
-            totalAtivo:    months.map((m, i) => ({ name: m.substring(0, 3), value: getSumByPrefix(['01.1'], i, patrimonialMovements) + getSumByPrefix(['01.2'], i, patrimonialMovements) })),
-            passivoCirc:   mapLine(['02.1']),
-            passivoNaoCirc: mapLine(['02.2']),
-            patrimonioLiq: mapLine(['02.3']),
-            totalPassivo:  months.map((m, i) => ({ name: m.substring(0, 3), value: getSumByPrefix(['02.1'], i, patrimonialMovements) + getSumByPrefix(['02.2'], i, patrimonialMovements) + getSumByPrefix(['02.3'], i, patrimonialMovements) })),
+            ativoCirc:     mapGrp('ATIVO CIRCULANTE'),
+            ativoNaoCirc:  mapGrp('ATIVO NÃO CIRCULANTE'),
+            totalAtivo:    months.map((m, i) => ({
+                name: m.substring(0, 3),
+                value: patrimonialMovements
+                    .filter(mv => mv.level === 2 && (norm(mv.category || '') === 'ATIVO CIRCULANTE' || norm(mv.category || '') === 'ATIVO NÃO CIRCULANTE'))
+                    .reduce((sum, mv) => sum + (mv.values[i] || 0), 0),
+            })),
+            passivoCirc:   mapGrp('PASSIVO CIRCULANTE'),
+            passivoNaoCirc: mapGrp('PASSIVO NÃO CIRCULANTE'),
+            patrimonioLiq: mapGrp('PATRIMÔNIO LÍQUIDO'),
+            totalPassivo:  months.map((m, i) => ({
+                name: m.substring(0, 3),
+                value: patrimonialMovements
+                    .filter(mv => mv.level === 2 && ['PASSIVO CIRCULANTE', 'PASSIVO NÃO CIRCULANTE', 'PATRIMÔNIO LÍQUIDO'].includes(norm(mv.category || '')))
+                    .reduce((sum, mv) => sum + (mv.values[i] || 0), 0),
+            })),
         };
     }, [patrimonialMovements, months]);
 
@@ -660,7 +676,113 @@ const ClientDashboard = () => {
     };
 
     const handleDreFileUpload = createMovementUploadHandler('dre', setDreMovements);
-    const handlePatrimonialFileUpload = createMovementUploadHandler('patrimonial', setPatrimonialMovements);
+
+    // Parser dedicado para o CSV do Patrimonial (formato: Col1=nome, Col2-13=Jan-Dez, sem código contábil)
+    const handlePatrimonialFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+
+        const toastId = 'import-patrimonial';
+        const isCSV = file.name.toLowerCase().endsWith('.csv');
+
+        const PAT_GROUP_LABELS = [
+            'ATIVO CIRCULANTE',
+            'ATIVO NÃO CIRCULANTE',
+            'PASSIVO CIRCULANTE',
+            'PASSIVO NÃO CIRCULANTE',
+            'PATRIMÔNIO LÍQUIDO',
+            'TOTAL ATIVO',
+            'TOTAL DO PASSIVO',
+        ];
+
+        const normLabel = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+        const isGroupRow = (label: string) => PAT_GROUP_LABELS.some(g => normLabel(label) === g);
+
+        const parseBrNumber = (v: any): number => {
+            if (typeof v === 'number') return v;
+            const s = String(v || '').trim();
+            if (!s || s === '-' || s.startsWith('#')) return 0;
+            const cleaned = s.replace(/\./g, '').replace(',', '.');
+            const result = parseFloat(cleaned);
+            return isNaN(result) ? 0 : result;
+        };
+
+        const reader = new FileReader();
+        reader.onload = async (evt) => {
+            try {
+                const fileContent = evt.target?.result;
+                let wb;
+                if (isCSV) {
+                    wb = XLSX.read(fileContent as string, { type: 'string', raw: true });
+                } else {
+                    const data8 = new Uint8Array(fileContent as ArrayBuffer);
+                    wb = XLSX.read(data8, { type: 'array' });
+                }
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
+
+                let currentGroup = '';
+                const movements: MovementRow[] = [];
+
+                for (const row of rows) {
+                    // Col 1 = nome da linha (Col 0 vazia no CSV do Patrimonial)
+                    const label = String(row[1] || '').trim();
+                    if (!label) continue;
+
+                    // Cols 2-13 = Jan-Dez
+                    const values: number[] = [];
+                    for (let c = 2; c <= 13; c++) {
+                        values.push(parseBrNumber(row[c]));
+                    }
+                    while (values.length < 12) values.push(0);
+
+                    if (isGroupRow(label)) {
+                        currentGroup = normLabel(label);
+                        movements.push({ code: currentGroup, name: label, level: 1, category: currentGroup, values: values.slice(0, 12) });
+                    } else {
+                        // Linha filha — ignora se sem grupo definido
+                        if (!currentGroup) continue;
+                        movements.push({ code: label, name: label, level: 2, category: currentGroup, values: values.slice(0, 12) });
+                    }
+                }
+
+                if (movements.length === 0) {
+                    toast.error('Nenhuma linha encontrada no arquivo Patrimonial');
+                    return;
+                }
+
+                // Persistir no banco
+                const targetClientId = clientId || client?.id;
+                if (isAccountingView && targetClientId) {
+                    toast.loading(`Salvando ${movements.length} linhas (Patrimonial)...`, { id: toastId });
+                    const result = await movementService.bulkImport(targetClientId, selectedYear, movements, 'patrimonial');
+                    toast.success(`${result.count} linhas importadas (Patrimonial)!`, { id: toastId });
+                } else {
+                    toast.success(`${movements.length} linhas carregadas!`);
+                }
+
+                setPatrimonialMovements(movements);
+            } catch (error) {
+                console.error('Erro ao importar Patrimonial:', error);
+                toast.error('Erro ao importar Patrimonial', { id: toastId });
+            }
+        };
+        if (isCSV) {
+            reader.readAsText(file, 'UTF-8');
+        } else {
+            reader.readAsArrayBuffer(file);
+        }
+    };
+
+    // Helper: soma contas filhas de um grupo (level 2, category === groupLabel) para um mês
+    const getSumByGroup = (groupLabel: string, monthIdx: number): number => {
+        const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+        const grp = norm(groupLabel);
+        return patrimonialMovements
+            .filter(m => m.level === 2 && norm(m.category || '') === grp)
+            .reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
+    };
 
     // Importar Plano de Contas (CSV com colunas: CLASSIFICADOR, NÍVEL, TIPO, DESCRIÇÃO, Apelido, Relatório, DESCRIÇÃO RELATÓRIO)
     const handleImportPlanoDeContas = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1465,128 +1587,171 @@ const ClientDashboard = () => {
                                     </div>
                                 </div>
 
-                                {/* Calcular valores do Patrimonial */}
+                                {/* Render Patrimonial — usa getSumByGroup (por nome de grupo textual) */}
                                 {(() => {
-                                    const getBalVal = (prefix: string, mi: number) => getSumByPrefix([prefix], mi, patrimonialMovements);
-                                    const patLinesDef = [
-                                        { id: 'ativo_circ',      label: 'Ativo Circulante',        prefix: '01.1', type: 'sub' as const },
-                                        { id: 'ativo_nao_circ',  label: 'Ativo Não Circulante',    prefix: '01.2', type: 'sub' as const },
-                                        { id: 'total_ativo',     label: 'TOTAL DO ATIVO',           prefix: '',     type: 'total' as const },
-                                        { id: 'pass_circ',       label: 'Passivo Circulante',       prefix: '02.1', type: 'sub' as const },
-                                        { id: 'pass_nao_circ',   label: 'Passivo Não Circulante',   prefix: '02.2', type: 'sub' as const },
-                                        { id: 'pat_liq',         label: 'Patrimônio Líquido',       prefix: '02.3', type: 'sub' as const },
-                                        { id: 'total_passivo',   label: 'TOTAL DO PASSIVO',          prefix: '',     type: 'total' as const },
-                                    ];
-
                                     // Valores para o mês selecionado
-                                    const ativoCirc     = getBalVal('01.1', selectedMonthIndex);
-                                    const ativoNaoCirc  = getBalVal('01.2', selectedMonthIndex);
-                                    const totalAtivo    = ativoCirc + ativoNaoCirc;
-                                    const passivoCirc   = getBalVal('02.1', selectedMonthIndex);
-                                    const passivoNaoCirc = getBalVal('02.2', selectedMonthIndex);
-                                    const patrimonioLiq = getBalVal('02.3', selectedMonthIndex);
-                                    const totalPassivo  = passivoCirc + passivoNaoCirc + patrimonioLiq;
+                                    const ativoCirc      = getSumByGroup('ATIVO CIRCULANTE',      selectedMonthIndex);
+                                    const ativoNaoCirc   = getSumByGroup('ATIVO NÃO CIRCULANTE',  selectedMonthIndex);
+                                    const totalAtivo     = ativoCirc + ativoNaoCirc;
+                                    const passivoCirc    = getSumByGroup('PASSIVO CIRCULANTE',     selectedMonthIndex);
+                                    const passivoNaoCirc = getSumByGroup('PASSIVO NÃO CIRCULANTE', selectedMonthIndex);
+                                    const patrimonioLiq  = getSumByGroup('PATRIMÔNIO LÍQUIDO',    selectedMonthIndex);
+                                    const totalPassivo   = passivoCirc + passivoNaoCirc + patrimonioLiq;
 
                                     const patItems = [
-                                        { ...patLinesDef[0], val: ativoCirc },
-                                        { ...patLinesDef[1], val: ativoNaoCirc },
-                                        { ...patLinesDef[2], val: totalAtivo },
-                                        { ...patLinesDef[3], val: passivoCirc },
-                                        { ...patLinesDef[4], val: passivoNaoCirc },
-                                        { ...patLinesDef[5], val: patrimonioLiq },
-                                        { ...patLinesDef[6], val: totalPassivo },
+                                        { id: 'ativo_circ',    label: 'Ativo Circulante',       group: 'ATIVO CIRCULANTE',      val: ativoCirc,      type: 'section' as const },
+                                        { id: 'ativo_nao',     label: 'Ativo Não Circulante',   group: 'ATIVO NÃO CIRCULANTE',  val: ativoNaoCirc,   type: 'section' as const },
+                                        { id: 'total_ativo',   label: 'TOTAL DO ATIVO',         group: '',                      val: totalAtivo,     type: 'total'   as const },
+                                        { id: 'pass_circ',     label: 'Passivo Circulante',     group: 'PASSIVO CIRCULANTE',    val: passivoCirc,    type: 'section' as const },
+                                        { id: 'pass_nao',      label: 'Passivo Não Circulante', group: 'PASSIVO NÃO CIRCULANTE',val: passivoNaoCirc, type: 'section' as const },
+                                        { id: 'pat_liq',       label: 'Patrimônio Líquido',     group: 'PATRIMÔNIO LÍQUIDO',    val: patrimonioLiq,  type: 'section' as const },
+                                        { id: 'total_passivo', label: 'TOTAL DO PASSIVO',       group: '',                      val: totalPassivo,   type: 'total'   as const },
                                     ];
 
-                                    // Calcular acumulado (soma 12 meses) para cada linha
-                                    const getAccum = (prefix: string) =>
-                                        prefix ? months.reduce((s, _, mi) => s + getBalVal(prefix, mi), 0)
-                                               : 0;
+                                    // Filha por grupo
+                                    const getGroupChildren = (grp: string) => {
+                                        const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+                                        return patrimonialMovements.filter(m => m.level === 2 && norm(m.category || '') === norm(grp));
+                                    };
+
+                                    // Acumulado anual de um grupo
+                                    const getGrpAccum = (grp: string) =>
+                                        months.reduce((s, _, mi) => s + getSumByGroup(grp, mi), 0);
+
+                                    // Valor mensal de um item
+                                    const getItemMonthVal = (item: typeof patItems[0], mi: number): number => {
+                                        if (item.type === 'total') {
+                                            if (item.id === 'total_ativo')   return getSumByGroup('ATIVO CIRCULANTE', mi) + getSumByGroup('ATIVO NÃO CIRCULANTE', mi);
+                                            return getSumByGroup('PASSIVO CIRCULANTE', mi) + getSumByGroup('PASSIVO NÃO CIRCULANTE', mi) + getSumByGroup('PATRIMÔNIO LÍQUIDO', mi);
+                                        }
+                                        return getSumByGroup(item.group, mi);
+                                    };
+
+                                    // Indicadores Financeiros (calculados para o mês selecionado)
+                                    const getChildVal = (childName: string): number => {
+                                        const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+                                        const m = patrimonialMovements.find(r => r.level === 2 && norm(r.name).includes(norm(childName)));
+                                        return m ? (m.values[selectedMonthIndex] || 0) : 0;
+                                    };
+                                    const estoques      = getChildVal('Estoques');
+                                    const disponivel    = getChildVal('Disponivel');
+                                    const liquidezCorr  = passivoCirc !== 0 ? ativoCirc / passivoCirc : 0;
+                                    const liquidezImed  = passivoCirc !== 0 ? disponivel / passivoCirc : 0;
+                                    const liquidezSeca  = passivoCirc !== 0 ? (ativoCirc - estoques) / passivoCirc : 0;
+                                    const liquidezGeral = (passivoCirc + passivoNaoCirc) !== 0 ? (ativoCirc + ativoNaoCirc) / (passivoCirc + passivoNaoCirc) : 0;
+                                    const partTerc      = totalAtivo !== 0 ? (passivoCirc + passivoNaoCirc) / totalAtivo : 0;
+                                    const dreMonth      = allMonthsDre[selectedMonthIndex];
+                                    const roe           = patrimonioLiq !== 0 ? (dreMonth?.lucroLiq || 0) / patrimonioLiq : 0;
+                                    const roa           = totalAtivo !== 0 ? (dreMonth?.lucroLiq || 0) / totalAtivo : 0;
+                                    const margemLiq     = (dreMonth?.recBruta || 0) !== 0 ? (dreMonth?.lucroLiq || 0) / (dreMonth?.recBruta || 1) : 0;
+
+                                    const indicadores = [
+                                        { label: 'Liquidez Corrente',      val: liquidezCorr,  fmt: 'ratio' },
+                                        { label: 'Liquidez Imediata',      val: liquidezImed,  fmt: 'ratio' },
+                                        { label: 'Liquidez Seca',          val: liquidezSeca,  fmt: 'ratio' },
+                                        { label: 'Liquidez Geral',         val: liquidezGeral, fmt: 'ratio' },
+                                        { label: 'Participação Terceiros', val: partTerc,      fmt: 'pct' },
+                                        { label: 'Margem Líquida',         val: margemLiq,     fmt: 'pct' },
+                                        { label: 'ROE',                    val: roe,           fmt: 'pct' },
+                                        { label: 'ROA',                    val: roa,           fmt: 'pct' },
+                                    ];
+
+                                    const fmtIndicador = (val: number, fmt: string) => {
+                                        if (fmt === 'pct') return `${(val * 100).toFixed(1)}%`;
+                                        return val.toFixed(2);
+                                    };
 
                                     // ── MODO LISTA ──
                                     if (patViewMode === 'lista') return (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead>
-                                                    <tr className="bg-white/5 border-b border-white/5">
-                                                        <th className="p-4 px-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[260px] sticky left-0 z-20 bg-[#0a1628]">Indicador</th>
-                                                        {months.map((m, i) => (
-                                                            <th key={m} className={`p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[100px] ${i === selectedMonthIndex ? 'bg-cyan-500/10 text-cyan-400' : ''}`}>{m}</th>
-                                                        ))}
-                                                        <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[110px] bg-white/5 sticky right-[70px] z-20 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">Acumulado</th>
-                                                        <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[70px] sticky right-0 z-20 bg-[#0a1628] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">%</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-white/5">
-                                                    {patItems.map((item, idx) => {
-                                                        const isTotal = item.type === 'total';
-                                                        const hasChildren = Boolean(item.prefix) && getChildAccounts(item.prefix, patrimonialMovements).length > 0;
-                                                        const isExpanded = expandedDreRow === `pat-${item.id}`;
-                                                        const childAccounts = hasChildren ? getChildAccounts(item.prefix, patrimonialMovements) : [];
-                                                        const acumulado = isTotal
-                                                            ? (item.id === 'total_ativo'
-                                                                ? months.reduce((s, _, mi) => s + getBalVal('01.1', mi) + getBalVal('01.2', mi), 0)
-                                                                : months.reduce((s, _, mi) => s + getBalVal('02.1', mi) + getBalVal('02.2', mi) + getBalVal('02.3', mi), 0))
-                                                            : getAccum(item.prefix);
-                                                        const pct = totalAtivo !== 0 ? `${Math.round((item.val / totalAtivo) * 100)}%` : '0%';
-                                                        return (
-                                                            <React.Fragment key={idx}>
-                                                                <tr
-                                                                    className={`hover:bg-white/5 transition-colors ${isTotal ? 'bg-cyan-500/10 font-black text-white cursor-default' : 'bg-white/5 font-bold text-white/80 cursor-pointer'}`}
-                                                                    onClick={() => hasChildren && setExpandedDreRow(isExpanded ? null : `pat-${item.id}`)}
-                                                                >
-                                                                    <td className="p-4 px-6 text-sm sticky left-0 z-10 bg-[#0a1628]">
-                                                                        <div className="flex items-center gap-2">
-                                                                            {hasChildren && (
-                                                                                <span className={`text-[10px] text-cyan-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
-                                                                            )}
-                                                                            <div className={`w-2 h-2 rounded-full shrink-0 ${isTotal ? 'bg-cyan-400' : 'bg-white/30'}`} />
-                                                                            {item.label}
-                                                                        </div>
-                                                                    </td>
-                                                                    {months.map((_, mi) => {
-                                                                        const monthVal = isTotal
-                                                                            ? (item.id === 'total_ativo'
-                                                                                ? getBalVal('01.1', mi) + getBalVal('01.2', mi)
-                                                                                : getBalVal('02.1', mi) + getBalVal('02.2', mi) + getBalVal('02.3', mi))
-                                                                            : getBalVal(item.prefix, mi);
-                                                                        return (
+                                        <div className="flex flex-col">
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-left border-collapse">
+                                                    <thead>
+                                                        <tr className="bg-white/5 border-b border-white/5">
+                                                            <th className="p-4 px-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[260px] sticky left-0 z-20 bg-[#0a1628]">Grupo</th>
+                                                            {months.map((m, i) => (
+                                                                <th key={m} className={`p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[100px] ${i === selectedMonthIndex ? 'bg-cyan-500/10 text-cyan-400' : ''}`}>{m}</th>
+                                                            ))}
+                                                            <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[110px] bg-white/5 sticky right-[70px] z-20 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">Acum.</th>
+                                                            <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[70px] sticky right-0 z-20 bg-[#0a1628] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">%</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-white/5">
+                                                        {patItems.map((item, idx) => {
+                                                            const isTotal    = item.type === 'total';
+                                                            const children   = item.group ? getGroupChildren(item.group) : [];
+                                                            const hasChildren = children.length > 0;
+                                                            const isExpanded = expandedDreRow === `pat-${item.id}`;
+                                                            const acumulado  = isTotal
+                                                                ? (item.id === 'total_ativo'
+                                                                    ? months.reduce((s, _, mi) => s + getSumByGroup('ATIVO CIRCULANTE', mi) + getSumByGroup('ATIVO NÃO CIRCULANTE', mi), 0)
+                                                                    : months.reduce((s, _, mi) => s + getSumByGroup('PASSIVO CIRCULANTE', mi) + getSumByGroup('PASSIVO NÃO CIRCULANTE', mi) + getSumByGroup('PATRIMÔNIO LÍQUIDO', mi), 0))
+                                                                : getGrpAccum(item.group);
+                                                            const pct = totalAtivo !== 0 ? `${Math.round((item.val / totalAtivo) * 100)}%` : '0%';
+                                                            return (
+                                                                <React.Fragment key={idx}>
+                                                                    <tr
+                                                                        className={`hover:bg-white/5 transition-colors ${isTotal ? 'bg-cyan-500/10 font-black text-white cursor-default' : 'bg-white/5 font-bold text-white/80 cursor-pointer'}`}
+                                                                        onClick={() => hasChildren && setExpandedDreRow(isExpanded ? null : `pat-${item.id}`)}
+                                                                    >
+                                                                        <td className="p-4 px-6 text-sm sticky left-0 z-10 bg-[#0a1628]">
+                                                                            <div className="flex items-center gap-2">
+                                                                                {hasChildren && (
+                                                                                    <span className={`text-[10px] text-cyan-400 transition-transform duration-200 inline-block ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                                                                                )}
+                                                                                <div className={`w-2 h-2 rounded-full shrink-0 ${isTotal ? 'bg-cyan-400' : 'bg-white/30'}`} />
+                                                                                {item.label}
+                                                                            </div>
+                                                                        </td>
+                                                                        {months.map((_, mi) => (
                                                                             <td key={mi} className={`p-4 px-3 text-xs text-right font-mono font-bold ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''} ${isTotal ? 'text-cyan-400' : 'text-white/80'}`}>
-                                                                                {formatLocaleNumber(monthVal)}
+                                                                                {formatLocaleNumber(getItemMonthVal(item, mi))}
                                                                             </td>
+                                                                        ))}
+                                                                        <td className={`p-4 px-3 text-xs text-right font-mono font-bold bg-white/5 sticky right-[70px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)] ${isTotal ? 'text-cyan-400' : 'text-white'}`}>
+                                                                            {formatLocaleNumber(acumulado)}
+                                                                        </td>
+                                                                        <td className="p-4 px-3 text-xs text-right font-black sticky right-0 z-10 bg-[#0a1628] text-cyan-400 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">
+                                                                            {isTotal ? '100%' : pct}
+                                                                        </td>
+                                                                    </tr>
+                                                                    {isExpanded && children.map((child, ci) => {
+                                                                        const childAccum = child.values.reduce((s, v) => s + v, 0);
+                                                                        return (
+                                                                            <tr key={`${idx}-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
+                                                                                <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
+                                                                                    <div className="flex items-center gap-2 pl-6">
+                                                                                        <span className="truncate">{child.name}</span>
+                                                                                    </div>
+                                                                                </td>
+                                                                                {months.map((_, mi) => (
+                                                                                    <td key={mi} className={`p-3 px-3 text-right font-mono ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
+                                                                                        {formatLocaleNumber(child.values[mi] || 0)}
+                                                                                    </td>
+                                                                                ))}
+                                                                                <td className="p-3 px-3 text-right font-mono bg-white/5 sticky right-[70px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">{formatLocaleNumber(childAccum)}</td>
+                                                                                <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">-</td>
+                                                                            </tr>
                                                                         );
                                                                     })}
-                                                                    <td className={`p-4 px-3 text-xs text-right font-mono font-bold bg-white/5 sticky right-[70px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)] ${isTotal ? 'text-cyan-400' : 'text-white'}`}>
-                                                                        {formatLocaleNumber(acumulado)}
-                                                                    </td>
-                                                                    <td className="p-4 px-3 text-xs text-right font-black sticky right-0 z-10 bg-[#0a1628] text-cyan-400 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">
-                                                                        {isTotal ? '100%' : pct}
-                                                                    </td>
-                                                                </tr>
-                                                                {isExpanded && childAccounts.map((child, ci) => {
-                                                                    const childTotal = child.values.reduce((s, v) => s + v, 0);
-                                                                    return (
-                                                                        <tr key={`${idx}-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
-                                                                            <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
-                                                                                <div className="flex items-center gap-2" style={{ paddingLeft: `${(child.level - 1) * 12}px` }}>
-                                                                                    <span className="text-cyan-400/60 font-mono text-[10px]">{child.code}</span>
-                                                                                    <span className="truncate">{child.name}</span>
-                                                                                </div>
-                                                                            </td>
-                                                                            {months.map((_, mi) => (
-                                                                                <td key={mi} className={`p-3 px-3 text-right font-mono ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
-                                                                                    {formatLocaleNumber(child.values[mi] || 0)}
-                                                                                </td>
-                                                                            ))}
-                                                                            <td className="p-3 px-3 text-right font-mono bg-white/5 sticky right-[70px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">{formatLocaleNumber(childTotal)}</td>
-                                                                            <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">-</td>
-                                                                        </tr>
-                                                                    );
-                                                                })}
-                                                            </React.Fragment>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
+                                                                </React.Fragment>
+                                                            );
+                                                        })}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {/* Indicadores Financeiros */}
+                                            <div className="p-6 border-t border-white/5">
+                                                <h4 className="text-xs font-black text-white/40 uppercase tracking-[0.2em] mb-4">Indicadores Financeiros — {months[selectedMonthIndex]}</h4>
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                    {indicadores.map((ind, i) => (
+                                                        <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3 flex flex-col gap-1">
+                                                            <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">{ind.label}</span>
+                                                            <span className="text-lg font-black font-mono text-white">{fmtIndicador(ind.val, ind.fmt)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
                                     );
 
@@ -1659,22 +1824,36 @@ const ClientDashboard = () => {
 
                                     // ── MODO FECHADO ──
                                     return (
-                                        <div className="p-8 flex flex-col gap-3 animate-in slide-in-from-bottom duration-300">
-                                            {patItems
-                                                .filter(item => item.type === 'total' || item.id === 'pat_liq')
-                                                .map((item, i) => (
-                                                    <div key={i} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
-                                                        item.type === 'total' ? 'bg-cyan-500/10 border-cyan-500/20' : 'bg-white/5 border-white/5'
-                                                    }`}>
-                                                        <span className={`text-sm font-bold tracking-wide ${item.type === 'total' ? 'text-cyan-400' : 'text-white'}`}>
-                                                            {item.label}
-                                                        </span>
-                                                        <span className={`font-mono font-bold text-sm ${item.type === 'total' ? 'text-cyan-400' : 'text-white'}`}>
-                                                            R$ {formatLocaleNumber(item.val)}
-                                                        </span>
-                                                    </div>
-                                                ))
-                                            }
+                                        <div className="p-8 flex flex-col gap-4 animate-in slide-in-from-bottom duration-300">
+                                            <div className="flex flex-col gap-3">
+                                                {patItems
+                                                    .filter(item => item.type === 'total' || item.id === 'pat_liq')
+                                                    .map((item, i) => (
+                                                        <div key={i} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
+                                                            item.type === 'total' ? 'bg-cyan-500/10 border-cyan-500/20' : 'bg-white/5 border-white/5'
+                                                        }`}>
+                                                            <span className={`text-sm font-bold tracking-wide ${item.type === 'total' ? 'text-cyan-400' : 'text-white'}`}>
+                                                                {item.label}
+                                                            </span>
+                                                            <span className={`font-mono font-bold text-sm ${item.type === 'total' ? 'text-cyan-400' : 'text-white'}`}>
+                                                                R$ {formatLocaleNumber(item.val)}
+                                                            </span>
+                                                        </div>
+                                                    ))
+                                                }
+                                            </div>
+                                            {/* Indicadores compactos */}
+                                            <div className="border-t border-white/5 pt-4">
+                                                <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-3">Indicadores</p>
+                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                                    {indicadores.map((ind, i) => (
+                                                        <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3 flex flex-col gap-1">
+                                                            <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">{ind.label}</span>
+                                                            <span className="text-base font-black font-mono text-white">{fmtIndicador(ind.val, ind.fmt)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 })()}
