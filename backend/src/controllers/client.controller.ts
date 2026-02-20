@@ -141,7 +141,7 @@ export const createClient = async (req: AuthRequest, res: Response) => {
         });
 
         res.status(201).json(client);
-    } catch (error) {
+    } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'CNPJ já cadastrado' });
         }
@@ -183,7 +183,7 @@ export const updateClient = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente não encontrado' });
         }
 
-        const data: Prisma.ClientUpdateInput = {};
+        const data: Record<string, unknown> = {};
 
         if (name !== undefined) data.name = name;
         if (cnpj !== undefined) data.cnpj = cnpj.replace(/\D/g, '');
@@ -209,7 +209,7 @@ export const updateClient = async (req: AuthRequest, res: Response) => {
         });
 
         res.json(updatedClient);
-    } catch (error) {
+    } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'CNPJ já cadastrado' });
         }

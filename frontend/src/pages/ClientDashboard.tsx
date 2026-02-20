@@ -312,22 +312,30 @@ const ClientDashboard = () => {
         loadTickets();
     }, [isClientView, activeTab]);
 
-    // Mapeamento de aliases: normaliza variações dos nomes de categoria do CSV para o nome canônico
+    // Remove acentos e normaliza string para comparação à prova de encoding
+    const stripAccents = (s: string): string =>
+        s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+    // Mapeamento de aliases usando chave SEM acento para matching robusto
     const CATEGORY_ALIASES: Record<string, string[]> = {
-        'deduções de vendas':        ['deduções', 'deducoes', 'deduções de vendas'],
-        'custos das vendas':         ['custos das vendas', 'custos das vendas '],
-        'despesas tributárias':      ['despesas tributarias', 'despesas tributárias', 'despesas tributarias '],
-        'despesas financeiras':      ['despesas financeiras', 'despesas financeiras '],
-        'receitas financeiras':      ['receitas financeiras', 'receitas financeiras '],
-        'irpj e csll':               ['irpj e csll', 'irpj e csll '],
-        'depreciação e amortização': ['depreciação e amortização', 'depreciacao e amortizacao'],
+        'deducoes de vendas':        ['deducoes', 'deducoes de vendas'],
+        'custos das vendas':         ['custos das vendas'],
+        'despesas tributarias':      ['despesas tributarias'],
+        'despesas financeiras':      ['despesas financeiras'],
+        'receitas financeiras':      ['receitas financeiras'],
+        'irpj e csll':               ['irpj e csll'],
+        'depreciacao e amortizacao': ['depreciacao e amortizacao'],
         'outras despesas':           ['outras despesas'],
+        'outras receitas':           ['outras receitas'],
+        'despesas administrativas':  ['despesas administrativas'],
+        'despesas comerciais':       ['despesas comerciais'],
+        'receita bruta':             ['receita bruta'],
     };
 
     // Função DE-PARA: soma movimentações pela coluna category (DE-PARA do balancete)
     // Com fallback para cruzar com Plano de Contas se o balancete não tiver DE-PARA
     const getSumByReportCategory = (categoryName: string, monthIdx: number, movementsData: MovementRow[]): number => {
-        const normalize = (s: string) => s.trim().toLowerCase();
+        const normalize = (s: string) => stripAccents(s);
         const cat = normalize(categoryName);
 
         // Resolve aliases: se a categoria tem aliases, aceita qualquer um deles
@@ -377,7 +385,7 @@ const ClientDashboard = () => {
 
     // Busca contas-filhas de um report_category para drill-down
     const getChildAccounts = (reportCategory: string, movementsData: MovementRow[]) => {
-        const normalize = (s: string) => s.trim().toLowerCase();
+        const normalize = (s: string) => stripAccents(s);
         const cat = normalize(reportCategory);
         const aliases = CATEGORY_ALIASES[cat] ?? [cat];
 
@@ -426,11 +434,11 @@ const ClientDashboard = () => {
 
     // Definição das linhas do DRE — category corresponde ao report_category do plano de contas
     const dreLinesDef = [
-        { id: 'rec_bruta', name: 'Receita Bruta', key: 'recBruta', type: 'positive', category: 'Receita Bruta' },
+        { id: 'rec_bruta', name: 'Receita Bruta', key: 'recBruta', type: 'main', category: 'Receita Bruta' },
         { id: 'deducoes', name: 'Deduções', key: 'deducoes', type: 'negative', category: 'Deduções de Vendas' },
         { id: 'rec_liquida', name: 'RECEITA LIQUIDA', key: 'recLiquida', type: 'main', category: '' },
         { id: 'custos', name: 'Custos Das Vendas', key: 'custos', type: 'negative', category: 'Custos das Vendas' },
-        { id: 'lucro_bruto', name: 'LUCRO BRUTO', key: 'lucroBruto', type: 'main', category: '' },
+        { id: 'lucro_bruto', name: 'LUCRO OPERACIONAL', key: 'lucroBruto', type: 'main', category: '' },
         { id: 'desp_adm', name: 'Despesas Administrativas', key: 'despAdm', type: 'negative', category: 'Despesas Administrativas' },
         { id: 'desp_com', name: 'Despesas Comerciais', key: 'despCom', type: 'negative', category: 'Despesas Comerciais' },
         { id: 'desp_trib', name: 'Despesas Tributarias', key: 'despTrib', type: 'negative', category: 'Despesas Tributárias' },
@@ -510,11 +518,21 @@ const ClientDashboard = () => {
             const label = movType === 'dre' ? 'Balancete DRE' : 'Balancete Patrimonial';
             const toastId = `import-mov-${movType}`;
 
+            const isCSV = file.name.toLowerCase().endsWith('.csv');
             const reader = new FileReader();
             reader.onload = async (evt) => {
                 try {
-                    const bstr = evt.target?.result;
-                    const wb = XLSX.read(bstr, { type: 'binary' });
+                    const fileContent = evt.target?.result;
+                    let wb;
+                    if (isCSV) {
+                        // CSV: lido como texto UTF-8 → preserva acentos (Deduções, não DeduÃ§Ãµes)
+                        // raw: true evita que XLSX converta "556.777,78" para número JS errado
+                        wb = XLSX.read(fileContent as string, { type: 'string', raw: true });
+                    } else {
+                        // XLSX/XLS: lido como ArrayBuffer → números nativos já corretos
+                        const data8 = new Uint8Array(fileContent as ArrayBuffer);
+                        wb = XLSX.read(data8, { type: 'array' });
+                    }
                     const wsname = wb.SheetNames[0];
                     const ws = wb.Sheets[wsname];
                     const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as (string | number | undefined)[][];
@@ -522,11 +540,13 @@ const ClientDashboard = () => {
                     // Col 0 = Classificação, Col 1 = Nome, Cols 2-13 = Jan-Dez
                     // Col 14 = Total (ignorado), Col 15 = NÍVEL, Col 16 = DE-PARA
                     const parseBrNumber = (v: any): number => {
-                        if (typeof v === 'number') return v;
+                        if (typeof v === 'number') return v; // .xlsx: número JS já correto
                         const s = String(v || '0').trim();
-                        // Remove pontos de milhar, troca vírgula por ponto decimal
+                        if (s === '' || s === '-') return 0;
+                        // Formato BR: remove pontos de milhar, troca vírgula decimal por ponto
                         const cleaned = s.replace(/\./g, '').replace(',', '.');
-                        return parseFloat(cleaned) || 0;
+                        const result = parseFloat(cleaned);
+                        return isNaN(result) ? 0 : result;
                     };
 
                     const parsedMovements: MovementRow[] = data.map(row => {
@@ -556,14 +576,13 @@ const ClientDashboard = () => {
 
                     // Verifica categorias DE-PARA não reconhecidas pelo sistema (apenas para DRE)
                     if (movType === 'dre') {
-                        const normalize = (s: string) => s.trim().toLowerCase();
                         const knownCategories = new Set([
-                            // Categorias DRE
-                            'receita bruta', 'deduções', 'deducoes', 'deduções de vendas',
+                            // Categorias DRE (todas sem acento para matching robusto)
+                            'receita bruta', 'deducoes', 'deducoes de vendas',
                             'custos das vendas', 'despesas administrativas', 'despesas comerciais',
-                            'despesas tributarias', 'despesas tributárias', 'despesas financeiras',
+                            'despesas tributarias', 'despesas financeiras',
                             'receitas financeiras', 'irpj e csll', 'outras despesas', 'outras receitas',
-                            'depreciação e amortização', 'depreciacao e amortizacao',
+                            'depreciacao e amortizacao',
                             // Categorias Patrimonial/PL (esperadas no arquivo mas ignoradas pelo DRE)
                             'adiantamentos', 'clientes', 'contas a pagar cp', 'despesas antecipadas',
                             'disponivel', 'emprestimos e financiamentos cp', 'estoques', 'fornecedores',
@@ -575,7 +594,7 @@ const ClientDashboard = () => {
                         const withCategory = parsedMovements.filter(m => m.category);
                         const unknownCats = [...new Set(
                             withCategory
-                                .filter(m => !knownCategories.has(normalize(m.category!)))
+                                .filter(m => !knownCategories.has(stripAccents(m.category!)))
                                 .map(m => m.category!)
                         )];
                         if (unknownCats.length > 0) {
@@ -603,7 +622,11 @@ const ClientDashboard = () => {
                     toast.error(`Erro ao importar ${label}`, { id: toastId });
                 }
             };
-            reader.readAsBinaryString(file);
+            if (isCSV) {
+                reader.readAsText(file, 'UTF-8');
+            } else {
+                reader.readAsArrayBuffer(file);
+            }
         };
     };
 

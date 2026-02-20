@@ -161,7 +161,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Usuário não encontrado' });
         }
 
-        const data: Prisma.UserUpdateInput = {};
+        const data: Record<string, unknown> = {};
 
         if (req.body.name !== undefined) data.name = req.body.name;
         if (req.body.email !== undefined) data.email = req.body.email.toLowerCase();
