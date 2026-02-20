@@ -30,6 +30,7 @@ export interface DREResult {
 /**
  * Serviço otimizado para cálculo do DRE
  * Suporta normalização de categorias com aliases
+ * Respeita os sinais originais (débito/crédito) das contas
  */
 export class DRECalculationService {
     /**
@@ -46,6 +47,7 @@ export class DRECalculationService {
     /**
      * Soma movimentações por categoria, com suporte a aliases
      * Evita dupla contagem somando apenas o nível mais analítico
+     * IMPORTANTE: Respeita os sinais originais (positivos/negativos)
      */
     static getSumByCategory(
         categoryName: string,
@@ -67,6 +69,8 @@ export class DRECalculationService {
 
         // Evitar dupla contagem: somar apenas o nível mais analítico
         const maxLevel = Math.max(...matched.map(m => m.level));
+        
+        // IMPORTANTE: Somar respeitando os sinais originais (não usar Math.abs)
         return matched
             .filter(m => m.level === maxLevel)
             .reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
@@ -74,7 +78,7 @@ export class DRECalculationService {
 
     /**
      * Calcula o DRE para um mês específico
-     * Trata corretamente os sinais de débito/crédito
+     * Respeita os sinais originais das contas (débito/crédito)
      */
     static calculateDREForMonth(
         monthIdx: number,
@@ -82,38 +86,48 @@ export class DRECalculationService {
     ): DREResult {
         const getSumByCategory = (cat: string) => this.getSumByCategory(cat, monthIdx, movements);
 
-        // Receitas (positivas)
+        // Receitas (podem incluir deduções com sinal negativo)
         const recBruta = getSumByCategory('Receita Bruta');
-        const deducoes = Math.abs(getSumByCategory('Deduções')); // Deduções são sempre negativas
+        
+        // Deduções (já vêm com sinal negativo da planilha, então subtraímos)
+        const deducoes = getSumByCategory('Deduções');
+        
+        // Receita Líquida = Receita Bruta - Deduções
+        // Se deduções vêm negativas, isso é: recBruta - (-valor) = recBruta + valor
+        // Se deduções vêm positivas, isso é: recBruta - valor
         const recLiquida = recBruta - deducoes;
 
-        // Custos (sempre negativos, então usamos valor absoluto)
-        const custos = Math.abs(getSumByCategory('Custos Das Vendas'));
+        // Custos (vêm com sinal negativo da planilha)
+        const custos = getSumByCategory('Custos Das Vendas');
+        
+        // Lucro Bruto = Receita Líquida - Custos
+        // Se custos vêm negativos: recLiquida - (-valor) = recLiquida + valor
         const lucroBruto = recLiquida - custos;
 
-        // Despesas Operacionais (sempre negativas)
-        const despAdm = Math.abs(getSumByCategory('Despesas Administrativas'));
-        const despCom = Math.abs(getSumByCategory('Despesas Comerciais'));
-        const despTrib = Math.abs(getSumByCategory('Despesas Tributarias'));
-        const despOutras = Math.abs(getSumByCategory('Outras Despesas'));
+        // Despesas Operacionais (vêm com sinal negativo da planilha)
+        const despAdm = getSumByCategory('Despesas Administrativas');
+        const despCom = getSumByCategory('Despesas Comerciais');
+        const despTrib = getSumByCategory('Despesas Tributarias');
+        const despOutras = getSumByCategory('Outras Despesas');
 
         // Receitas/Despesas Financeiras
         const outrasReceitas = getSumByCategory('Outras Receitas');
         const recFin = getSumByCategory('Receitas Financeiras');
-        const despFin = Math.abs(getSumByCategory('Despesas Financeiras'));
+        const despFin = getSumByCategory('Despesas Financeiras');
 
         // Resultado Operacional (LAIR)
-        // LAIR = Lucro Bruto - Despesas Operacionais + Outras Receitas + Receitas Financeiras - Despesas Financeiras
+        // LAIR = Lucro Bruto - Despesas Operacionais + Outras Receitas + Receitas Fin - Despesas Fin
+        // Como despesas vêm negativas: Lucro Bruto - (-valor) = Lucro Bruto + valor
         const lair = lucroBruto - despAdm - despCom - despTrib - despOutras + outrasReceitas + recFin - despFin;
 
         // Impostos (IRPJ e CSLL)
-        const irpjCsll = Math.abs(getSumByCategory('Irpj E Csll'));
+        const irpjCsll = getSumByCategory('Irpj E Csll');
 
         // Resultado Líquido
         const lucroLiq = lair - irpjCsll;
 
         // EBITDA (Lucro Operacional + Depreciação/Amortização)
-        const depreciacao = Math.abs(getSumByCategory('Depreciação e Amortização'));
+        const depreciacao = getSumByCategory('Depreciação e Amortização');
         const ebtida = lair + depreciacao;
 
         return {
