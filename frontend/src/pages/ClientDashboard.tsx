@@ -423,31 +423,35 @@ const ClientDashboard = () => {
     const [dreComments, setDreComments] = useState<Record<string, string>>({});
 
     const calcDreForMonth = (monthIdx: number) => {
-        // Os valores do CSV já chegam com o SINAL CORRETO:
-        //   - Receitas/positivos → números positivos (ex: 1.550.012)
-        //   - Deduções/custos/despesas → números NEGATIVOS (ex: -487.353)
-        // O formatLocaleNumber usa Math.abs() para exibição (mostra 487.353 em vermelho).
-        // Portanto: SOMA SIMPLES em todas as fórmulas — igual ao =SOMA() do Excel.
-        const recBruta        = getSumByReportCategory('Receita Bruta', monthIdx, dreMovements);
-        const deducoes        = getSumByReportCategory('Deduções de Vendas', monthIdx, dreMovements);
-        const recLiquida      = recBruta + deducoes;                          // SOMA(C6:C7) — deducoes já negativo
-        const custos          = getSumByReportCategory('Custos das Vendas', monthIdx, dreMovements);
-        const custosServicos  = getSumByReportCategory('Custos Dos Serviços', monthIdx, dreMovements);
-        const lucroBruto      = recLiquida + custos + custosServicos;         // SOMA(C8:C11) — custos já negativos
-        const despAdm         = getSumByReportCategory('Despesas Administrativas', monthIdx, dreMovements);
-        const despCom         = getSumByReportCategory('Despesas Comerciais', monthIdx, dreMovements);
-        const despTrib        = getSumByReportCategory('Despesas Tributárias', monthIdx, dreMovements);
-        const partSocietarias = getSumByReportCategory('Resultado Participações Societárias', monthIdx, dreMovements);
-        const outrasReceitas  = getSumByReportCategory('Outras Receitas', monthIdx, dreMovements);
-        const recFin          = getSumByReportCategory('Receitas Financeiras', monthIdx, dreMovements);
-        const despFin         = getSumByReportCategory('Despesas Financeiras', monthIdx, dreMovements);
-        const lair            = lucroBruto + despAdm + despCom + despTrib + partSocietarias + outrasReceitas + recFin + despFin; // SOMA(C13:C22)
-        const irpjCsll        = getSumByReportCategory('IRPJ e CSLL', monthIdx, dreMovements);
-        const lucroLiq        = lair + irpjCsll;                              // SOMA(C24:C25) — irpj já negativo
-        const depreciacao     = getSumByReportCategory('Depreciação e Amortização', monthIdx, dreMovements);
-        const resultFin       = recFin + despFin;                             // resultado financeiro líquido (despFin já negativo)
-        const ebtida          = lair + Math.abs(depreciacao) + resultFin;     // SOMA(C28:C30)
-        return { recBruta, deducoes, recLiquida, custos, custosServicos, lucroBruto, despAdm, despCom, despTrib, partSocietarias, outrasReceitas, recFin, despFin, lair, irpjCsll, lucroLiq, depreciacao, resultFin, ebtida };
+        // Normaliza sinais: usa Math.abs() e aplica sinal explícito.
+        // O CSV tem sinais INCONSISTENTES entre categorias — não depender do sinal do CSV.
+        // Ex: Deduções chega negativo (-487.353), mas Custos chega positivo (+874.361).
+        const pos = (cat: string) =>  Math.abs(getSumByReportCategory(cat, monthIdx, dreMovements));
+        const neg = (cat: string) => -Math.abs(getSumByReportCategory(cat, monthIdx, dreMovements));
+
+        const recBruta        = pos('Receita Bruta');
+        const deducoes        = neg('Deduções de Vendas');
+        const recLiquida      = recBruta + deducoes;
+        const custos          = neg('Custos das Vendas');
+        const custosServicos  = neg('Custos Dos Serviços');
+        const lucroBruto      = recLiquida + custos + custosServicos;
+        const despAdm         = neg('Despesas Administrativas');
+        const despCom         = neg('Despesas Comerciais');
+        const despTrib        = neg('Despesas Tributárias');
+        const partSocietarias = pos('Resultado Participações Societárias');
+        const outrasReceitas  = pos('Outras Receitas');
+        const recFin          = pos('Receitas Financeiras');
+        const despFin         = neg('Despesas Financeiras');
+        const lair            = lucroBruto + despAdm + despCom + despTrib
+                                + partSocietarias + outrasReceitas + recFin + despFin;
+        const irpjCsll        = neg('IRPJ e CSLL');
+        const lucroLiq        = lair + irpjCsll;
+        const depreciacao     = neg('Depreciação e Amortização');
+        const resultFin       = recFin + despFin;
+        const ebtida          = lair + Math.abs(depreciacao) + resultFin;
+        return { recBruta, deducoes, recLiquida, custos, custosServicos, lucroBruto,
+                 despAdm, despCom, despTrib, partSocietarias, outrasReceitas,
+                 recFin, despFin, lair, irpjCsll, lucroLiq, depreciacao, resultFin, ebtida };
     };
 
     // Definição das linhas do DRE — category corresponde ao report_category do plano de contas
