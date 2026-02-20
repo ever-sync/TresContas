@@ -131,7 +131,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         });
 
         res.status(201).json(user);
-    } catch (error) {
+    } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'Email já cadastrado' });
         }
@@ -184,7 +184,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         });
 
         res.json(updatedUser);
-    } catch (error) {
+    } catch (error: any) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'Email já cadastrado' });
         }
