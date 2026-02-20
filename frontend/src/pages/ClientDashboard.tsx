@@ -252,15 +252,18 @@ const ClientDashboard = () => {
                 if (isAccountingView && clientId) {
                     const data = await movementService.getAll(clientId, selectedYear, 'dre');
                     setDreMovements(data);
+                } else if (isClientView) {
+                    const data = await clientPortalService.getMovements(selectedYear, 'dre');
+                    setDreMovements(data);
                 }
             } catch (error) {
                 console.error('Erro ao carregar movimentações DRE:', error);
             }
         };
-        if (isAccountingView && clientId) {
+        if ((isAccountingView && clientId) || isClientView) {
             loadDreMovements();
         }
-    }, [clientId, isAccountingView, selectedYear]);
+    }, [clientId, isAccountingView, isClientView, selectedYear]);
 
     // Carregar movimentações Patrimonial do banco de dados
     useEffect(() => {
@@ -269,15 +272,18 @@ const ClientDashboard = () => {
                 if (isAccountingView && clientId) {
                     const data = await movementService.getAll(clientId, selectedYear, 'patrimonial');
                     setPatrimonialMovements(data);
+                } else if (isClientView) {
+                    const data = await clientPortalService.getMovements(selectedYear, 'patrimonial');
+                    setPatrimonialMovements(data);
                 }
             } catch (error) {
                 console.error('Erro ao carregar movimentações Patrimonial:', error);
             }
         };
-        if (isAccountingView && clientId) {
+        if ((isAccountingView && clientId) || isClientView) {
             loadPatrimonialMovements();
         }
-    }, [clientId, isAccountingView, selectedYear]);
+    }, [clientId, isAccountingView, isClientView, selectedYear]);
 
     // Detect scroll direction for dynamic sticky header
     useEffect(() => {

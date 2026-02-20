@@ -19,6 +19,16 @@ export interface SupportTicket {
   updated_at: string;
 }
 
+export interface ClientMovementRow {
+  id: string;
+  code: string;
+  name: string;
+  level: number;
+  type: string;
+  category: string | null;
+  values: number[];
+}
+
 export const clientPortalService = {
   login: async (data: {
     client_id?: string;
@@ -56,6 +66,14 @@ export const clientPortalService = {
     priority: 'low' | 'medium' | 'high';
   }): Promise<SupportTicket> => {
     const response = await clientApi.post('/client-portal/support', data);
+    return response.data;
+  },
+
+  /** Busca movimentações do cliente logado (DRE ou Patrimonial) */
+  getMovements: async (year: number, type: 'dre' | 'patrimonial'): Promise<ClientMovementRow[]> => {
+    const response = await clientApi.get('/client-portal/movements', {
+      params: { year, type },
+    });
     return response.data;
   },
 };

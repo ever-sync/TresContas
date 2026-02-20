@@ -124,6 +124,45 @@ export const createClientSupportTicket = async (req: AuthRequest, res: Response)
 };
 
 /**
+ * GET /api/client-portal/movements?year=2025&type=dre|patrimonial
+ * Retorna movimentações do cliente autenticado (leitura própria).
+ */
+export const getClientMovements = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.clientId) {
+            return res.status(401).json({ message: 'Não autorizado' });
+        }
+
+        const year = parseInt(req.query.year as string) || new Date().getFullYear();
+        const type = req.query.type as string | undefined;
+
+        const whereClause: Record<string, unknown> = { client_id: req.clientId, year };
+        if (type && ['dre', 'patrimonial'].includes(type)) {
+            whereClause.type = type;
+        }
+
+        const movements = await prisma.monthlyMovement.findMany({
+            where: whereClause,
+            orderBy: { code: 'asc' },
+            select: {
+                id: true,
+                code: true,
+                name: true,
+                level: true,
+                type: true,
+                category: true,
+                values: true,
+            },
+        });
+
+        res.json(movements);
+    } catch (error) {
+        console.error('Erro ao buscar movimentações do cliente:', error);
+        res.status(500).json({ message: 'Erro ao buscar movimentações' });
+    }
+};
+
+/**
  * Get chart of accounts for the authenticated client.
  */
 export const getClientChartOfAccounts = async (req: AuthRequest, res: Response) => {

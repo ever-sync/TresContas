@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authClientMiddleware } from '../middlewares/auth.middleware';
-import { getClientProfile, createClientSupportTicket, getClientSupportTickets, getClientChartOfAccounts } from '../controllers/clientPortal.controller';
+import { getClientProfile, createClientSupportTicket, getClientSupportTickets, getClientChartOfAccounts, getClientMovements } from '../controllers/clientPortal.controller';
 
 const router = Router();
 
@@ -12,6 +12,9 @@ router.get('/me', getClientProfile);
 
 // Client chart of accounts (read-only)
 router.get('/chart-of-accounts', getClientChartOfAccounts);
+
+// Client movements — DRE e Patrimonial (read-only)
+router.get('/movements', getClientMovements);
 
 // Client support tickets (read own + create)
 router.get('/support', getClientSupportTickets);
