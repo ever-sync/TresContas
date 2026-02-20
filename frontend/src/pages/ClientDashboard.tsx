@@ -415,12 +415,15 @@ const ClientDashboard = () => {
     const [dreComments, setDreComments] = useState<Record<string, string>>({});
 
     const calcDreForMonth = (monthIdx: number) => {
+        // NOTA: os valores do CSV já chegam com o sinal correto.
+        // Deduções, custos e despesas são NEGATIVOS no CSV — igualando ao SOMA() do Excel.
+        // Portanto usamos SOMA SIMPLES (não subtração) para todos os cálculos intermediários.
         const recBruta        = getSumByReportCategory('Receita Bruta', monthIdx, dreMovements);
         const deducoes        = getSumByReportCategory('Deduções de Vendas', monthIdx, dreMovements);
-        const recLiquida      = recBruta - deducoes;
+        const recLiquida      = recBruta + deducoes;                          // SOMA(C6:C7) — deducoes já é negativo
         const custos          = getSumByReportCategory('Custos das Vendas', monthIdx, dreMovements);
         const custosServicos  = getSumByReportCategory('Custos Dos Serviços', monthIdx, dreMovements);
-        const lucroBruto      = recLiquida - custos - custosServicos;
+        const lucroBruto      = recLiquida + custos + custosServicos;         // SOMA(C8:C11) — custos já negativos
         const despAdm         = getSumByReportCategory('Despesas Administrativas', monthIdx, dreMovements);
         const despCom         = getSumByReportCategory('Despesas Comerciais', monthIdx, dreMovements);
         const despTrib        = getSumByReportCategory('Despesas Tributárias', monthIdx, dreMovements);
@@ -428,12 +431,12 @@ const ClientDashboard = () => {
         const outrasReceitas  = getSumByReportCategory('Outras Receitas', monthIdx, dreMovements);
         const recFin          = getSumByReportCategory('Receitas Financeiras', monthIdx, dreMovements);
         const despFin         = getSumByReportCategory('Despesas Financeiras', monthIdx, dreMovements);
-        const lair            = lucroBruto - despAdm - despCom - despTrib + partSocietarias + outrasReceitas + recFin - despFin;
+        const lair            = lucroBruto + despAdm + despCom + despTrib + partSocietarias + outrasReceitas + recFin + despFin; // SOMA(C13:C22)
         const irpjCsll        = getSumByReportCategory('IRPJ e CSLL', monthIdx, dreMovements);
-        const lucroLiq        = lair - irpjCsll;
+        const lucroLiq        = lair + irpjCsll;                              // SOMA(C24:C25) — irpj já negativo
         const depreciacao     = getSumByReportCategory('Depreciação e Amortização', monthIdx, dreMovements);
-        const resultFin       = recFin - despFin;
-        const ebtida          = lair - resultFin + Math.abs(depreciacao);
+        const resultFin       = recFin + despFin;                             // resultado financeiro líquido
+        const ebtida          = lair - resultFin + Math.abs(depreciacao);     // EBITDA = LAIR - ResultFin + |Depreciação|
         return { recBruta, deducoes, recLiquida, custos, custosServicos, lucroBruto, despAdm, despCom, despTrib, partSocietarias, outrasReceitas, recFin, despFin, lair, irpjCsll, lucroLiq, depreciacao, resultFin, ebtida };
     };
 
