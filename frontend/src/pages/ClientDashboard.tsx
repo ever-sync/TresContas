@@ -28,7 +28,9 @@ import {
 import {
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid,
     Tooltip,
-    PieChart as RechartsPie, Pie, Cell, Legend
+    PieChart as RechartsPie, Pie, Cell, Legend,
+    LineChart, Line,
+    BarChart, Bar,
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -1263,6 +1265,170 @@ const ClientDashboard = () => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* ─── BLOCO 1: Segunda linha de KPI cards (Margens + EBITDA) ─── */}
+                        {(() => {
+                            const d = calcDreForMonth(selectedMonthIndex);
+                            const pd = selectedMonthIndex > 0 ? calcDreForMonth(selectedMonthIndex - 1) : null;
+                            const margemLiq   = d.recBruta !== 0 ? (d.lucroLiq  / d.recBruta)   * 100 : 0;
+                            const margemBruta = d.recLiquida !== 0 ? (d.lucroBruto / d.recLiquida) * 100 : 0;
+                            const margemEbtida = d.recLiquida !== 0 ? (d.ebtida  / d.recLiquida) * 100 : 0;
+                            const pMargemLiq   = pd && pd.recBruta   !== 0 ? (pd.lucroLiq  / pd.recBruta)   * 100 : null;
+                            const pMargemBruta = pd && pd.recLiquida !== 0 ? (pd.lucroBruto / pd.recLiquida) * 100 : null;
+                            const pMargemEbtida = pd && pd.recLiquida !== 0 ? (pd.ebtida   / pd.recLiquida) * 100 : null;
+                            const pEbtida = pd?.ebtida ?? null;
+                            const delta = (curr: number, prev: number | null) =>
+                                prev !== null && prev !== 0 ? ((curr - prev) / Math.abs(prev)) * 100 : null;
+                            const kpiCards = [
+                                { label: 'Margem Líquida',  value: margemLiq,    prevVal: pMargemLiq,   fmt: (v: number) => `${v.toFixed(1)}%`, color: margemLiq >= 0 ? 'from-emerald-500/20 to-green-600/20' : 'from-rose-500/20 to-red-600/20', border: margemLiq >= 0 ? 'border-emerald-500/20' : 'border-rose-500/20' },
+                                { label: 'EBITDA',          value: d.ebtida,     prevVal: pEbtida,      fmt: (v: number) => `R$ ${formatLocaleNumber(v)}`, color: d.ebtida >= 0 ? 'from-violet-500/20 to-purple-600/20' : 'from-rose-500/20 to-red-600/20', border: d.ebtida >= 0 ? 'border-violet-500/20' : 'border-rose-500/20' },
+                                { label: 'Margem Bruta',    value: margemBruta,  prevVal: pMargemBruta,  fmt: (v: number) => `${v.toFixed(1)}%`, color: margemBruta >= 0 ? 'from-teal-500/20 to-cyan-600/20' : 'from-rose-500/20 to-red-600/20', border: margemBruta >= 0 ? 'border-teal-500/20' : 'border-rose-500/20' },
+                                { label: 'Margem EBITDA',   value: margemEbtida, prevVal: pMargemEbtida, fmt: (v: number) => `${v.toFixed(1)}%`, color: margemEbtida >= 0 ? 'from-indigo-500/20 to-blue-600/20' : 'from-rose-500/20 to-red-600/20', border: margemEbtida >= 0 ? 'border-indigo-500/20' : 'border-rose-500/20' },
+                            ];
+                            return (
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                                    {kpiCards.map((card, i) => {
+                                        const growth = delta(card.value, card.prevVal);
+                                        return (
+                                            <div key={i} className={`bg-linear-to-br ${card.color} backdrop-blur-xl border ${card.border} rounded-2xl p-6 relative overflow-hidden`}>
+                                                <p className="text-white/60 text-xs font-bold uppercase tracking-widest mb-2">{card.label}</p>
+                                                <h3 className="text-white text-2xl font-black tracking-tighter">{card.fmt(card.value)}</h3>
+                                                {growth !== null && (
+                                                    <div className="flex items-center gap-1 mt-2">
+                                                        <TrendingUp className={`w-3 h-3 ${growth >= 0 ? 'text-emerald-400' : 'text-rose-400 rotate-180'}`} />
+                                                        <span className={`text-xs font-black ${growth >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                                            {growth >= 0 ? '+' : ''}{growth.toFixed(1)}%
+                                                        </span>
+                                                        <span className="text-white/20 text-[10px] ml-1">vs mês anterior</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
+
+                        {/* ─── BLOCO 2: Gráfico de Evolução das Margens (%) ─── */}
+                        <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6 mb-8">
+                            <h4 className="text-white font-bold mb-1">Evolução das Margens</h4>
+                            <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Margem bruta, líquida e EBITDA ao longo do ano (%)</p>
+                            <div className="h-[260px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={allMonthsDre.map((d, i) => ({
+                                        name: months[i].substring(0, 3),
+                                        margemBruta:  d.recLiquida !== 0 ? parseFloat(((d.lucroBruto / d.recLiquida) * 100).toFixed(2)) : 0,
+                                        margemLiq:    d.recBruta   !== 0 ? parseFloat(((d.lucroLiq  / d.recBruta)   * 100).toFixed(2)) : 0,
+                                        margemEbtida: d.recLiquida !== 0 ? parseFloat(((d.ebtida    / d.recLiquida) * 100).toFixed(2)) : 0,
+                                    }))}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
+                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number) => [`${val.toFixed(1)}%`, '']} />
+                                        <Line type="monotone" dataKey="margemBruta"  stroke="#22c55e" strokeWidth={2} dot={false} name="Margem Bruta" />
+                                        <Line type="monotone" dataKey="margemLiq"    stroke="#06b6d4" strokeWidth={2} dot={false} name="Margem Líquida" />
+                                        <Line type="monotone" dataKey="margemEbtida" stroke="#a855f7" strokeWidth={2} dot={false} name="Margem EBITDA" />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="flex items-center gap-6 mt-4">
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-white/60 text-xs font-bold">Margem Bruta</span></div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-cyan-500" /><span className="text-white/60 text-xs font-bold">Margem Líquida</span></div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-purple-500" /><span className="text-white/60 text-xs font-bold">Margem EBITDA</span></div>
+                            </div>
+                        </div>
+
+                        {/* ─── BLOCO 3: Stacked Bar "Para onde vai o dinheiro" ─── */}
+                        <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6 mb-8">
+                            <h4 className="text-white font-bold mb-1">Para onde vai o dinheiro</h4>
+                            <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Distribuição da receita bruta por mês</p>
+                            <div className="h-[280px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={allMonthsDre.map((d, i) => ({
+                                        name: months[i].substring(0, 3),
+                                        deducoes:  Math.abs(d.deducoes),
+                                        custos:    Math.abs(d.custos) + Math.abs(d.custosServicos),
+                                        despOper:  Math.abs(d.despAdm) + Math.abs(d.despCom) + Math.abs(d.despTrib),
+                                        irpj:      Math.abs(d.irpjCsll),
+                                        lucro:     Math.max(d.lucroLiq, 0),
+                                    }))} barSize={22}>
+                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
+                                        <YAxis hide />
+                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number) => [`R$ ${val.toLocaleString('pt-BR')}`, '']} />
+                                        <Bar dataKey="deducoes"  name="Deduções"         stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
+                                        <Bar dataKey="custos"    name="Custos"           stackId="a" fill="#ef4444" />
+                                        <Bar dataKey="despOper"  name="Desp. Operac."    stackId="a" fill="#8b5cf6" />
+                                        <Bar dataKey="irpj"      name="IRPJ/CSLL"        stackId="a" fill="#f59e0b" />
+                                        <Bar dataKey="lucro"     name="Lucro Líquido"    stackId="a" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="flex items-center flex-wrap gap-4 mt-4">
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500" /><span className="text-white/60 text-xs font-bold">Deduções</span></div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" /><span className="text-white/60 text-xs font-bold">Custos</span></div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-violet-500" /><span className="text-white/60 text-xs font-bold">Desp. Operacionais</span></div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-500" /><span className="text-white/60 text-xs font-bold">IRPJ/CSLL</span></div>
+                                <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-white/60 text-xs font-bold">Lucro Líquido</span></div>
+                            </div>
+                        </div>
+
+                        {/* ─── BLOCO 4: Painel Semáforo de Saúde Financeira ─── */}
+                        {(() => {
+                            const d = calcDreForMonth(selectedMonthIndex);
+                            const idx = selectedMonthIndex;
+                            const ativoCirc     = patMonthlyData.ativoCirc[idx]?.value    || 0;
+                            const passivoCirc   = patMonthlyData.passivoCirc[idx]?.value  || 0;
+                            const passivoNaoC   = patMonthlyData.passivoNaoCirc[idx]?.value || 0;
+                            const totalAtivo    = patMonthlyData.totalAtivo[idx]?.value   || 0;
+                            const liqCorr       = passivoCirc !== 0 ? ativoCirc / passivoCirc : 0;
+                            const endividamento = totalAtivo  !== 0 ? ((passivoCirc + passivoNaoC) / totalAtivo) * 100 : 0;
+                            const margemLiq     = d.recBruta  !== 0 ? (d.lucroLiq  / d.recBruta)   * 100 : 0;
+                            const margemEbtida  = d.recLiquida !== 0 ? (d.ebtida   / d.recLiquida)  * 100 : 0;
+                            type SemaforoStatus = 'green' | 'yellow' | 'red';
+                            const getStatus = (val: number, thresholds: [number, number], higherIsBetter = true): SemaforoStatus => {
+                                const [low, high] = thresholds;
+                                if (higherIsBetter) {
+                                    if (val >= high) return 'green';
+                                    if (val >= low)  return 'yellow';
+                                    return 'red';
+                                } else {
+                                    if (val <= low)  return 'green';
+                                    if (val <= high) return 'yellow';
+                                    return 'red';
+                                }
+                            };
+                            const statusColor: Record<SemaforoStatus, string> = { green: 'bg-emerald-500', yellow: 'bg-amber-400', red: 'bg-rose-500' };
+                            const statusLabel: Record<SemaforoStatus, string> = { green: 'Saudável', yellow: 'Atenção', red: 'Crítico' };
+                            const statusBorder: Record<SemaforoStatus, string> = { green: 'border-emerald-500/20', yellow: 'border-amber-400/20', red: 'border-rose-500/20' };
+                            const indicators = [
+                                { label: 'Liquidez Corrente', value: liqCorr.toFixed(2),   fmt: liqCorr.toFixed(2),   status: getStatus(liqCorr, [1.0, 1.5]) },
+                                { label: 'Margem Líquida',    value: margemLiq,             fmt: `${margemLiq.toFixed(1)}%`,  status: getStatus(margemLiq, [5, 10]) },
+                                { label: 'Margem EBITDA',     value: margemEbtida,          fmt: `${margemEbtida.toFixed(1)}%`, status: getStatus(margemEbtida, [8, 15]) },
+                                { label: 'Endividamento',     value: endividamento,         fmt: `${endividamento.toFixed(1)}%`, status: getStatus(endividamento, [40, 60], false) },
+                            ];
+                            return (
+                                <div className="mb-8">
+                                    <h4 className="text-white font-bold mb-1">Saúde Financeira</h4>
+                                    <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Indicadores-chave — {months[selectedMonthIndex]}</p>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        {indicators.map((ind, i) => (
+                                            <div key={i} className={`bg-[#0d1829]/80 backdrop-blur-xl border ${statusBorder[ind.status]} rounded-2xl p-5 flex flex-col gap-3`}>
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-white/60 text-xs font-bold uppercase tracking-widest">{ind.label}</p>
+                                                    <div className={`w-2.5 h-2.5 rounded-full ${statusColor[ind.status]} shadow-lg`} />
+                                                </div>
+                                                <h3 className="text-white text-2xl font-black tracking-tighter">{ind.fmt}</h3>
+                                                <span className={`text-xs font-black ${ind.status === 'green' ? 'text-emerald-400' : ind.status === 'yellow' ? 'text-amber-400' : 'text-rose-400'}`}>
+                                                    {statusLabel[ind.status]}
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                     </div>
                 )}
 
