@@ -1,4 +1,4 @@
-import { CATEGORY_ALIASES, normalizeCategory } from '../lib/categoryConstants';
+import { CATEGORY_ALIASES, normalizeCategory, removeDiacritics } from '../lib/categoryConstants';
 
 export interface MovementRow {
     code: string;
@@ -30,44 +30,38 @@ export interface DREResult {
 /**
  * Serviço otimizado para cálculo do DRE
  * Suporta normalização de categorias com aliases
+ * Respeita os sinais originais (débito/crédito) das contas
  */
 export class DRECalculationService {
     /**
      * Normaliza um nome de categoria para o formato canônico
-     * Suporta aliases e variações
+     * Suporta aliases e variações, incluindo encoding incorreto
      */
-    private static normalizeCategory(categoryName: string): string {
-        if (!categoryName) return '';
+    private static normalizeCategoryInternal(categoryName: string): string | null {
+        if (!categoryName) return null;
         
-        const normalized = categoryName.trim().toLowerCase();
-        
-        // Buscar no mapeamento de aliases
-        for (const [key, aliases] of Object.entries(CATEGORY_ALIASES)) {
-            if (aliases.includes(normalized)) {
-                return key;
-            }
-        }
-        
-        return normalized;
+        // Usar a função de normalização do categoryConstants que já trata encoding
+        return normalizeCategory(categoryName);
     }
 
     /**
      * Soma movimentações por categoria, com suporte a aliases
      * Evita dupla contagem somando apenas o nível mais analítico
+     * IMPORTANTE: Respeita os sinais originais (positivos/negativos)
      */
     static getSumByCategory(
         categoryName: string,
         monthIdx: number,
         movements: MovementRow[]
     ): number {
-        const normalizedCategory = this.normalizeCategory(categoryName);
+        const normalizedCategory = this.normalizeCategoryInternal(categoryName);
         
         if (!normalizedCategory) return 0;
 
         // Buscar movimentações que correspondem a essa categoria (direto ou por alias)
         const matched = movements.filter(m => {
             if (!m.category) return false;
-            const movNormalized = this.normalizeCategory(m.category);
+            const movNormalized = this.normalizeCategoryInternal(m.category);
             return movNormalized === normalizedCategory;
         });
 
@@ -75,6 +69,8 @@ export class DRECalculationService {
 
         // Evitar dupla contagem: somar apenas o nível mais analítico
         const maxLevel = Math.max(...matched.map(m => m.level));
+        
+        // IMPORTANTE: Somar respeitando os sinais originais (não usar Math.abs)
         return matched
             .filter(m => m.level === maxLevel)
             .reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
@@ -82,6 +78,7 @@ export class DRECalculationService {
 
     /**
      * Calcula o DRE para um mês específico
+     * Respeita os sinais originais das contas (débito/crédito)
      */
     static calculateDREForMonth(
         monthIdx: number,
@@ -89,16 +86,25 @@ export class DRECalculationService {
     ): DREResult {
         const getSumByCategory = (cat: string) => this.getSumByCategory(cat, monthIdx, movements);
 
-        // Receitas
+        // Receitas (podem incluir deduções com sinal negativo)
         const recBruta = getSumByCategory('Receita Bruta');
+        
+        // Deduções (já vêm com sinal negativo da planilha, então subtraímos)
         const deducoes = getSumByCategory('Deduções');
+        
+        // Receita Líquida = Receita Bruta - Deduções
+        // Se deduções vêm negativas, isso é: recBruta - (-valor) = recBruta + valor
+        // Se deduções vêm positivas, isso é: recBruta - valor
         const recLiquida = recBruta - deducoes;
 
-        // Custos
+        // Custos (vêm com sinal negativo da planilha)
         const custos = getSumByCategory('Custos Das Vendas');
+        
+        // Lucro Bruto = Receita Líquida - Custos
+        // Se custos vêm negativos: recLiquida - (-valor) = recLiquida + valor
         const lucroBruto = recLiquida - custos;
 
-        // Despesas Operacionais
+        // Despesas Operacionais (vêm com sinal negativo da planilha)
         const despAdm = getSumByCategory('Despesas Administrativas');
         const despCom = getSumByCategory('Despesas Comerciais');
         const despTrib = getSumByCategory('Despesas Tributarias');
@@ -109,18 +115,20 @@ export class DRECalculationService {
         const recFin = getSumByCategory('Receitas Financeiras');
         const despFin = getSumByCategory('Despesas Financeiras');
 
-        // Resultado Operacional
+        // Resultado Operacional (LAIR)
+        // LAIR = Lucro Bruto - Despesas Operacionais + Outras Receitas + Receitas Fin - Despesas Fin
+        // Como despesas vêm negativas: Lucro Bruto - (-valor) = Lucro Bruto + valor
         const lair = lucroBruto - despAdm - despCom - despTrib - despOutras + outrasReceitas + recFin - despFin;
 
-        // Impostos
+        // Impostos (IRPJ e CSLL)
         const irpjCsll = getSumByCategory('Irpj E Csll');
 
         // Resultado Líquido
         const lucroLiq = lair - irpjCsll;
 
-        // EBITDA
+        // EBITDA (Lucro Operacional + Depreciação/Amortização)
         const depreciacao = getSumByCategory('Depreciação e Amortização');
-        const ebtida = lair - (recFin - despFin) + Math.abs(depreciacao);
+        const ebtida = lair + depreciacao;
 
         return {
             recBruta,
@@ -158,13 +166,13 @@ export class DRECalculationService {
         categoryName: string,
         movements: MovementRow[]
     ): MovementRow[] {
-        const normalizedCategory = this.normalizeCategory(categoryName);
+        const normalizedCategory = this.normalizeCategoryInternal(categoryName);
         
         if (!normalizedCategory) return [];
 
         return movements.filter(m => {
             if (!m.category) return false;
-            const movNormalized = this.normalizeCategory(m.category);
+            const movNormalized = this.normalizeCategoryInternal(m.category);
             return movNormalized === normalizedCategory;
         });
     }
@@ -176,8 +184,8 @@ export class DRECalculationService {
         if (!movement.category) return false;
         if (movement.category === '#REF!' || movement.category === '#REF') return false;
         
-        const normalized = this.normalizeCategory(movement.category);
-        return normalized !== '' && normalized !== movement.category.toLowerCase();
+        const normalized = this.normalizeCategoryInternal(movement.category);
+        return normalized !== null && normalized !== '';
     }
 
     /**

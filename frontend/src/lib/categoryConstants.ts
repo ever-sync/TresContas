@@ -10,6 +10,7 @@ export const VALID_CATEGORIES = [
     'Contas A Pagar Cp',
     'Custos Das Vendas',
     'Deduções',
+    'Depreciação e Amortização',
     'Despesas Administrativas',
     'Despesas Antecipadas',
     'Despesas Comerciais',
@@ -26,6 +27,7 @@ export const VALID_CATEGORIES = [
     'Obrigacoes Tributarias',
     'Outras Contas A Pagar Lp',
     'Outras Contas A Receber Lp',
+    'Outras Despesas',
     'Outras Receitas',
     'Parcelamentos Cp',
     'Parcelamentos Lp',
@@ -106,6 +108,12 @@ export const CATEGORY_ALIASES: Record<string, string> = {
     // Despesas Tributárias
     'despesas tributarias': 'Despesas Tributarias',
     'despesa tributaria': 'Despesas Tributarias',
+
+    // Outras Despesas
+    'outras despesas': 'Outras Despesas',
+    'outra despesa': 'Outras Despesas',
+    'despesas diversas': 'Outras Despesas',
+    'despesa diversa': 'Outras Despesas',
 
     // IRPJ e CSLL
     'irpj e csll': 'Irpj E Csll',
@@ -202,6 +210,13 @@ export const CATEGORY_ALIASES: Record<string, string> = {
     // Resultado do Exercício
     'resultado do exercicio': 'Resultado Do Exercicio',
     'lucro do exercicio': 'Resultado Do Exercicio',
+
+    // Depreciação e Amortização
+    'depreciacao e amortizacao': 'Depreciação e Amortização',
+    'depreciacoes': 'Depreciação e Amortização',
+    'amortizacoes': 'Depreciação e Amortização',
+    'depreciacao': 'Depreciação e Amortização',
+    'amortizacao': 'Depreciação e Amortização',
 };
 
 /**
