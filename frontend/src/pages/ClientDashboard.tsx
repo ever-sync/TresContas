@@ -2035,7 +2035,6 @@ const ClientDashboard = () => {
                                                             const isTotal    = item.type === 'total';
                                                             const children   = item.group ? getGroupChildren(item.group) : [];
                                                             const hasChildren = children.length > 0;
-                                                            const isExpanded = expandedDreRow === `pat-${item.id}`;
                                                             const acumulado  = isTotal
                                                                 ? (item.id === 'total_ativo'
                                                                     ? months.reduce((s, _, mi) => s + getSumByGroup('ATIVO CIRCULANTE', mi) + getSumByGroup('ATIVO NÃO CIRCULANTE', mi), 0)
@@ -2045,13 +2044,12 @@ const ClientDashboard = () => {
                                                             return (
                                                                 <React.Fragment key={idx}>
                                                                     <tr
-                                                                        className={`hover:bg-white/5 transition-colors ${isTotal ? 'bg-cyan-500/10 font-black text-white cursor-default' : 'bg-white/5 font-bold text-white/80 cursor-pointer'}`}
-                                                                        onClick={() => hasChildren && setExpandedDreRow(isExpanded ? null : `pat-${item.id}`)}
+                                                                        className={`hover:bg-white/5 transition-colors ${isTotal ? 'bg-cyan-500/10 font-black text-white cursor-default' : 'bg-white/5 font-bold text-white/80'}`}
                                                                     >
                                                                         <td className="p-4 px-6 text-sm sticky left-0 z-10 bg-[#0a1628]">
                                                                             <div className="flex items-center gap-2">
                                                                                 {hasChildren && (
-                                                                                    <span className={`text-[10px] text-cyan-400 transition-transform duration-200 inline-block ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                                                                                    <span className="text-[10px] text-cyan-400 inline-block rotate-90">▶</span>
                                                                                 )}
                                                                                 <div className={`w-2 h-2 rounded-full shrink-0 ${isTotal ? 'bg-cyan-400' : 'bg-white/30'}`} />
                                                                                 {item.label}
@@ -2069,7 +2067,7 @@ const ClientDashboard = () => {
                                                                             {isTotal ? '100%' : pct}
                                                                         </td>
                                                                     </tr>
-                                                                    {isExpanded && children.map((child, ci) => {
+                                                                    {children.map((child, ci) => {
                                                                         const childAccum = child.values.reduce((s, v) => s + v, 0);
                                                                         return (
                                                                             <tr key={`${idx}-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
