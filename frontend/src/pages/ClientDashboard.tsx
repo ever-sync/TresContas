@@ -1953,6 +1953,8 @@ const ClientDashboard = () => {
                                     };
                                     const estoques      = getChildVal('Estoques');
                                     const disponivel    = getChildVal('Disponivel');
+                                    const clientes      = getChildVal('Clientes');
+                                    const fornecedores  = getChildVal('Fornecedores');
                                     const liquidezCorr  = passivoCirc !== 0 ? ativoCirc / passivoCirc : 0;
                                     const liquidezImed  = passivoCirc !== 0 ? disponivel / passivoCirc : 0;
                                     const liquidezSeca  = passivoCirc !== 0 ? (ativoCirc - estoques) / passivoCirc : 0;
@@ -1962,20 +1964,54 @@ const ClientDashboard = () => {
                                     const roe           = patrimonioLiq !== 0 ? (dreMonth?.lucroLiq || 0) / patrimonioLiq : 0;
                                     const roa           = totalAtivo !== 0 ? (dreMonth?.lucroLiq || 0) / totalAtivo : 0;
                                     const margemLiq     = (dreMonth?.recBruta || 0) !== 0 ? (dreMonth?.lucroLiq || 0) / (dreMonth?.recBruta || 1) : 0;
+                                    // Novos indicadores
+                                    const giroAtivo       = totalAtivo !== 0 ? (dreMonth?.recLiquida || 0) / totalAtivo : 0;
+                                    const roic            = totalAtivo !== 0 ? (dreMonth?.lair || 0) / totalAtivo : 0;
+                                    const rotEstoques     = estoques !== 0 ? Math.abs(dreMonth?.custos || 0) / estoques : 0;
+                                    const prazoEstoque    = rotEstoques !== 0 ? 360 / rotEstoques : 0;
+                                    const pmc             = (dreMonth?.recLiquida || 0) !== 0 ? (clientes / Math.abs(dreMonth?.recLiquida || 1)) * 360 : 0;
+                                    const pmp             = Math.abs(dreMonth?.custos || 0) !== 0 ? (fornecedores / Math.abs(dreMonth?.custos || 1)) * 360 : 0;
+                                    const cicloFinanceiro = pmc - pmp;
 
-                                    const indicadores = [
-                                        { label: 'Liquidez Corrente',      val: liquidezCorr,  fmt: 'ratio' },
-                                        { label: 'Liquidez Imediata',      val: liquidezImed,  fmt: 'ratio' },
-                                        { label: 'Liquidez Seca',          val: liquidezSeca,  fmt: 'ratio' },
-                                        { label: 'Liquidez Geral',         val: liquidezGeral, fmt: 'ratio' },
-                                        { label: 'Participação Terceiros', val: partTerc,      fmt: 'pct' },
-                                        { label: 'Margem Líquida',         val: margemLiq,     fmt: 'pct' },
-                                        { label: 'ROE',                    val: roe,           fmt: 'pct' },
-                                        { label: 'ROA',                    val: roa,           fmt: 'pct' },
+                                    const indicadorGroups = [
+                                        {
+                                            title: 'Liquidez',
+                                            items: [
+                                                { label: 'Liquidez Corrente',     val: liquidezCorr,  fmt: 'ratio' },
+                                                { label: 'Liquidez Imediata',      val: liquidezImed,  fmt: 'ratio' },
+                                                { label: 'Liquidez Seca',          val: liquidezSeca,  fmt: 'ratio' },
+                                                { label: 'Liquidez Geral',         val: liquidezGeral, fmt: 'ratio' },
+                                                { label: 'Participação Terceiros', val: partTerc,      fmt: 'pct'   },
+                                            ],
+                                        },
+                                        {
+                                            title: 'Rentabilidade',
+                                            items: [
+                                                { label: 'Margem Líquida (ML)',    val: margemLiq,              fmt: 'pct'   },
+                                                { label: 'ROE',                    val: roe,                    fmt: 'pct'   },
+                                                { label: 'ROA',                    val: roa,                    fmt: 'pct'   },
+                                                { label: 'ROIC',                   val: roic,                   fmt: 'pct'   },
+                                                { label: 'Giro do Ativo (GA)',     val: giroAtivo,              fmt: 'ratio' },
+                                                { label: 'EBITDA',                 val: dreMonth?.ebtida || 0,  fmt: 'money' },
+                                            ],
+                                        },
+                                        {
+                                            title: 'Atividade / Prazos',
+                                            items: [
+                                                { label: 'Rotação Estoques (RE)',  val: rotEstoques,     fmt: 'ratio' },
+                                                { label: 'Prazo Médio Estoque',    val: prazoEstoque,    fmt: 'days'  },
+                                                { label: 'PMC (dias)',             val: pmc,             fmt: 'days'  },
+                                                { label: 'PMP (dias)',             val: pmp,             fmt: 'days'  },
+                                                { label: 'Ciclo Financeiro',       val: cicloFinanceiro, fmt: 'days'  },
+                                            ],
+                                        },
                                     ];
+                                    const indicadores = indicadorGroups.flatMap(g => g.items);
 
                                     const fmtIndicador = (val: number, fmt: string) => {
-                                        if (fmt === 'pct') return `${(val * 100).toFixed(1)}%`;
+                                        if (fmt === 'pct')   return `${(val * 100).toFixed(1)}%`;
+                                        if (fmt === 'money') return `R$ ${formatLocaleNumber(val)}`;
+                                        if (fmt === 'days')  return `${val.toFixed(0)} dias`;
                                         return val.toFixed(2);
                                     };
 
@@ -2060,15 +2096,20 @@ const ClientDashboard = () => {
                                             </div>
                                             {/* Indicadores Financeiros */}
                                             <div className="p-6 border-t border-white/5">
-                                                <h4 className="text-xs font-black text-white/40 uppercase tracking-[0.2em] mb-4">Indicadores Financeiros — {months[selectedMonthIndex]}</h4>
-                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                                    {indicadores.map((ind, i) => (
-                                                        <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3 flex flex-col gap-1">
-                                                            <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">{ind.label}</span>
-                                                            <span className="text-lg font-black font-mono text-white">{fmtIndicador(ind.val, ind.fmt)}</span>
+                                                <h4 className="text-xs font-black text-white/40 uppercase tracking-[0.2em] mb-6">BALANÇO PATRIMONIAL E INDICADORES FINANCEIROS {selectedYear}</h4>
+                                                {indicadorGroups.map((group, gi) => (
+                                                    <div key={gi} className="mb-6 last:mb-0">
+                                                        <p className="text-[10px] font-black text-cyan-400/60 uppercase tracking-[0.2em] mb-3 border-b border-white/5 pb-2">{group.title}</p>
+                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                                            {group.items.map((ind, i) => (
+                                                                <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3 flex flex-col gap-1">
+                                                                    <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">{ind.label}</span>
+                                                                    <span className={`text-lg font-black font-mono ${ind.fmt === 'days' && ind.val < 0 ? 'text-rose-400' : 'text-white'}`}>{fmtIndicador(ind.val, ind.fmt)}</span>
+                                                                </div>
+                                                            ))}
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     );
@@ -2163,14 +2204,19 @@ const ClientDashboard = () => {
                                             {/* Indicadores compactos */}
                                             <div className="border-t border-white/5 pt-4">
                                                 <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.2em] mb-3">Indicadores</p>
-                                                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                                    {indicadores.map((ind, i) => (
-                                                        <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3 flex flex-col gap-1">
-                                                            <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">{ind.label}</span>
-                                                            <span className="text-base font-black font-mono text-white">{fmtIndicador(ind.val, ind.fmt)}</span>
+                                                {indicadorGroups.map((group, gi) => (
+                                                    <div key={gi} className="mb-4 last:mb-0">
+                                                        <p className="text-[9px] font-black text-cyan-400/40 uppercase tracking-[0.2em] mb-2">{group.title}</p>
+                                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                                            {group.items.map((ind, i) => (
+                                                                <div key={i} className="bg-white/5 border border-white/5 rounded-xl p-3 flex flex-col gap-1">
+                                                                    <span className="text-[10px] text-white/40 uppercase tracking-wider font-bold">{ind.label}</span>
+                                                                    <span className={`text-base font-black font-mono ${ind.fmt === 'days' && ind.val < 0 ? 'text-rose-400' : 'text-white'}`}>{fmtIndicador(ind.val, ind.fmt)}</span>
+                                                                </div>
+                                                            ))}
                                                         </div>
-                                                    ))}
-                                                </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     );
