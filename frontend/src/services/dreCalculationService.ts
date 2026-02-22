@@ -1,4 +1,4 @@
-import { CATEGORY_ALIASES, normalizeCategory, removeDiacritics } from '../lib/categoryConstants';
+import { normalizeCategory } from '../lib/categoryConstants';
 
 export interface MovementRow {
     code: string;

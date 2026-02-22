@@ -1234,7 +1234,7 @@ const ClientDashboard = () => {
                                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold'}} />
                                                 <YAxis hide />
-                                                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number) => [`R$ ${val.toLocaleString('pt-BR')}`, '']} />
+                                                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`R$ ${(val ?? 0).toLocaleString('pt-BR')}`, '']} />
                                                 <Area type="monotone" dataKey="receita" stroke="#06b6d4" strokeWidth={2} fill="url(#colorRec)" fillOpacity={1} />
                                                 <Area type="monotone" dataKey="despesa" stroke="#f43f5e" strokeWidth={2} fill="url(#colorDesp)" fillOpacity={1} />
                                             </AreaChart>
@@ -1337,7 +1337,7 @@ const ClientDashboard = () => {
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
-                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number) => [`${val.toFixed(1)}%`, '']} />
+                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`${(val ?? 0).toFixed(1)}%`, '']} />
                                         <Line type="monotone" dataKey="margemBruta"  stroke="#22c55e" strokeWidth={2} dot={false} name="Margem Bruta" />
                                         <Line type="monotone" dataKey="margemLiq"    stroke="#06b6d4" strokeWidth={2} dot={false} name="Margem Líquida" />
                                         <Line type="monotone" dataKey="margemEbtida" stroke="#a855f7" strokeWidth={2} dot={false} name="Margem EBITDA" />
@@ -1368,7 +1368,7 @@ const ClientDashboard = () => {
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
                                         <YAxis hide />
-                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number) => [`R$ ${val.toLocaleString('pt-BR')}`, '']} />
+                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`R$ ${(val ?? 0).toLocaleString('pt-BR')}`, '']} />
                                         <Bar dataKey="deducoes"  name="Deduções"         stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
                                         <Bar dataKey="custos"    name="Custos"           stackId="a" fill="#ef4444" />
                                         <Bar dataKey="despOper"  name="Desp. Operac."    stackId="a" fill="#8b5cf6" />
@@ -2006,7 +2006,6 @@ const ClientDashboard = () => {
                                             ],
                                         },
                                     ];
-                                    const indicadores = indicadorGroups.flatMap(g => g.items);
 
                                     const fmtIndicador = (val: number, fmt: string) => {
                                         if (fmt === 'pct')   return `${(val * 100).toFixed(1)}%`;
@@ -2316,7 +2315,6 @@ const ClientDashboard = () => {
                                 <div className="p-8 overflow-x-auto">
                                     {(() => {
                                         const plPrefix = '02.3';
-                                        const plAccounts = accounts.filter(a => a.classification.startsWith(plPrefix + '.') && a.classification !== plPrefix);
                                         const capitalSocial = accounts.find(a => a.classification.startsWith('02.3.01'));
                                         const reservas = accounts.find(a => a.classification.startsWith('02.3.02'));
                                         const lucrosAcum = accounts.find(a => a.classification.startsWith('02.3.03'));
@@ -2362,7 +2360,7 @@ const ClientDashboard = () => {
                                                             </td>
                                                         ))}
                                                         <td className="p-4 px-3 text-xs text-right font-mono font-black text-cyan-400 bg-white/5">
-                                                            {formatLocaleNumber(months.reduce((_, mi) => totalPL(mi), 0))}
+                                                            {formatLocaleNumber(months.reduce((acc, _m, mi) => acc + totalPL(mi), 0))}
                                                         </td>
                                                     </tr>
                                                 </tbody>
