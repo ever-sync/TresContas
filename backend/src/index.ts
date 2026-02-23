@@ -21,8 +21,21 @@ if (missingEnv.length > 0) {
     process.exit(1);
 }
 
-// CORS configuration - allowing all for debugging
-app.use(cors());
+// CORS configuration
+const allowedOrigins = [
+    'https://tres-contas.vercel.app',
+    'http://localhost:5173',
+    'http://localhost:3000',
+];
+app.use(cors({
+    origin: (origin, callback) => {
+        // Permite requisições sem origin (ex: mobile, curl, Postman)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error(`Origin ${origin} not allowed by CORS`));
+    },
+    credentials: true,
+}));
 
 // Simple request logger
 app.use((req, res, next) => {
