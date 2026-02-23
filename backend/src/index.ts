@@ -22,20 +22,23 @@ if (missingEnv.length > 0) {
 }
 
 // CORS configuration
-const allowedOrigins = [
-    'https://tres-contas.vercel.app',
-    'http://localhost:5173',
-    'http://localhost:3000',
-];
-app.use(cors({
-    origin: (origin, callback) => {
-        // Permite requisições sem origin (ex: mobile, curl, Postman)
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.includes(origin)) return callback(null, true);
-        callback(new Error(`Origin ${origin} not allowed by CORS`));
-    },
-    credentials: true,
-}));
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://tres-contas.vercel.app')
+    .split(',')
+    .map(o => o.trim())
+    .concat(['http://localhost:5173', 'http://localhost:3000']);
+
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (!origin || allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    }
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    next();
+});
+app.use(cors({ origin: false })); // desativa cors() para não conflitar
 
 // Simple request logger
 app.use((req, res, next) => {
