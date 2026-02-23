@@ -21,18 +21,20 @@ if (missingEnv.length > 0) {
     process.exit(1);
 }
 
-// CORS configuration
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://tres-contas.vercel.app')
+// CORS configuration — lê ALLOWED_ORIGINS ou CORS_ORIGIN (Railway usa CORS_ORIGIN)
+const rawOrigins = process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || 'https://tres-contas.vercel.app';
+const allowedOrigins = rawOrigins
     .split(',')
     .map(o => o.trim())
     .concat(['http://localhost:5173', 'http://localhost:3000']);
 
 const isOriginAllowed = (origin: string) =>
     allowedOrigins.includes(origin) ||
-    /^https:\/\/tres-contas[\w-]*\.vercel\.app$/.test(origin);
+    /^https:\/\/[^.]+\.vercel\.app$/.test(origin);
 
 app.use((req, res, next) => {
     const origin = req.headers.origin;
+    console.log(`[CORS] origin=${origin} allowed=${!origin || isOriginAllowed(origin)}`);
     if (!origin || isOriginAllowed(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin || '*');
     }
