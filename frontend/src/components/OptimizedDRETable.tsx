@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, TrendingUp, TrendingDown } from 'lucide-react';
-import { DRECalculationService, MovementRow, DREResult } from '../services/dreCalculationService';
+import { TrendingUp, TrendingDown } from 'lucide-react';
+import { DRECalculationService } from '../services/dreCalculationService';
+import type { MovementRow, DREResult } from '../services/dreCalculationService';
 
 interface DRELineItem {
     id: string;

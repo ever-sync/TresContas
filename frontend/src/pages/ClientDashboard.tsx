@@ -9,7 +9,6 @@ import {
     Calculator,
     FileSpreadsheet,
     PlusIcon,
-    Search,
     LifeBuoy,
     MessageSquare,
     Bell,
@@ -21,8 +20,6 @@ import {
     LogOut,
     Ticket,
     FileText,
-    ChevronLeft,
-    ChevronRight,
     LayoutList,
     Sparkles,
     RefreshCw,
@@ -50,13 +47,6 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
 
-const parseLocaleNumber = (stringNumber: string) => {
-    if (!stringNumber) return 0;
-    // Remove dots (occurrences of thousands separators) and replace comma with dot
-    const cleanNumber = stringNumber.toString().replace(/\./g, '').replace(',', '.').replace(/\s/g, '');
-    return parseFloat(cleanNumber) || 0;
-};
-
 const formatLocaleNumber = (number: number) => {
     return Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
@@ -80,14 +70,13 @@ const ClientDashboard = () => {
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
     const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'contas' | 'dfc' | 'dmpl'>('dre');
-    const [dreListMode, setDreListMode] = useState<'mensal' | 'todos'>('todos'); // mensal = mês selecionado, todos = todos meses
     const [dreViewMode, setDreViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
     const [patViewMode, setPatViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
     const [selectedMonthIndex, setSelectedMonthIndex] = useState(0); // Jan by default
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSupportOpen, setIsSupportOpen] = useState(false);
-    const [searchTerm, setSearchTerm] = useState('');
+    const [searchTerm] = useState('');
     const tableContainerRef = useRef<HTMLDivElement>(null);
     const reportRef = useRef<HTMLDivElement>(null);
 
@@ -119,15 +108,6 @@ const ClientDashboard = () => {
         }
     };
 
-    const handleTableScroll = (direction: 'left' | 'right') => {
-        if (tableContainerRef.current) {
-            const scrollAmount = 300;
-            tableContainerRef.current.scrollBy({
-                left: direction === 'left' ? -scrollAmount : scrollAmount,
-                behavior: 'smooth'
-            });
-        }
-    };
     const [client, setClient] = useState<Client | null>(null);
     const [isClientLoading, setIsClientLoading] = useState(true);
     const [supportForm, setSupportForm] = useState({
@@ -145,10 +125,6 @@ const ClientDashboard = () => {
     const isAccountingView = Boolean(accountingToken);
     const isClientView = Boolean(clientToken) && !isAccountingView;
     const isReadOnly = isClientView;
-
-    // Scroll tracking for dynamic sticky header
-    const [isHeaderSticky, setIsHeaderSticky] = useState(false);
-    const [lastScrollY, setLastScrollY] = useState(0);
 
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [dreMovements, setDreMovements] = useState<MovementRow[]>([]); // balancete DRE (resultado)
@@ -261,7 +237,7 @@ const ClientDashboard = () => {
                     setDreMovements(data);
                 } else if (isClientView) {
                     const data = await clientPortalService.getMovements(selectedYear, 'dre');
-                    setDreMovements(data);
+                    setDreMovements(data.map(d => ({ ...d, category: d.category ?? undefined })) as MovementRow[]);
                 }
             } catch (error) {
                 console.error('Erro ao carregar movimentações DRE:', error);
@@ -281,7 +257,7 @@ const ClientDashboard = () => {
                     setPatrimonialMovements(data);
                 } else if (isClientView) {
                     const data = await clientPortalService.getMovements(selectedYear, 'patrimonial');
-                    setPatrimonialMovements(data);
+                    setPatrimonialMovements(data.map(d => ({ ...d, category: d.category ?? undefined })) as MovementRow[]);
                 }
             } catch (error) {
                 console.error('Erro ao carregar movimentações Patrimonial:', error);
@@ -291,26 +267,6 @@ const ClientDashboard = () => {
             loadPatrimonialMovements();
         }
     }, [clientId, isAccountingView, isClientView, selectedYear]);
-
-    // Detect scroll direction for dynamic sticky header
-    useEffect(() => {
-        const handleScroll = () => {
-            const currentScrollY = window.scrollY;
-            
-            // Se está descendo E passou de 200px, ativa sticky
-            // Se está subindo OU está no topo, desativa sticky
-            if (currentScrollY > 200 && currentScrollY > lastScrollY) {
-                setIsHeaderSticky(true);
-            } else if (currentScrollY < lastScrollY || currentScrollY < 200) {
-                setIsHeaderSticky(false);
-            }
-            
-            setLastScrollY(currentScrollY);
-        };
-
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, [lastScrollY]);
 
     // Carregar tickets de suporte quando o cliente acessa a aba suporte
     useEffect(() => {
@@ -626,7 +582,7 @@ const ClientDashboard = () => {
                         return isNaN(result) ? 0 : result;
                     };
 
-                    const parsedMovements: MovementRow[] = data.map(row => {
+                    const parsedMovements = (data.map(row => {
                         const code = row[0]?.toString().trim() || '';
                         if (!code || !/^\d/.test(code)) return null;
 
@@ -644,7 +600,7 @@ const ClientDashboard = () => {
                         const category = (rawCategory && rawCategory !== '#REF!' && rawCategory !== '#REF') ? rawCategory : undefined;
 
                         return { code, name, level, values: values.slice(0, 12), category };
-                    }).filter((m): m is MovementRow => m !== null);
+                    }).filter(m => m !== null)) as MovementRow[];
 
                     if (parsedMovements.length === 0) {
                         toast.error('Nenhuma movimentação encontrada no arquivo');
@@ -938,16 +894,6 @@ const ClientDashboard = () => {
         }
     };
 
-    // Mantém filteredAccounts para o Plano de Contas
-    const filteredAccounts = useMemo(() => {
-        if (!searchTerm) return accounts;
-        const lowerTerm = searchTerm.toLowerCase();
-        return accounts.filter(acc =>
-            acc.name.toLowerCase().includes(lowerTerm) ||
-            acc.classification.includes(lowerTerm)
-        );
-    }, [accounts, searchTerm]);
-
     // Se nao esta autenticado como staff nem cliente, redireciona
     if (!isAccountingView && !isClientView) {
         navigate('/client-login');
@@ -1202,7 +1148,7 @@ const ClientDashboard = () => {
                                                         <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
                                                             {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="transparent" />)}
                                                         </Pie>
-                                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number) => [`R$ ${val.toLocaleString('pt-BR')}`, '']} />
+                                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`R$ ${(val ?? 0).toLocaleString('pt-BR')}`, '']} />
                                                         <Legend verticalAlign="bottom" formatter={(value: string) => <span className="text-white/60 text-xs">{value}</span>} />
                                                     </RechartsPie>
                                                 </ResponsiveContainer>

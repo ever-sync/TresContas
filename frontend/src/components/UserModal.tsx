@@ -94,7 +94,6 @@ export const UserModal: React.FC<Props> = ({ isOpen, onClose, onSuccess, user })
     if (!isOpen) return null;
 
     const inputClasses = "w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-11 pr-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all";
-    const inputWithoutIconClasses = "w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all";
     const labelClasses = "text-sm font-medium text-slate-300 mb-1 block";
     const iconClasses = "absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-400";
 

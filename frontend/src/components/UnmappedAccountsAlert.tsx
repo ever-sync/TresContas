@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertCircle, ChevronDown } from 'lucide-react';
-import { DRECalculationService, MovementRow } from '../services/dreCalculationService';
+import { DRECalculationService } from '../services/dreCalculationService';
+import type { MovementRow } from '../services/dreCalculationService';
 
 interface UnmappedAccountsAlertProps {
     movements: MovementRow[];
