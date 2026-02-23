@@ -27,9 +27,13 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'https://tres-contas.verc
     .map(o => o.trim())
     .concat(['http://localhost:5173', 'http://localhost:3000']);
 
+const isOriginAllowed = (origin: string) =>
+    allowedOrigins.includes(origin) ||
+    /^https:\/\/tres-contas[\w-]*\.vercel\.app$/.test(origin);
+
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin || isOriginAllowed(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin || '*');
     }
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
