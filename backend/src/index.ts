@@ -67,6 +67,12 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
 });
 
-app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
-});
+// Exporta o app para Vercel serverless
+export default app;
+
+// Listen apenas fora do Vercel (Railway / local)
+if (!process.env.VERCEL) {
+    app.listen(port, () => {
+        console.log(`Server running on port ${port}`);
+    });
+}
