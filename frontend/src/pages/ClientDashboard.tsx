@@ -104,6 +104,14 @@ const ClientDashboard = () => {
     const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'contas' | 'dfc' | 'dmpl'>('dre');
     const [dreViewMode, setDreViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
     const [patViewMode, setPatViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
+    const [expandedPatGroups, setExpandedPatGroups] = useState<Set<string>>(
+        new Set(['ativo_circ', 'ativo_nao', 'pass_circ', 'pass_nao', 'pat_liq'])
+    );
+    const togglePatGroup = (id: string) => setExpandedPatGroups(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+    });
     const [selectedMonthIndex, setSelectedMonthIndex] = useState(0); // Jan by default
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -2021,12 +2029,13 @@ const ClientDashboard = () => {
                                                             return (
                                                                 <React.Fragment key={idx}>
                                                                     <tr
-                                                                        className={`hover:bg-white/5 transition-colors ${isTotal ? 'bg-cyan-500/10 font-black text-white cursor-default' : 'bg-white/5 font-bold text-white/80'}`}
+                                                                        className={`hover:bg-white/5 transition-colors ${isTotal ? 'bg-cyan-500/10 font-black text-white cursor-default' : 'bg-white/5 font-bold text-white/80 cursor-pointer'}`}
+                                                                        onClick={() => hasChildren && togglePatGroup(item.id)}
                                                                     >
                                                                         <td className="p-4 px-6 text-sm sticky left-0 z-10 bg-[#0a1628]">
                                                                             <div className="flex items-center gap-2">
                                                                                 {hasChildren && (
-                                                                                    <span className="text-[10px] text-cyan-400 inline-block rotate-90">▶</span>
+                                                                                    <span className={`text-[10px] text-cyan-400 transition-transform duration-200 inline-block ${expandedPatGroups.has(item.id) ? 'rotate-90' : ''}`}>▶</span>
                                                                                 )}
                                                                                 <div className={`w-2 h-2 rounded-full shrink-0 ${isTotal ? 'bg-cyan-400' : 'bg-white/30'}`} />
                                                                                 {item.label}
@@ -2044,7 +2053,7 @@ const ClientDashboard = () => {
                                                                             {isTotal ? '100%' : pct}
                                                                         </td>
                                                                     </tr>
-                                                                    {(patGrpDef?.children ?? []).map((childName, ci) => {
+                                                                    {expandedPatGroups.has(item.id) && (patGrpDef?.children ?? []).map((childName, ci) => {
                                                                         const _n = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
                                                                         const childRow = patrimonialMovements.find(r => r.level === 2 && _n(r.category || '') === _n(item.group) && _n(r.name) === _n(childName));
                                                                         const childVals = months.map((_, mi) => childRow ? (childRow.values[mi] || 0) : 0);
