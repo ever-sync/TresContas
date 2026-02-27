@@ -51,6 +51,38 @@ const formatLocaleNumber = (number: number) => {
     return Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
+const TooltipCurrency = ({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) => {
+    if (!active || !payload?.length) return null;
+    return (
+        <div style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '10px 14px', minWidth: '180px' }}>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>{label}</p>
+            {payload.map((entry: any, i: number) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: i < payload.length - 1 ? '5px' : 0 }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: entry.color ?? entry.fill, flexShrink: 0 }} />
+                    <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px' }}>{entry.name}</span>
+                    <span style={{ color: '#fff', fontSize: '11px', fontWeight: 'bold', marginLeft: 'auto', paddingLeft: '12px' }}>R$ {(entry.value ?? 0).toLocaleString('pt-BR')}</span>
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const TooltipPercent = ({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) => {
+    if (!active || !payload?.length) return null;
+    return (
+        <div style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '10px 14px', minWidth: '180px' }}>
+            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>{label}</p>
+            {payload.map((entry: any, i: number) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: i < payload.length - 1 ? '5px' : 0 }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: entry.color ?? entry.stroke, flexShrink: 0 }} />
+                    <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px' }}>{entry.name}</span>
+                    <span style={{ color: '#fff', fontSize: '11px', fontWeight: 'bold', marginLeft: 'auto', paddingLeft: '12px' }}>{(entry.value ?? 0).toFixed(1)}%</span>
+                </div>
+            ))}
+        </div>
+    );
+};
+
 interface Account {
     classification: string;
     name: string;
@@ -1188,7 +1220,7 @@ const ClientDashboard = () => {
                                                         <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
                                                             {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="transparent" />)}
                                                         </Pie>
-                                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`R$ ${(val ?? 0).toLocaleString('pt-BR')}`, '']} />
+                                                        <Tooltip content={<TooltipCurrency />} />
                                                         <Legend verticalAlign="bottom" formatter={(value: string) => <span className="text-white/60 text-xs">{value}</span>} />
                                                     </RechartsPie>
                                                 </ResponsiveContainer>
@@ -1220,9 +1252,9 @@ const ClientDashboard = () => {
                                                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold'}} />
                                                 <YAxis hide />
-                                                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`R$ ${(val ?? 0).toLocaleString('pt-BR')}`, '']} />
-                                                <Area type="monotone" dataKey="receita" stroke="#06b6d4" strokeWidth={2} fill="url(#colorRec)" fillOpacity={1} />
-                                                <Area type="monotone" dataKey="despesa" stroke="#f43f5e" strokeWidth={2} fill="url(#colorDesp)" fillOpacity={1} />
+                                                <Tooltip content={<TooltipCurrency />} />
+                                                <Area type="monotone" dataKey="receita" name="Receita" stroke="#06b6d4" strokeWidth={2} fill="url(#colorRec)" fillOpacity={1} />
+                                                <Area type="monotone" dataKey="despesa" name="Despesa" stroke="#f43f5e" strokeWidth={2} fill="url(#colorDesp)" fillOpacity={1} />
                                             </AreaChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -1323,7 +1355,7 @@ const ClientDashboard = () => {
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
-                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`${(val ?? 0).toFixed(1)}%`, '']} />
+                                        <Tooltip content={<TooltipPercent />} />
                                         <Line type="monotone" dataKey="margemBruta"  stroke="#22c55e" strokeWidth={2} dot={false} name="Margem Bruta" />
                                         <Line type="monotone" dataKey="margemLiq"    stroke="#06b6d4" strokeWidth={2} dot={false} name="Margem Líquida" />
                                         <Line type="monotone" dataKey="margemEbtida" stroke="#a855f7" strokeWidth={2} dot={false} name="Margem EBITDA" />
@@ -1354,7 +1386,7 @@ const ClientDashboard = () => {
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
                                         <YAxis hide />
-                                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }} itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }} formatter={(val: number | undefined) => [`R$ ${(val ?? 0).toLocaleString('pt-BR')}`, '']} />
+                                        <Tooltip content={<TooltipCurrency />} />
                                         <Bar dataKey="deducoes"  name="Deduções"         stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
                                         <Bar dataKey="custos"    name="Custos"           stackId="a" fill="#ef4444" />
                                         <Bar dataKey="despOper"  name="Desp. Operac."    stackId="a" fill="#8b5cf6" />
