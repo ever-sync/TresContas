@@ -204,6 +204,7 @@ const Dashboard = () => {
                 <nav className="flex-1 flex flex-col items-center gap-2">
                     <button 
                         onClick={() => setActiveView('dashboard')}
+                        title="Dashboard"
                         className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
                             activeView === 'dashboard' 
                                 ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' 
@@ -214,6 +215,7 @@ const Dashboard = () => {
                     </button>
                     <button 
                         onClick={() => setActiveView('clients')}
+                        title="Clientes"
                         className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
                             activeView === 'clients' 
                                 ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' 
@@ -224,6 +226,7 @@ const Dashboard = () => {
                     </button>
                     <button 
                         onClick={() => setActiveView('support')}
+                        title="Suporte"
                         className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
                             activeView === 'support' 
                                 ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' 
@@ -235,6 +238,7 @@ const Dashboard = () => {
                     {isAdmin && (
                         <button
                             onClick={() => setActiveView('team')}
+                            title="Equipe"
                             className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
                                 activeView === 'team'
                                     ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
@@ -244,24 +248,25 @@ const Dashboard = () => {
                             <Shield className="w-5 h-5" />
                         </button>
                     )}
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300">
+                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Relatórios">
                         <BarChart3 className="w-5 h-5" />
                     </button>
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300">
+                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Documentos">
                         <FileText className="w-5 h-5" />
                     </button>
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300">
+                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Configurações">
                         <Settings className="w-5 h-5" />
                     </button>
                 </nav>
 
                 {/* Bottom Icons */}
                 <div className="flex flex-col items-center gap-2">
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300">
+                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Ajuda">
                         <HelpCircle className="w-5 h-5" />
                     </button>
                     <button 
                         onClick={handleLogout}
+                        title="Sair"
                         className="w-12 h-12 rounded-xl hover:bg-red-500/10 flex items-center justify-center text-slate-500 transition-all hover:text-red-400"
                     >
                         <LogOut className="w-5 h-5" />
@@ -294,10 +299,10 @@ const Dashboard = () => {
 
                     {/* Header Right */}
                     <div className="flex items-center gap-4">
-                        <button className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 transition-all">
+                        <button className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 transition-all" title="Arquivos">
                             <FileText className="w-5 h-5" />
                         </button>
-                        <button className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 transition-all relative">
+                        <button className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:bg-white/10 transition-all relative" title="Notificações">
                             <Bell className="w-5 h-5" />
                             <span className="absolute -top-1 -right-1 w-3 h-3 bg-cyan-500 rounded-full border-2 border-[#0a1628]"></span>
                         </button>
@@ -864,7 +869,7 @@ const Dashboard = () => {
                                                     </div>
 
                                                     {/* Avatars Stack */}
-                                                    <div className="flex -space-x-2 hidden md:flex">
+                                                    <div className="-space-x-2 hidden md:flex">
                                                         <div className="w-7 h-7 rounded-full bg-linear-to-br from-cyan-400 to-blue-600 border-2 border-[#0d1829] flex items-center justify-center text-white text-xs font-bold">
                                                             {client.name.charAt(0)}
                                                         </div>

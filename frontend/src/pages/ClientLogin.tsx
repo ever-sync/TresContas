@@ -48,10 +48,10 @@ const ClientLogin = () => {
             {/* Ambient Glowing Background */}
             <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-sky-600/10 rounded-full blur-[120px] animate-pulse" />
             <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] animate-pulse delay-700" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_transparent_0%,_#030712_70%)] opacity-50" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,transparent_0%,#030712_70%)] opacity-50" />
 
             {/* Login Card */}
-            <div className="w-full max-w-[480px] relative">
+            <div className="w-full max-w-120 relative">
                 <div className="absolute -inset-1 bg-linear-to-r from-sky-600/20 to-blue-600/20 rounded-[40px] blur-xl opacity-50" />
 
                 <div className="relative bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-8 md:p-12 shadow-2xl">

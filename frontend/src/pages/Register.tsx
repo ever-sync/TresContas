@@ -70,7 +70,7 @@ const Register = () => {
             <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 rounded-full blur-[120px] animate-pulse delay-700" />
             
             {/* Register Card */}
-            <div className="w-full max-w-[560px] relative z-10">
+            <div className="w-full max-w-140 relative z-10">
                 <div className="absolute -inset-1 bg-linear-to-r from-cyan-600/20 to-blue-600/20 rounded-[40px] blur-xl opacity-50" />
                 
                 <div className="relative bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-8 md:p-12 shadow-2xl">
