@@ -1914,12 +1914,6 @@ const ClientDashboard = () => {
                                         { id: 'total_passivo', label: 'TOTAL DO PASSIVO',       group: '',                      val: totalPassivo,   type: 'total'   as const },
                                     ];
 
-                                    // Filha por grupo
-                                    const getGroupChildren = (grp: string) => {
-                                        const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
-                                        return patrimonialMovements.filter(m => m.level === 2 && norm(m.category || '') === norm(grp));
-                                    };
-
                                     // Acumulado anual de um grupo
                                     const getGrpAccum = (grp: string) =>
                                         months.reduce((s, _, mi) => s + getSumByGroup(grp, mi), 0);
