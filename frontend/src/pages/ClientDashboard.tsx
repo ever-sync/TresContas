@@ -128,13 +128,50 @@ const PAT_STRUCTURE = [
     },
 ] as const;
 
+// Estrutura do DFC — Método Indireto
+// type: 'section' = cabeçalho de grupo, 'item' = linha de dado, 'result' = linha de resultado, 'separator' = espaço visual
+const DFC_STRUCTURE: { type: 'section' | 'item' | 'result' | 'separator'; label?: string; key?: string }[] = [
+    { type: 'section', label: 'RESULTADO CONTÁBIL' },
+    { type: 'item',    label: 'AJUSTES',                              key: 'ajustes' },
+    { type: 'item',    label: '(+) DEPRECIAÇÃO',                      key: 'depreciacao' },
+    { type: 'item',    label: '(+) PROVISÕES DIVERSAS',               key: 'provisoesDiversas' },
+    { type: 'item',    label: '(+) PDD',                              key: 'pdd' },
+    { type: 'item',    label: '(-) LUCRO/PERDA VENDA IMOBILIZADO',    key: 'lucroPerdaImob' },
+    { type: 'item',    label: '(+/-) AJUSTE TRANSF. IMOBILIZADO',     key: 'ajusteTransfImob' },
+    { type: 'result',  label: 'LUCRO AJUSTADO',                       key: 'lucroAjustado' },
+
+    { type: 'section', label: 'AUMENTO/DIMINUIÇÃO DO CAIXA' },
+    { type: 'item',    label: 'Variação Ativo',                       key: 'variacaoAtivo' },
+    { type: 'item',    label: 'Variação Passivo',                     key: 'variacaoPassivo' },
+    { type: 'result',  label: 'RESULTADO OPERACIONAL',                key: 'resultadoOperacional' },
+
+    { type: 'section', label: 'AUMENTO/DIMINUIÇÃO DO CAIXA' },
+    { type: 'item',    label: 'Venda de Imobilizado',                 key: 'vendaImob' },
+    { type: 'item',    label: 'Consórcio',                            key: 'consorcio' },
+    { type: 'item',    label: 'Aquisição Imobilizado',                key: 'aquisicaoImob' },
+    { type: 'item',    label: 'Outros Investimentos',                 key: 'outrosInvestimentos' },
+    { type: 'result',  label: 'RESULTADO DE INVESTIMENTO',            key: 'resultadoInvestimento' },
+
+    { type: 'section', label: 'AUMENTO/DIMINUIÇÃO DO CAIXA' },
+    { type: 'item',    label: 'Partes Relacionadas',                  key: 'partesRelacionadas' },
+    { type: 'item',    label: 'Empréstimos Tomados/Pagos',            key: 'emprestimos' },
+    { type: 'item',    label: 'Distribuição de Lucros',               key: 'distribuicaoLucros' },
+    { type: 'result',  label: 'RESULTADO FINANCEIRO',                 key: 'resultadoFinanceiro' },
+
+    { type: 'separator' },
+    { type: 'section', label: 'RESULTADO DA GERAÇÃO DE CAIXA' },
+    { type: 'item',    label: 'SALDO INICIAL DISPONÍVEL',             key: 'saldoInicial' },
+    { type: 'item',    label: 'SALDO FINAL DISPONÍVEL',               key: 'saldoFinal' },
+    { type: 'result',  label: 'RESULTADO GERAÇÃO DE CAIXA',           key: 'resultadoGeracaoCaixa' },
+];
+
 const ClientDashboard = () => {
     const { id: clientId } = useParams();
     const navigate = useNavigate();
 
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'contas' | 'dfc' | 'dmpl'>('dre');
+    const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'contas' | 'dfc'>('dre');
     const [dreViewMode, setDreViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
     const [patViewMode, setPatViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
     const [expandedPatGroups, setExpandedPatGroups] = useState<Set<string>>(
@@ -418,25 +455,6 @@ const ClientDashboard = () => {
             !allFallbackCodes.some(c => c !== m.code && c.startsWith(m.code + '.'))
         );
         return fallbackLeaves.reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
-    };
-
-    // Mantém getSumByPrefix para compatibilidade com Patrimonial/DFC/DMPL
-    const getSumByPrefix = (prefixes: string[], monthIdx: number, movementsData: MovementRow[]) => {
-        let totalSum = 0;
-        prefixes.forEach(prefix => {
-            const children = movementsData.filter(m =>
-                m.code === prefix || m.code.startsWith(prefix + '.')
-            );
-            if (children.length === 0) return;
-            // Filtrar contas-folha (sem filhos na árvore)
-            const allCodes = children.map(c => c.code);
-            const leaves = children.filter(c =>
-                !allCodes.some(o => o !== c.code && o.startsWith(c.code + '.'))
-            );
-            const leafSum = leaves.reduce((acc, c) => acc + (c.values[monthIdx] || 0), 0);
-            totalSum += leafSum;
-        });
-        return totalSum;
     };
 
     // Busca contas-filhas de um report_category para drill-down
@@ -1609,7 +1627,6 @@ const ClientDashboard = () => {
                                 { id: 'dre', label: 'DRE', show: true },
                                 { id: 'patrimonial', label: 'Patrimonial', show: true },
                                 { id: 'dfc', label: 'DFC', show: true },
-                                { id: 'dmpl', label: 'DMPL', show: true },
                                 { id: 'contas', label: 'Plano de Contas', show: true },
                             ].filter(t => t.show).map(tab => (
                                 <button
@@ -2254,152 +2271,64 @@ const ClientDashboard = () => {
                             </div>
                         ) : dreSubTab === 'dfc' ? (
                             <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl animate-in slide-in-from-right duration-500">
+                                {/* Cabeçalho */}
                                 <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
                                     <div>
                                         <h3 className="text-2xl font-bold text-white tracking-tight">Demonstração do Fluxo de Caixa</h3>
-                                        <p className="text-sm text-white/40">Método Indireto • {months[selectedMonthIndex]}/{selectedYear}</p>
+                                        <p className="text-sm text-white/40">Método Indireto • {selectedYear}</p>
                                     </div>
                                     <button onClick={() => handleExportPDF('DFC')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
                                         <Download className="w-5 h-5" />
                                     </button>
                                 </div>
-                                <div className="p-8">
-                                    {(() => {
-                                        const d = allMonthsDre[selectedMonthIndex];
-                                        const depreciacao = getSumByPrefix(['04.1.01.04.0013', '04.2.01.08.0025', '04.2.02.09.0018', '01.2.03.05'], selectedMonthIndex, dreMovements);
-                                        const lucroLiq = d?.lucroLiq || 0;
-
-                                        const dfcSections = [
-                                            {
-                                                title: 'Atividades Operacionais',
-                                                items: [
-                                                    { label: 'Lucro Líquido do Exercício', value: lucroLiq },
-                                                    { label: '(+) Depreciação e Amortização', value: Math.abs(depreciacao) },
-                                                ],
-                                                get total() { return this.items.reduce((s, i) => s + i.value, 0); }
-                                            },
-                                            {
-                                                title: 'Atividades de Investimento',
-                                                items: [
-                                                    { label: 'Aquisição de Imobilizado', value: 0 },
-                                                    { label: 'Venda de Investimentos', value: 0 },
-                                                ],
-                                                get total() { return this.items.reduce((s, i) => s + i.value, 0); }
-                                            },
-                                            {
-                                                title: 'Atividades de Financiamento',
-                                                items: [
-                                                    { label: 'Empréstimos Obtidos', value: 0 },
-                                                    { label: 'Distribuição de Lucros', value: 0 },
-                                                ],
-                                                get total() { return this.items.reduce((s, i) => s + i.value, 0); }
-                                            },
-                                        ];
-                                        const variacaoLiquida = dfcSections.reduce((s, sec) => s + sec.total, 0);
-
-                                        return (
-                                            <div className="space-y-6">
-                                                {dfcSections.map((sec, si) => (
-                                                    <div key={si} className="bg-white/5 rounded-2xl border border-white/5 overflow-hidden">
-                                                        <div className="p-4 px-6 bg-white/5 border-b border-white/5">
-                                                            <h4 className="text-sm font-bold text-white uppercase tracking-wider">{sec.title}</h4>
-                                                        </div>
-                                                        <div className="divide-y divide-white/5">
-                                                            {sec.items.map((item, ii) => (
-                                                                <div key={ii} className="flex justify-between items-center p-4 px-6">
-                                                                    <span className="text-sm text-white/60">{item.label}</span>
-                                                                    <span className={`text-sm font-mono font-bold ${item.value >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                                                        R$ {formatLocaleNumber(item.value)}
-                                                                    </span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        <div className="flex justify-between items-center p-4 px-6 bg-cyan-500/10 border-t border-white/5">
-                                                            <span className="text-sm font-bold text-white">Subtotal</span>
-                                                            <span className={`text-sm font-mono font-black ${sec.total >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
-                                                                R$ {formatLocaleNumber(sec.total)}
-                                                            </span>
-                                                        </div>
-                                                    </div>
+                                {/* Tabela Jan–Dez */}
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse">
+                                        <thead>
+                                            <tr className="bg-white/5 border-b border-white/5">
+                                                <th className="p-4 px-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[300px] sticky left-0 z-20 bg-[#0a1628]">EMPRESA</th>
+                                                {months.map((m, i) => (
+                                                    <th key={m} className={`p-4 px-3 text-[10px] font-black uppercase tracking-[0.2em] text-right min-w-[100px] ${i === selectedMonthIndex ? 'bg-cyan-500/10 text-cyan-400' : 'text-white/40'}`}>{m}</th>
                                                 ))}
-
-                                                <div className="bg-linear-to-r from-cyan-500/10 to-blue-600/10 rounded-2xl border border-cyan-500/20 p-6 flex justify-between items-center">
-                                                    <span className="text-lg font-black text-white">Variação Líquida de Caixa</span>
-                                                    <span className={`text-xl font-mono font-black ${variacaoLiquida >= 0 ? 'text-cyan-400' : 'text-rose-400'}`}>
-                                                        R$ {formatLocaleNumber(variacaoLiquida)}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            </div>
-                        ) : dreSubTab === 'dmpl' ? (
-                            <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl animate-in slide-in-from-right duration-500">
-                                <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
-                                    <div>
-                                        <h3 className="text-2xl font-bold text-white tracking-tight">Demonstração das Mutações do PL</h3>
-                                        <p className="text-sm text-white/40">Patrimônio Líquido • {selectedYear}</p>
-                                    </div>
-                                    <button onClick={() => handleExportPDF('DMPL')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
-                                        <Download className="w-5 h-5" />
-                                    </button>
-                                </div>
-                                <div className="p-8 overflow-x-auto">
-                                    {(() => {
-                                        const plPrefix = '02.3';
-                                        const capitalSocial = accounts.find(a => a.classification.startsWith('02.3.01'));
-                                        const reservas = accounts.find(a => a.classification.startsWith('02.3.02'));
-                                        const lucrosAcum = accounts.find(a => a.classification.startsWith('02.3.03'));
-
-                                        const rows = [
-                                            { label: 'Capital Social', account: capitalSocial },
-                                            { label: 'Reservas', account: reservas },
-                                            { label: 'Lucros/Prejuízos Acumulados', account: lucrosAcum },
-                                        ];
-
-                                        const totalPL = (monthIdx: number) => getSumByPrefix([plPrefix], monthIdx, patrimonialMovements);
-
-                                        return (
-                                            <table className="w-full text-left border-collapse">
-                                                <thead>
-                                                    <tr className="bg-white/5 border-b border-white/5">
-                                                        <th className="p-4 px-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[220px] sticky left-0 z-20 bg-[#0a1628]">Componente</th>
-                                                        {months.map((m, i) => (
-                                                            <th key={m} className={`p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[100px] ${i === selectedMonthIndex ? 'bg-cyan-500/10 text-cyan-400' : ''}`}>{m}</th>
-                                                        ))}
-                                                        <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] text-right min-w-[110px] bg-white/5">Saldo Final</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-white/5">
-                                                    {rows.map((row, ri) => (
-                                                        <tr key={ri} className="hover:bg-white/5 transition-colors text-white/60">
-                                                            <td className="p-4 px-6 text-sm font-medium sticky left-0 z-10 bg-[#0a1628]">{row.label}</td>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {DFC_STRUCTURE.map((row, i) => {
+                                                if (row.type === 'separator') {
+                                                    return <tr key={i}><td colSpan={13} className="h-4 bg-transparent" /></tr>;
+                                                }
+                                                if (row.type === 'section') {
+                                                    return (
+                                                        <tr key={i} className="border-t-2 border-white/10">
+                                                            <td className="p-4 px-6 text-[11px] font-black text-white/60 uppercase tracking-[0.15em] sticky left-0 z-10 bg-[#0d1829]">{row.label}</td>
                                                             {months.map((_, mi) => (
-                                                                <td key={mi} className={`p-4 px-3 text-xs text-right font-mono ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
-                                                                    {row.account ? row.account.values[mi] || '0' : '0'}
-                                                                </td>
+                                                                <td key={mi} className={`p-4 px-3 text-xs text-right font-mono text-white/20 ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : 'bg-[#0d1829]'}`}>—</td>
                                                             ))}
-                                                            <td className="p-4 px-3 text-xs text-right font-mono font-bold text-white bg-white/5">
-                                                                {row.account ? row.account.total || '0' : '0'}
-                                                            </td>
                                                         </tr>
-                                                    ))}
-                                                    <tr className="bg-cyan-500/10 font-bold text-white">
-                                                        <td className="p-4 px-6 text-sm font-black sticky left-0 z-10 bg-[#0a1628]">TOTAL PATRIMÔNIO LÍQUIDO</td>
+                                                    );
+                                                }
+                                                if (row.type === 'result') {
+                                                    return (
+                                                        <tr key={i} className="bg-cyan-500/10 border-t border-white/10">
+                                                            <td className="p-4 px-6 text-sm font-black text-white uppercase tracking-wide sticky left-0 z-10 bg-[#0a1e2e]">{row.label}</td>
+                                                            {months.map((_, mi) => (
+                                                                <td key={mi} className={`p-4 px-3 text-sm text-right font-mono font-black text-cyan-400 ${mi === selectedMonthIndex ? 'bg-cyan-500/10' : ''}`}>—</td>
+                                                            ))}
+                                                        </tr>
+                                                    );
+                                                }
+                                                // type === 'item'
+                                                return (
+                                                    <tr key={i} className="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
+                                                        <td className="p-3 px-8 text-sm text-white/55 sticky left-0 z-10 bg-[#0a1628]">{row.label}</td>
                                                         {months.map((_, mi) => (
-                                                            <td key={mi} className={`p-4 px-3 text-xs text-right font-mono font-black ${mi === selectedMonthIndex ? 'bg-cyan-500/10' : ''}`}>
-                                                                {formatLocaleNumber(totalPL(mi))}
-                                                            </td>
+                                                            <td key={mi} className={`p-3 px-3 text-sm text-right font-mono text-white/35 ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>—</td>
                                                         ))}
-                                                        <td className="p-4 px-3 text-xs text-right font-mono font-black text-cyan-400 bg-white/5">
-                                                            {formatLocaleNumber(months.reduce((acc, _m, mi) => acc + totalPL(mi), 0))}
-                                                        </td>
                                                     </tr>
-                                                </tbody>
-                                            </table>
-                                        );
-                                    })()}
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         ) : (
