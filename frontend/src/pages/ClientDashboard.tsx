@@ -737,7 +737,9 @@ const ClientDashboard = () => {
 
     const handleDreFileUpload = createMovementUploadHandler('dre', setDreMovements);
 
-    // Parser dedicado para o CSV do Patrimonial (formato: Col1=nome, Col2-13=Jan-Dez, sem código contábil)
+    // Parser para o Balancete Patrimonial com código contábil + DE-PARA
+    // Formato: Col 0=Classificação, Col 1=Nome, Cols 2-13=Jan-Dez, Col 14=Total(ignorado), Col 15=NÍVEL, Col 16=DE-PARA
+    // A seção do balanço (Ativo Circ., Passivo Circ., PL etc.) é derivada do prefixo do código contábil
     const handlePatrimonialFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -746,18 +748,15 @@ const ClientDashboard = () => {
         const toastId = 'import-patrimonial';
         const isCSV = file.name.toLowerCase().endsWith('.csv');
 
-        const PAT_GROUP_LABELS = [
-            'ATIVO CIRCULANTE',
-            'ATIVO NÃO CIRCULANTE',
-            'PASSIVO CIRCULANTE',
-            'PASSIVO NÃO CIRCULANTE',
-            'PATRIMÔNIO LÍQUIDO',
-            'TOTAL ATIVO',
-            'TOTAL DO PASSIVO',
-        ];
-
-        const normLabel = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
-        const isGroupRow = (label: string) => PAT_GROUP_LABELS.some(g => normLabel(label) === g);
+        // Derivar seção do balanço a partir do prefixo do código contábil
+        const getSectionFromCode = (code: string): string | null => {
+            if (code.startsWith('01.1')) return 'ATIVO CIRCULANTE';
+            if (code.startsWith('01.2')) return 'ATIVO NÃO CIRCULANTE';
+            if (code.startsWith('02.1')) return 'PASSIVO CIRCULANTE';
+            if (code.startsWith('02.2') || code.startsWith('02.3')) return 'PASSIVO NÃO CIRCULANTE';
+            if (code.startsWith('02.4')) return 'PATRIMÔNIO LÍQUIDO';
+            return null; // 03.x / 04.x = DRE — ignorar neste import
+        };
 
         const parseBrNumber = (v: any): number => {
             if (typeof v === 'number') return v;
@@ -782,44 +781,59 @@ const ClientDashboard = () => {
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
 
-                let currentGroup = '';
-                const movements: MovementRow[] = [];
+                // Agregar por (seção + DE-PARA), somando os valores mensais de todas as contas
+                // Ex: todas as contas com código 01.1.x e DE-PARA="Disponivel" → uma linha "Disponivel" no Ativo Circulante
+                const aggregated = new Map<string, number[]>();
 
                 for (const row of rows) {
-                    // Col 1 = nome da linha (Col 0 vazia no CSV do Patrimonial)
-                    const label = String(row[1] || '').trim();
-                    if (!label) continue;
+                    const code = String(row[0] || '').trim();
+                    if (!code || !/^\d/.test(code)) continue; // pula cabeçalho e linhas sem código numérico
 
-                    // Cols 2-13 = Jan-Dez
-                    const values: number[] = [];
-                    for (let c = 2; c <= 13; c++) {
-                        values.push(parseBrNumber(row[c]));
+                    const section = getSectionFromCode(code);
+                    if (!section) continue; // ignora contas DRE (03.x, 04.x)
+
+                    const rawDePara = String(row[16] || '').trim();
+                    if (!rawDePara || rawDePara.startsWith('#')) continue; // sem DE-PARA válido
+
+                    const key = `${section}::${rawDePara}`;
+                    if (!aggregated.has(key)) {
+                        aggregated.set(key, new Array(12).fill(0));
                     }
-                    while (values.length < 12) values.push(0);
-
-                    if (isGroupRow(label)) {
-                        currentGroup = normLabel(label);
-                        movements.push({ code: currentGroup, name: label, level: 1, category: currentGroup, values: values.slice(0, 12) });
-                    } else {
-                        // Linha filha — ignora se sem grupo definido
-                        if (!currentGroup) continue;
-                        movements.push({ code: label, name: label, level: 2, category: currentGroup, values: values.slice(0, 12) });
+                    const existing = aggregated.get(key)!;
+                    for (let c = 0; c < 12; c++) {
+                        existing[c] += parseBrNumber(row[c + 2]);
                     }
                 }
 
-                if (movements.length === 0) {
-                    toast.error('Nenhuma linha encontrada no arquivo Patrimonial');
+                if (aggregated.size === 0) {
+                    toast.error('Nenhuma conta patrimonial encontrada. Verifique se o arquivo tem coluna DE-PARA (col. 17) e código contábil iniciando com 01 ou 02.');
                     return;
+                }
+
+                // Converter mapa em MovementRow[] compatível com o sistema existente
+                // level=2 + category=seção → compatível com getSumByGroup e patMonthlyData
+                const movements: MovementRow[] = [];
+                for (const [key, values] of aggregated.entries()) {
+                    const sepIdx = key.indexOf('::');
+                    const section  = key.substring(0, sepIdx);
+                    const deParaName = key.substring(sepIdx + 2);
+                    movements.push({
+                        code: deParaName,
+                        name: deParaName,
+                        level: 2,
+                        category: section,
+                        values: values.slice(0, 12),
+                    });
                 }
 
                 // Persistir no banco
                 const targetClientId = clientId || client?.id;
                 if (isAccountingView && targetClientId) {
-                    toast.loading(`Salvando ${movements.length} linhas (Patrimonial)...`, { id: toastId });
+                    toast.loading(`Salvando ${movements.length} categorias (Patrimonial)...`, { id: toastId });
                     const result = await movementService.bulkImport(targetClientId, selectedYear, movements, 'patrimonial');
-                    toast.success(`${result.count} linhas importadas (Patrimonial)!`, { id: toastId });
+                    toast.success(`${result.count} categorias importadas (Patrimonial ${selectedYear})!`, { id: toastId });
                 } else {
-                    toast.success(`${movements.length} linhas carregadas!`);
+                    toast.success(`${movements.length} categorias carregadas!`);
                 }
 
                 setPatrimonialMovements(movements);
@@ -1961,7 +1975,7 @@ const ClientDashboard = () => {
 
                                     // Indicadores Financeiros (calculados para o mês selecionado)
                                     const getChildVal = (childName: string): number => {
-                                        const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+                                        const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
                                         const m = patrimonialMovements.find(r => r.level === 2 && norm(r.name).includes(norm(childName)));
                                         return m ? (m.values[selectedMonthIndex] || 0) : 0;
                                     };
@@ -2082,7 +2096,7 @@ const ClientDashboard = () => {
                                                                         </td>
                                                                     </tr>
                                                                     {expandedPatGroups.has(item.id) && (patGrpDef?.children ?? []).map((childName, ci) => {
-                                                                        const _n = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
+                                                                        const _n = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
                                                                         const childRow = patrimonialMovements.find(r => r.level === 2 && _n(r.category || '') === _n(item.group) && _n(r.name) === _n(childName));
                                                                         const childVals = months.map((_, mi) => childRow ? (childRow.values[mi] || 0) : 0);
                                                                         const childAccum = childVals.reduce((s, v) => s + v, 0);
