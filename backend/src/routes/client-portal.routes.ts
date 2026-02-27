@@ -1,27 +1,24 @@
 import { Router } from 'express';
-import { authClientMiddleware } from '../middlewares/auth.middleware';
+import { authClientMiddleware, requireRole } from '../middlewares/auth.middleware';
 import { getClientProfile, createClientSupportTicket, getClientSupportTickets, getClientChartOfAccounts, getClientMovements } from '../controllers/clientPortal.controller';
 import { analyzeFinancials } from '../controllers/aiAnalysis.controller';
 
 const router = Router();
 
-// All routes require client authentication
-router.use(authClientMiddleware);
-
 // Client profile
-router.get('/me', getClientProfile);
+router.get('/me', authClientMiddleware, getClientProfile);
 
 // Client chart of accounts (read-only)
-router.get('/chart-of-accounts', getClientChartOfAccounts);
+router.get('/chart-of-accounts', authClientMiddleware, getClientChartOfAccounts);
 
 // Client movements — DRE e Patrimonial (read-only)
-router.get('/movements', getClientMovements);
+router.get('/movements', authClientMiddleware, getClientMovements);
 
-// AI financial analysis (streaming SSE)
-router.post('/ai-analysis', analyzeFinancials);
+// AI financial analysis (streaming SSE) — accessible by client OR accounting staff
+router.post('/ai-analysis', requireRole('admin', 'collaborator', 'client'), analyzeFinancials);
 
 // Client support tickets (read own + create)
-router.get('/support', getClientSupportTickets);
-router.post('/support', createClientSupportTicket);
+router.get('/support', authClientMiddleware, getClientSupportTickets);
+router.post('/support', authClientMiddleware, createClientSupportTicket);
 
 export default router;

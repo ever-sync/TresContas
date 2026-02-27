@@ -1451,7 +1451,7 @@ const ClientDashboard = () => {
                                         const passivoCirc = patMonthlyData.passivoCirc[idx]?.value  || 0;
                                         const passivoNaoC = patMonthlyData.passivoNaoCirc[idx]?.value || 0;
                                         const totalAtivo  = patMonthlyData.totalAtivo[idx]?.value   || 0;
-                                        const body = {
+                                        const body: Record<string, unknown> = {
                                             year: selectedYear,
                                             monthIndex: selectedMonthIndex,
                                             dre: d,
@@ -1463,6 +1463,8 @@ const ClientDashboard = () => {
                                                 endividamento: totalAtivo    !== 0 ? ((passivoCirc + passivoNaoC) / totalAtivo) * 100 : 0,
                                             },
                                         };
+                                        // Quando contador acessa o dashboard de um cliente, envia clientId no body
+                                        if (isAccountingView && clientId) body.clientId = clientId;
                                         try {
                                             const token = clientToken || accountingToken;
                                             const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/+$/, '');

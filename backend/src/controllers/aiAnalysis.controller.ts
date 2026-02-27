@@ -12,7 +12,9 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
  */
 export const analyzeFinancials = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.clientId) {
+        // Cliente: clientId vem do token. Contador (admin/collaborator): vem do body
+        const clientId = req.clientId || req.body.clientId;
+        if (!clientId) {
             return res.status(401).json({ message: 'Não autorizado' });
         }
 
@@ -24,7 +26,7 @@ export const analyzeFinancials = async (req: AuthRequest, res: Response) => {
 
         // Buscar nome do cliente
         const client = await prisma.client.findUnique({
-            where: { id: req.clientId },
+            where: { id: clientId },
             select: { name: true },
         });
 
