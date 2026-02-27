@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Mail, Lock, ArrowRight } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Building2, User } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -51,10 +51,26 @@ const Login = () => {
                 <div className="absolute -inset-1 bg-linear-to-r from-blue-600/20 to-sky-600/20 rounded-[40px] blur-xl opacity-50" />
                 
                 <div className="relative bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-8 md:p-12 shadow-2xl">
+                    {/* Seletor de perfil */}
+                    <div className="flex rounded-2xl bg-slate-950/60 border border-white/5 p-1 mb-10">
+                        <button
+                            type="button"
+                            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold bg-blue-600 text-white shadow-lg shadow-blue-500/20 transition-all"
+                        >
+                            <Building2 className="w-4 h-4" />
+                            Sou Contador
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => navigate('/client-login')}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold text-slate-400 hover:text-white transition-all hover:bg-white/5"
+                        >
+                            <User className="w-4 h-4" />
+                            Sou Cliente
+                        </button>
+                    </div>
+
                     <div className="text-center mb-10">
-                        <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-white/5 border border-white/10 mb-6 shadow-highlight">
-                            <img src="/logo.png" alt="TresContas" className="h-10 w-auto brightness-110" />
-                        </div>
                         <h1 className="text-3xl font-bold text-white mb-2">Bem-vindo</h1>
                         <p className="text-slate-400 text-sm">Acesse sua plataforma com segurança</p>
                     </div>
@@ -116,20 +132,6 @@ const Login = () => {
                             Entrar no Sistema
                         </button>
 
-                        <div className="relative flex items-center gap-4 py-2">
-                            <div className="h-[1px] flex-1 bg-white/5" />
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">ou continuar com</span>
-                            <div className="h-[1px] flex-1 bg-white/5" />
-                        </div>
-
-                        <div className="flex items-center justify-center gap-4">
-                            <button type="button" className="flex-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl py-3 flex items-center justify-center transition-all group">
-                                <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                            </button>
-                            <button type="button" className="flex-1 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl py-3 flex items-center justify-center transition-all group">
-                                <img src="https://www.svgrepo.com/show/475631/apple-color.svg" alt="Apple" className="w-5 h-5 group-hover:scale-110 transition-transform brightness-0 invert" />
-                            </button>
-                        </div>
                     </form>
 
                     <div className="mt-10 text-center">

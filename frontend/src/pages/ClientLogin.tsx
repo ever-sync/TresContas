@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Lock, ArrowUpRight, Bell, Loader2, Mail } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Lock, ArrowUpRight, Bell, Loader2, Mail, Building2, User } from 'lucide-react';
 import axios from 'axios';
 import { clientPortalService } from '../services/clientPortalService';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
@@ -55,6 +55,25 @@ const ClientLogin = () => {
                 <div className="absolute -inset-1 bg-linear-to-r from-sky-600/20 to-blue-600/20 rounded-[40px] blur-xl opacity-50" />
 
                 <div className="relative bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-8 md:p-12 shadow-2xl">
+                    {/* Seletor de perfil */}
+                    <div className="flex rounded-2xl bg-slate-950/60 border border-white/5 p-1 mb-10">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/login')}
+                            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold text-slate-400 hover:text-white transition-all hover:bg-white/5"
+                        >
+                            <Building2 className="w-4 h-4" />
+                            Sou Contador
+                        </button>
+                        <button
+                            type="button"
+                            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold bg-sky-600 text-white shadow-lg shadow-sky-500/20 transition-all"
+                        >
+                            <User className="w-4 h-4" />
+                            Sou Cliente
+                        </button>
+                    </div>
+
                     <div className="text-center mb-10">
                         <div className="inline-flex items-center justify-center p-4 rounded-3xl bg-white/5 border border-white/10 mb-6 shadow-highlight">
                             <div className="w-12 h-12 bg-sky-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-sky-500/20">
@@ -62,7 +81,7 @@ const ClientLogin = () => {
                             </div>
                         </div>
                         <h1 className="text-3xl font-bold text-white mb-2">Portal do Cliente</h1>
-                        <p className="text-slate-400 text-sm">Acesse seu dashboard financeiro com seguranca</p>
+                        <p className="text-slate-400 text-sm">Acesse seu dashboard financeiro com segurança</p>
                     </div>
 
                     <form onSubmit={handleClientLogin} className="space-y-6">
@@ -125,12 +144,6 @@ const ClientLogin = () => {
                         </button>
                     </form>
 
-                    <div className="mt-10 text-center">
-                        <p className="text-slate-500 text-sm">
-                            E uma contabilidade?{' '}
-                            <Link to="/login" className="text-sky-400 hover:text-sky-300 font-semibold transition-colors">Acesse aqui</Link>
-                        </p>
-                    </div>
                 </div>
             </div>
         </div>
