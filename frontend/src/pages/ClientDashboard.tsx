@@ -23,6 +23,7 @@ import {
     LayoutList,
     Sparkles,
     RefreshCw,
+    ChevronRight,
 } from 'lucide-react';
 import {
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -1711,7 +1712,7 @@ const ClientDashboard = () => {
                                                             >
                                                                 <td className="p-4 px-6 text-sm flex items-center gap-2 sticky left-0 z-10 bg-[#0a1628]">
                                                                     {hasChildren && (
-                                                                        <span className={`text-[10px] text-cyan-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
+                                                                        <ChevronRight className={`w-3 h-3 text-cyan-400 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
                                                                     )}
                                                                     <div className={`w-2 h-2 rounded-full shrink-0 ${item.type === 'positive' ? 'bg-emerald-500' :
                                                                         item.type === 'negative' ? 'bg-rose-500' :
@@ -2077,7 +2078,7 @@ const ClientDashboard = () => {
                                                                         <td className="p-4 px-6 text-sm sticky left-0 z-10 bg-[#0a1628]">
                                                                             <div className="flex items-center gap-2">
                                                                                 {hasChildren && (
-                                                                                    <span className={`text-[10px] text-cyan-400 transition-transform duration-200 inline-block ${expandedPatGroups.has(item.id) ? 'rotate-90' : ''}`}>▶</span>
+                                                                                    <ChevronRight className={`w-3 h-3 text-cyan-400 transition-transform duration-200 ${expandedPatGroups.has(item.id) ? 'rotate-90' : ''}`} />
                                                                                 )}
                                                                                 <div className={`w-2 h-2 rounded-full shrink-0 ${isTotal ? 'bg-cyan-400' : 'bg-white/30'}`} />
                                                                                 {item.label}
