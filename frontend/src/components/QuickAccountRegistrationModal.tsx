@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import { dreMappingService } from '../services/dreMappingService';
 
 interface QuickAccountRegistrationModalProps {
@@ -87,9 +88,12 @@ export const QuickAccountRegistrationModal: React.FC<QuickAccountRegistrationMod
             });
             setValidationErrors({});
             onClose();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Erro ao registrar conta:', error);
-            toast.error(error?.response?.data?.message || 'Erro ao registrar conta');
+            const message = axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Erro ao registrar conta'
+                : 'Erro ao registrar conta';
+            toast.error(message);
         } finally {
             setIsLoading(false);
         }

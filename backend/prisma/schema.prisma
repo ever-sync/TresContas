@@ -23,6 +23,7 @@ model Accounting {
   supportTickets   SupportTicket[]
   users            User[]
   dreMappings      DREMapping[]
+  dfcLineMappings  DFCLineMapping[]
 }
 
 model User {
@@ -69,6 +70,7 @@ model Client {
   monthlyMovements     MonthlyMovement[]
   supportTickets       SupportTicket[]
   dreMappings          DREMapping[]
+  dfcLineMappings      DFCLineMapping[]
 }
 
 model SupportTicket {
@@ -109,6 +111,7 @@ model ChartOfAccounts {
   id              String                @id @default(uuid())
   client_id       String
   code            String
+  reduced_code    String?
   name            String
   type            String                @default("A")
   parent_id       String?
@@ -122,10 +125,12 @@ model ChartOfAccounts {
   report_category String?
   is_mapped       Boolean               @default(false)
   items           AccountingEntryItem[]
+  dfcLineMappings DFCLineMapping[]
   accounting      Accounting?           @relation(fields: [accounting_id], references: [id])
   client          Client                @relation(fields: [client_id], references: [id], onDelete: Cascade)
 
   @@unique([client_id, code])
+  @@unique([client_id, reduced_code])
   @@index([accounting_id])
   @@index([client_id])
   @@index([code])
@@ -212,6 +217,7 @@ model MonthlyMovement {
   client_id     String
   year          Int
   code          String
+  reduced_code  String?
   name          String
   level         Int        @default(1)
   values        Float[]
@@ -229,6 +235,7 @@ model MonthlyMovement {
   @@index([client_id, year])
   @@index([type])
   @@index([client_id, year, type])
+  @@index([client_id, reduced_code])
 }
 
 model DREMapping {
@@ -247,4 +254,28 @@ model DREMapping {
   @@index([accounting_id])
   @@index([client_id])
   @@index([category])
+}
+
+model DFCLineMapping {
+  id                    String          @id @default(uuid())
+  accounting_id         String
+  client_id             String
+  line_key              String
+  chart_account_id      String
+  account_code_snapshot String
+  reduced_code_snapshot String?
+  source_type           String
+  multiplier            Float           @default(1)
+  include_children      Boolean         @default(true)
+  created_at            DateTime        @default(now())
+  updated_at            DateTime        @updatedAt
+  accounting            Accounting      @relation(fields: [accounting_id], references: [id])
+  client                Client          @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  chart_account         ChartOfAccounts @relation(fields: [chart_account_id], references: [id], onDelete: Cascade)
+
+  @@unique([client_id, line_key, chart_account_id], name: "client_id_line_key_chart_account_id")
+  @@index([accounting_id])
+  @@index([client_id])
+  @@index([line_key])
+  @@index([chart_account_id])
 }

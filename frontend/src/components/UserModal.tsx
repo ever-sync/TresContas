@@ -6,6 +6,7 @@ import { X, User, Mail, Phone, Lock, Loader2, Eye, EyeOff, Sparkles, Shield } fr
 import toast from 'react-hot-toast';
 import { userService } from '../services/userService';
 import type { User as UserType } from '../services/userService';
+import type { UpdateUserData } from '../services/userService';
 import axios from 'axios';
 
 const userSchema = z.object({
@@ -65,7 +66,7 @@ export const UserModal: React.FC<Props> = ({ isOpen, onClose, onSuccess, user })
     const onSubmit = async (data: UserFormData) => {
         try {
             if (user) {
-                const updateData: any = { ...data };
+                const updateData: UpdateUserData = { ...data, phone: data.phone || undefined };
                 if (!updateData.password) delete updateData.password;
                 await userService.update(user.id, updateData);
             } else {

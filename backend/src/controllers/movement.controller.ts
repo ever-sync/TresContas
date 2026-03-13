@@ -10,10 +10,6 @@ const verifyClientOwnership = async (clientId: string, accountingId: string) => 
     return client !== null;
 };
 
-/**
- * Remove diacríticos e normaliza encoding de caracteres especiais
- * Converte "DeduÃ§Ãµes" para "deducoes"
- */
 const removeDiacritics = (text: string): string => {
     if (!text) return '';
     return text
@@ -23,22 +19,28 @@ const removeDiacritics = (text: string): string => {
         .trim();
 };
 
-/**
- * GET /api/clients/:clientId/movements?year=2025&type=dre
- */
+type ImportMovementPayload = {
+    code: unknown;
+    reduced_code?: unknown;
+    name: unknown;
+    level?: unknown;
+    category?: unknown;
+    values: unknown[];
+};
+
 export const getMovements = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) return res.status(401).json({ message: 'Não autorizado' });
+        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
 
         const clientId = String(req.params.clientId);
         if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente não encontrado' });
+            return res.status(404).json({ message: 'Cliente nao encontrado' });
         }
 
-        const year = parseInt(req.query.year as string) || new Date().getFullYear();
+        const year = parseInt(String(req.query.year || ''), 10) || new Date().getFullYear();
         const type = req.query.type as string | undefined;
 
-        const whereClause: any = { client_id: clientId, year };
+        const whereClause: Record<string, unknown> = { client_id: clientId, year };
         if (type && ['dre', 'patrimonial'].includes(type)) {
             whereClause.type = type;
         }
@@ -46,120 +48,146 @@ export const getMovements = async (req: AuthRequest, res: Response) => {
         const movements = await prisma.monthlyMovement.findMany({
             where: whereClause,
             orderBy: { code: 'asc' },
-            select: { id: true, code: true, name: true, level: true, type: true, category: true, values: true },
+            select: {
+                id: true,
+                code: true,
+                reduced_code: true,
+                name: true,
+                level: true,
+                type: true,
+                category: true,
+                values: true,
+            },
         });
 
         res.json(movements);
     } catch (error: any) {
-        console.error('Erro ao buscar movimentações:', error);
+        console.error('Erro ao buscar movimentacoes:', error);
         res.status(500).json({
-            message: 'Erro ao buscar movimentações',
+            message: 'Erro ao buscar movimentacoes',
             detail: error?.message || String(error),
         });
     }
 };
 
-/**
- * POST /api/clients/:clientId/movements/import
- * Body: { year: number, type: 'dre' | 'patrimonial', movements: [{ code, name, level, values: number[12] }] }
- */
 export const importMovements = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) return res.status(401).json({ message: 'Não autorizado' });
+        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
 
         const clientId = String(req.params.clientId);
         if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente não encontrado' });
+            return res.status(404).json({ message: 'Cliente nao encontrado' });
         }
 
         const { year, movements, type } = req.body;
-
         if (!year || !Array.isArray(movements) || movements.length === 0) {
-            return res.status(400).json({ message: 'Ano e lista de movimentações são obrigatórios' });
+            return res.status(400).json({ message: 'Ano e lista de movimentacoes sao obrigatorios' });
         }
 
-        const movementType = (type === 'patrimonial') ? 'patrimonial' : 'dre';
+        const parsedYear = parseInt(String(year), 10);
+        if (!Number.isFinite(parsedYear) || parsedYear <= 0) {
+            return res.status(400).json({ message: 'Ano invalido' });
+        }
 
-        // Validação básica
-        for (const m of movements) {
-            if (!m.code || !m.name) {
-                return res.status(400).json({ message: `Movimentação inválida: código e nome obrigatórios (código: ${m.code || 'vazio'})` });
+        const movementType = type === 'patrimonial' ? 'patrimonial' : 'dre';
+        const incomingMovements = movements as ImportMovementPayload[];
+
+        for (const movement of incomingMovements) {
+            if (!movement.code || !movement.name) {
+                return res.status(400).json({
+                    message: `Movimentacao invalida: codigo e nome obrigatorios (codigo: ${movement.code || 'vazio'})`,
+                });
             }
-            if (!Array.isArray(m.values) || m.values.length !== 12) {
-                return res.status(400).json({ message: `Movimentação ${m.code}: values deve ter exatamente 12 elementos (Jan-Dez)` });
+            if (!Array.isArray(movement.values) || movement.values.length !== 12) {
+                return res.status(400).json({
+                    message: `Movimentacao ${movement.code}: values deve ter exatamente 12 elementos (Jan-Dez)`,
+                });
             }
         }
 
-        // Sem transação para compatibilidade com pgBouncer
-        // Passo 1: deletar movimentações existentes do ano E tipo
-        await prisma.monthlyMovement.deleteMany({
-            where: { client_id: clientId, year: Number(year), type: movementType },
+        const chartAccounts = await prisma.chartOfAccounts.findMany({
+            where: { client_id: clientId },
+            select: {
+                code: true,
+                reduced_code: true,
+            },
+        });
+        const reducedCodeByCode = new Map(
+            chartAccounts.map((account) => [account.code.trim(), account.reduced_code])
+        );
+
+        const normalizedMovements = incomingMovements.map((movement) => {
+            let normalizedCategory = null;
+            if (movement.category && movement.category !== '#REF!' && movement.category !== '#REF') {
+                const categoryStr = String(movement.category).trim();
+                normalizedCategory = removeDiacritics(categoryStr) || categoryStr;
+            }
+
+            const code = String(movement.code).trim();
+            const payloadReducedCode = movement.reduced_code ? String(movement.reduced_code).trim() : null;
+            const reducedCode = reducedCodeByCode.get(code) || payloadReducedCode || null;
+
+            return {
+                accounting_id: req.accountingId!,
+                client_id: clientId,
+                year: parsedYear,
+                code,
+                reduced_code: reducedCode,
+                name: String(movement.name).trim(),
+                level: parseInt(String(movement.level || '1'), 10) || 1,
+                type: movementType,
+                category: normalizedCategory,
+                values: movement.values.map((value) => parseFloat(String(value)) || 0),
+                is_mapped: !!(normalizedCategory && normalizedCategory !== '#ref' && normalizedCategory !== ''),
+            };
         });
 
-        // Passo 2: inserir em lotes de 100
         const batchSize = 100;
         let totalCreated = 0;
 
-        for (let i = 0; i < movements.length; i += batchSize) {
-            const batch = movements.slice(i, i + batchSize);
-            const created = await prisma.monthlyMovement.createMany({
-                data: batch.map((m: any) => {
-                    // Normalizar categoria removendo diacríticos e encoding incorreto
-                    let normalizedCategory = null;
-                    if (m.category && m.category !== '#REF!' && m.category !== '#REF') {
-                        const categoryStr = String(m.category).trim();
-                        // Tentar normalizar com remoção de diacríticos
-                        const withoutDiacritics = removeDiacritics(categoryStr);
-                        // Se ficou vazio após normalização, usar original
-                        normalizedCategory = withoutDiacritics || categoryStr;
-                    }
-                    
-                    const isMapped = !!(normalizedCategory && normalizedCategory !== '#ref' && normalizedCategory !== '');
-                    
-                    return {
-                        accounting_id: req.accountingId!,
-                        client_id: clientId,
-                        year: Number(year),
-                        code: String(m.code).trim(),
-                        name: String(m.name).trim(),
-                        level: parseInt(m.level) || 1,
-                        type: movementType,
-                        category: normalizedCategory,
-                        values: m.values.map((v: any) => parseFloat(v) || 0),
-                        is_mapped: isMapped,
-                    };
-                }),
-                skipDuplicates: true,
+        await prisma.$transaction(async (tx) => {
+            await tx.monthlyMovement.deleteMany({
+                where: { client_id: clientId, year: parsedYear, type: movementType },
             });
-            totalCreated += created.count;
-        }
 
-        res.json({ message: 'Movimentações importadas com sucesso', count: totalCreated, year, type: movementType });
+            for (let i = 0; i < normalizedMovements.length; i += batchSize) {
+                const batch = normalizedMovements.slice(i, i + batchSize);
+                const created = await tx.monthlyMovement.createMany({
+                    data: batch,
+                    skipDuplicates: true,
+                });
+                totalCreated += created.count;
+            }
+        });
+
+        res.json({
+            message: 'Movimentacoes importadas com sucesso',
+            count: totalCreated,
+            year: parsedYear,
+            type: movementType,
+        });
     } catch (error: any) {
-        console.error('Erro ao importar movimentações:', error);
+        console.error('Erro ao importar movimentacoes:', error);
         res.status(500).json({
-            message: 'Erro ao importar movimentações',
+            message: 'Erro ao importar movimentacoes',
             detail: error?.message || String(error),
         });
     }
 };
 
-/**
- * DELETE /api/clients/:clientId/movements?year=2025&type=dre
- */
 export const removeMovements = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) return res.status(401).json({ message: 'Não autorizado' });
+        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
 
         const clientId = String(req.params.clientId);
         if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente não encontrado' });
+            return res.status(404).json({ message: 'Cliente nao encontrado' });
         }
 
-        const year = parseInt(req.query.year as string) || new Date().getFullYear();
+        const year = parseInt(String(req.query.year || ''), 10) || new Date().getFullYear();
         const type = req.query.type as string | undefined;
 
-        const whereClause: any = { client_id: clientId, year };
+        const whereClause: Record<string, unknown> = { client_id: clientId, year };
         if (type && ['dre', 'patrimonial'].includes(type)) {
             whereClause.type = type;
         }
@@ -168,11 +196,11 @@ export const removeMovements = async (req: AuthRequest, res: Response) => {
             where: whereClause,
         });
 
-        res.json({ message: 'Movimentações removidas', count: deleted.count, year });
+        res.json({ message: 'Movimentacoes removidas', count: deleted.count, year });
     } catch (error: any) {
-        console.error('Erro ao remover movimentações:', error);
+        console.error('Erro ao remover movimentacoes:', error);
         res.status(500).json({
-            message: 'Erro ao remover movimentações',
+            message: 'Erro ao remover movimentacoes',
             detail: error?.message || String(error),
         });
     }

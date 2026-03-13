@@ -5,6 +5,7 @@ export type MovementType = 'dre' | 'patrimonial';
 export interface MovementRow {
     id?: string;
     code: string;
+    reduced_code?: string | null;
     name: string;
     level: number;
     category?: string; // DE-PARA: "Receita Bruta", "Custos das Vendas", etc.
@@ -23,7 +24,7 @@ export const movementService = {
      * Busca movimentações de um cliente para um determinado ano e tipo.
      */
     getAll: async (clientId: string, year: number, type?: MovementType): Promise<MovementRow[]> => {
-        const params: any = { year };
+        const params: Record<string, string | number> = { year };
         if (type) params.type = type;
         const response = await api.get(`/clients/${clientId}/movements`, { params });
         return response.data;
@@ -50,7 +51,7 @@ export const movementService = {
      * Remove todas as movimentações de um cliente para um determinado ano e tipo.
      */
     removeAll: async (clientId: string, year: number, type?: MovementType): Promise<{ message: string; count: number }> => {
-        const params: any = { year };
+        const params: Record<string, string | number> = { year };
         if (type) params.type = type;
         const response = await api.delete(`/clients/${clientId}/movements`, { params });
         return response.data;

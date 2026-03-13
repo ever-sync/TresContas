@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     Download,
@@ -47,45 +47,17 @@ import type { MovementRow } from '../services/movementService';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
+import ClientDfcSection from '../components/ClientDfcSection';
+import { TooltipCurrency, TooltipPercent } from '../components/client-dashboard/ChartTooltips';
+import type { DreMonthData } from '../components/client-dashboard/constants';
 
 const formatLocaleNumber = (number: number) => {
     return Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
-const TooltipCurrency = ({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) => {
-    if (!active || !payload?.length) return null;
-    return (
-        <div style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '10px 14px', minWidth: '180px' }}>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>{label}</p>
-            {payload.map((entry: any, i: number) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: i < payload.length - 1 ? '5px' : 0 }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: entry.color ?? entry.fill, flexShrink: 0 }} />
-                    <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px' }}>{entry.name}</span>
-                    <span style={{ color: '#fff', fontSize: '11px', fontWeight: 'bold', marginLeft: 'auto', paddingLeft: '12px' }}>R$ {(entry.value ?? 0).toLocaleString('pt-BR')}</span>
-                </div>
-            ))}
-        </div>
-    );
-};
-
-const TooltipPercent = ({ active, payload, label }: { active?: boolean; payload?: any[]; label?: string }) => {
-    if (!active || !payload?.length) return null;
-    return (
-        <div style={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '10px 14px', minWidth: '180px' }}>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', fontWeight: 'bold', marginBottom: '8px' }}>{label}</p>
-            {payload.map((entry: any, i: number) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: i < payload.length - 1 ? '5px' : 0 }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: entry.color ?? entry.stroke, flexShrink: 0 }} />
-                    <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px' }}>{entry.name}</span>
-                    <span style={{ color: '#fff', fontSize: '11px', fontWeight: 'bold', marginLeft: 'auto', paddingLeft: '12px' }}>{(entry.value ?? 0).toFixed(1)}%</span>
-                </div>
-            ))}
-        </div>
-    );
-};
-
 interface Account {
     classification: string;
+    reduced_code?: string;
     name: string;
     values: string[];
     total: string;
@@ -165,21 +137,35 @@ const DFC_STRUCTURE: { type: 'section' | 'item' | 'result' | 'separator'; label?
     { type: 'result',  label: 'RESULTADO GERAÇÃO DE CAIXA',           key: 'resultadoGeracaoCaixa' },
 ];
 
+type DreSubTab = 'dre' | 'patrimonial' | 'contas' | 'dfc';
+type ReportViewMode = 'lista' | 'graficos' | 'fechado';
+
+const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
+    { id: 'dre', label: 'DRE', show: true },
+    { id: 'patrimonial', label: 'Patrimonial', show: true },
+    { id: 'dfc', label: 'DFC', show: true },
+    { id: 'contas', label: 'Plano de Contas', show: true },
+];
+
 const ClientDashboard = () => {
     const { id: clientId } = useParams();
     const navigate = useNavigate();
 
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'contas' | 'dfc'>('dre');
-    const [dreViewMode, setDreViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
-    const [patViewMode, setPatViewMode] = useState<'lista' | 'graficos' | 'fechado'>('lista');
+    const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
+    const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
+    const [patViewMode, setPatViewMode] = useState<ReportViewMode>('lista');
     const [expandedPatGroups, setExpandedPatGroups] = useState<Set<string>>(
         new Set(['ativo_circ', 'ativo_nao', 'pass_circ', 'pass_nao', 'pat_liq'])
     );
     const togglePatGroup = (id: string) => setExpandedPatGroups(prev => {
         const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
         return next;
     });
     const [selectedMonthIndex, setSelectedMonthIndex] = useState(0); // Jan by default
@@ -252,6 +238,7 @@ const ClientDashboard = () => {
         'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
         'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
     ], []);
+    const showLegacyDfc = false;
 
     // Mock data
     const documentAlerts = [
@@ -318,6 +305,7 @@ const ClientDashboard = () => {
                     // Converter formato do banco para formato do frontend (Account interface)
                     const mapped: Account[] = dbAccounts.map(a => ({
                         classification: a.code,
+                        reduced_code: a.reduced_code || undefined,
                         name: a.name.trim(),
                         values: Array(12).fill('0,00'),
                         total: '0,00',
@@ -484,7 +472,7 @@ const ClientDashboard = () => {
     // Comentários do DRE
     const [dreComments, setDreComments] = useState<Record<string, string>>({});
 
-    const calcDreForMonth = (monthIdx: number) => {
+    const calcDreForMonth = (monthIdx: number): DreMonthData => {
         // Normaliza sinais: usa Math.abs() e aplica sinal explícito.
         // O CSV tem sinais INCONSISTENTES entre categorias — não depender do sinal do CSV.
         // Ex: Deduções chega negativo (-487.353), mas Custos chega positivo (+874.361).
@@ -540,7 +528,7 @@ const ClientDashboard = () => {
         { id: 'ebtida',         name: 'RESULTADO EBTIDA',                   key: 'ebtida',          type: 'highlight', category: '' },
     ];
 
-    const reportItems = useMemo(() => {
+    const reportItems = (() => {
         const data = calcDreForMonth(selectedMonthIndex);
         const format = (val: number) => {
             const formatted = formatLocaleNumber(val);
@@ -557,22 +545,20 @@ const ClientDashboard = () => {
             rawVal: data[line.key as keyof typeof data],
             pct: line.id === 'rec_bruta' ? '100%' : calcPct(data[line.key as keyof typeof data]),
         }));
-    }, [accounts, selectedMonthIndex, dreMovements]);
+    })();
 
     // Dados do DRE para todos os meses (para tabela mês a mês)
-    const allMonthsDre = useMemo(() => {
-        return months.map((_, idx) => calcDreForMonth(idx));
-    }, [accounts, months, dreMovements]);
+    const allMonthsDre = months.map((_, idx) => calcDreForMonth(idx));
 
-    const monthlyReportData = useMemo(() => {
-        const monthsData = allMonthsDre.map((d, i) => ({
+    const monthlyReportData = (() => {
+        const monthsData: Array<DreMonthData & { month: string; lucroLiquido: number }> = allMonthsDre.map((d, i) => ({
             month: months[i].substring(0, 3),
             ...d,
             lucroLiquido: d.lucroLiq,
         }));
 
-        const mapToChart = (key: string) =>
-            monthsData.map(d => ({ name: d.month, value: (d as any)[key] as number }));
+        const mapToChart = (key: keyof DreMonthData | 'lucroLiquido') =>
+            monthsData.map((d) => ({ name: d.month, value: d[key] }));
 
         return {
             recBruta:       mapToChart('recBruta'),
@@ -595,38 +581,7 @@ const ClientDashboard = () => {
             resultFin:      mapToChart('resultFin'),
             ebtida:         mapToChart('ebtida'),
         };
-    }, [allMonthsDre, months]);
-
-    // Dados mensais do Patrimonial para os gráficos (usando getSumByGroup — por nome de grupo)
-    const patMonthlyData = useMemo(() => {
-        const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
-        const mapGrp = (grpLabel: string) =>
-            months.map((m, i) => ({
-                name: m.substring(0, 3),
-                value: patrimonialMovements
-                    .filter(mv => mv.level === 2 && norm(mv.category || '') === norm(grpLabel))
-                    .reduce((sum, mv) => sum + (mv.values[i] || 0), 0),
-            }));
-        return {
-            ativoCirc:     mapGrp('ATIVO CIRCULANTE'),
-            ativoNaoCirc:  mapGrp('ATIVO NÃO CIRCULANTE'),
-            totalAtivo:    months.map((m, i) => ({
-                name: m.substring(0, 3),
-                value: patrimonialMovements
-                    .filter(mv => mv.level === 2 && (norm(mv.category || '') === 'ATIVO CIRCULANTE' || norm(mv.category || '') === 'ATIVO NÃO CIRCULANTE'))
-                    .reduce((sum, mv) => sum + (mv.values[i] || 0), 0),
-            })),
-            passivoCirc:   mapGrp('PASSIVO CIRCULANTE'),
-            passivoNaoCirc: mapGrp('PASSIVO NÃO CIRCULANTE'),
-            patrimonioLiq: mapGrp('PATRIMÔNIO LÍQUIDO'),
-            totalPassivo:  months.map((m, i) => ({
-                name: m.substring(0, 3),
-                value: patrimonialMovements
-                    .filter(mv => mv.level === 2 && ['PASSIVO CIRCULANTE', 'PASSIVO NÃO CIRCULANTE', 'PATRIMÔNIO LÍQUIDO'].includes(norm(mv.category || '')))
-                    .reduce((sum, mv) => sum + (mv.values[i] || 0), 0),
-            })),
-        };
-    }, [patrimonialMovements, months]);
+    })();
 
     // Factory para criar handler de upload de movimentação (DRE ou Patrimonial)
     const createMovementUploadHandler = (
@@ -663,7 +618,7 @@ const ClientDashboard = () => {
 
                     // Col 0 = Classificação, Col 1 = Nome, Cols 2-13 = Jan-Dez
                     // Col 14 = Total (ignorado), Col 15 = NÍVEL, Col 16 = DE-PARA
-                    const parseBrNumber = (v: any): number => {
+                    const parseBrNumber = (v: unknown): number => {
                         if (typeof v === 'number') return v; // .xlsx: número JS já correto
                         const s = String(v || '0').trim();
                         if (s === '' || s === '-') return 0;
@@ -756,28 +711,15 @@ const ClientDashboard = () => {
 
     const handleDreFileUpload = createMovementUploadHandler('dre', setDreMovements);
 
-    // Parser para o Balancete Patrimonial com código contábil + DE-PARA
-    // Formato: Col 0=Classificação, Col 1=Nome, Cols 2-13=Jan-Dez, Col 14=Total(ignorado), Col 15=NÍVEL, Col 16=DE-PARA
-    // A seção do balanço (Ativo Circ., Passivo Circ., PL etc.) é derivada do prefixo do código contábil
-    const handlePatrimonialFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handlePatrimonialRawFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
 
-        const toastId = 'import-patrimonial';
+        const toastId = 'import-patrimonial-raw';
         const isCSV = file.name.toLowerCase().endsWith('.csv');
 
-        // Derivar seção do balanço a partir do prefixo do código contábil
-        const getSectionFromCode = (code: string): string | null => {
-            if (code.startsWith('01.1')) return 'ATIVO CIRCULANTE';
-            if (code.startsWith('01.2')) return 'ATIVO NÃO CIRCULANTE';
-            if (code.startsWith('02.1')) return 'PASSIVO CIRCULANTE';
-            if (code.startsWith('02.2') || code.startsWith('02.3')) return 'PASSIVO NÃO CIRCULANTE';
-            if (code.startsWith('02.4')) return 'PATRIMÔNIO LÍQUIDO';
-            return null; // 03.x / 04.x = DRE — ignorar neste import
-        };
-
-        const parseBrNumber = (v: any): number => {
+        const parseBrNumber = (v: unknown): number => {
             if (typeof v === 'number') return v;
             const s = String(v || '').trim();
             if (!s || s === '-' || s.startsWith('#')) return 0;
@@ -798,66 +740,54 @@ const ClientDashboard = () => {
                     wb = XLSX.read(data8, { type: 'array' });
                 }
                 const ws = wb.Sheets[wb.SheetNames[0]];
-                const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as any[][];
+                const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as Array<Array<string | number>>;
+                const reducedCodeByClassification = new Map(
+                    accounts.map((account) => [account.classification, account.reduced_code || null])
+                );
 
-                // Agregar por (seção + DE-PARA), somando os valores mensais de todas as contas
-                // Ex: todas as contas com código 01.1.x e DE-PARA="Disponivel" → uma linha "Disponivel" no Ativo Circulante
-                const aggregated = new Map<string, number[]>();
+                const movements = rows
+                    .map((row): MovementRow | null => {
+                        const code = String(row[0] || '').trim();
+                        if (!code || !/^\d/.test(code)) return null;
+                        if (!code.startsWith('01') && !code.startsWith('02')) return null;
 
-                for (const row of rows) {
-                    const code = String(row[0] || '').trim();
-                    if (!code || !/^\d/.test(code)) continue; // pula cabeçalho e linhas sem código numérico
+                        const name = String(row[1] || '').trim();
+                        const values = row.slice(2, 14).map(parseBrNumber);
+                        while (values.length < 12) values.push(0);
 
-                    const section = getSectionFromCode(code);
-                    if (!section) continue; // ignora contas DRE (03.x, 04.x)
+                        const csvLevel = parseInt(String(row[15] || '0'));
+                        const level = csvLevel > 0 ? csvLevel : code.split('.').length;
+                        const rawCategory = String(row[16] || '').trim();
+                        const category = rawCategory && !rawCategory.startsWith('#') ? rawCategory : undefined;
 
-                    const rawDePara = String(row[16] || '').trim();
-                    if (!rawDePara || rawDePara.startsWith('#')) continue; // sem DE-PARA válido
+                        return {
+                            code,
+                            reduced_code: reducedCodeByClassification.get(code) || null,
+                            name,
+                            level,
+                            category,
+                            values: values.slice(0, 12),
+                        };
+                    })
+                    .filter((movement): movement is MovementRow => movement !== null);
 
-                    const key = `${section}::${rawDePara}`;
-                    if (!aggregated.has(key)) {
-                        aggregated.set(key, new Array(12).fill(0));
-                    }
-                    const existing = aggregated.get(key)!;
-                    for (let c = 0; c < 12; c++) {
-                        existing[c] += parseBrNumber(row[c + 2]);
-                    }
-                }
-
-                if (aggregated.size === 0) {
-                    toast.error('Nenhuma conta patrimonial encontrada. Verifique se o arquivo tem coluna DE-PARA (col. 17) e código contábil iniciando com 01 ou 02.');
+                if (movements.length === 0) {
+                    toast.error('Nenhuma conta patrimonial encontrada. Verifique se o arquivo possui contas iniciando com 01 ou 02.');
                     return;
                 }
 
-                // Converter mapa em MovementRow[] compatível com o sistema existente
-                // level=2 + category=seção → compatível com getSumByGroup e patMonthlyData
-                const movements: MovementRow[] = [];
-                for (const [key, values] of aggregated.entries()) {
-                    const sepIdx = key.indexOf('::');
-                    const section  = key.substring(0, sepIdx);
-                    const deParaName = key.substring(sepIdx + 2);
-                    movements.push({
-                        code: deParaName,
-                        name: deParaName,
-                        level: 2,
-                        category: section,
-                        values: values.slice(0, 12),
-                    });
-                }
-
-                // Persistir no banco
                 const targetClientId = clientId || client?.id;
                 if (isAccountingView && targetClientId) {
-                    toast.loading(`Salvando ${movements.length} categorias (Patrimonial)...`, { id: toastId });
+                    toast.loading(`Salvando ${movements.length} contas (Patrimonial)...`, { id: toastId });
                     const result = await movementService.bulkImport(targetClientId, selectedYear, movements, 'patrimonial');
-                    toast.success(`${result.count} categorias importadas (Patrimonial ${selectedYear})!`, { id: toastId });
+                    toast.success(`${result.count} contas importadas (Patrimonial ${selectedYear})!`, { id: toastId });
                 } else {
-                    toast.success(`${movements.length} categorias carregadas!`);
+                    toast.success(`${movements.length} contas patrimoniais carregadas!`);
                 }
 
                 setPatrimonialMovements(movements);
             } catch (error) {
-                console.error('Erro ao importar Patrimonial:', error);
+                console.error('Erro ao importar Patrimonial bruto:', error);
                 toast.error('Erro ao importar Patrimonial', { id: toastId });
             }
         };
@@ -868,16 +798,119 @@ const ClientDashboard = () => {
         }
     };
 
-    // Helper: soma contas filhas de um grupo (level 2, category === groupLabel) para um mês
-    const getSumByGroup = (groupLabel: string, monthIdx: number): number => {
-        const norm = (s: string) => s.trim().toUpperCase().replace(/\s+/g, ' ');
-        const grp = norm(groupLabel);
+    function normalizePatrimonialText(value: string): string {
+        return value
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, ' ');
+    }
+
+    function getPatrimonialSectionFromCode(code: string): string | null {
+        if (code.startsWith('01.1')) return 'ATIVO CIRCULANTE';
+        if (code.startsWith('01.2')) return 'ATIVO NÃO CIRCULANTE';
+        if (code.startsWith('02.1')) return 'PASSIVO CIRCULANTE';
+        if (code.startsWith('02.2') || code.startsWith('02.3')) return 'PASSIVO NÃO CIRCULANTE';
+        if (code.startsWith('02.4')) return 'PATRIMÔNIO LÍQUIDO';
+        return null;
+    }
+
+    function getPatrimonialLeafRows(rows: MovementRow[]): MovementRow[] {
+        const numericRows = rows.filter((row) => /^\d/.test(row.code));
+        if (numericRows.length === 0) return rows;
+        return numericRows.filter(
+            (row) =>
+                !numericRows.some(
+                    (candidate) =>
+                        candidate.code !== row.code &&
+                        candidate.code.startsWith(`${row.code}.`)
+                )
+        );
+    }
+
+    function getPatrimonialRowsByCategory(categoryLabel: string): MovementRow[] {
+        const normalizedCategory = normalizePatrimonialText(categoryLabel);
+        const codesFromPlan = new Set(
+            accounts
+                .filter(
+                    (account) =>
+                        account.report_category &&
+                        normalizePatrimonialText(account.report_category) === normalizedCategory
+                )
+                .map((account) => account.classification)
+        );
+
+        const rawMatches = patrimonialMovements.filter(
+            (movement) =>
+                /^\d/.test(movement.code) &&
+                (
+                    (movement.category &&
+                        normalizePatrimonialText(movement.category) === normalizedCategory) ||
+                    codesFromPlan.has(movement.code)
+                )
+        );
+        if (rawMatches.length > 0) return getPatrimonialLeafRows(rawMatches);
+
+        return patrimonialMovements.filter(
+            (movement) =>
+                !/^\d/.test(movement.code) &&
+                normalizePatrimonialText(movement.name).includes(normalizedCategory)
+        );
+    }
+
+    function getPatrimonialValueByCategory(categoryLabel: string, monthIdx: number): number {
+        return getPatrimonialRowsByCategory(categoryLabel)
+            .reduce((sum, movement) => sum + (movement.values[monthIdx] || 0), 0);
+    }
+
+    function getSumByGroup(groupLabel: string, monthIdx: number): number {
+        const normalizedGroup = normalizePatrimonialText(groupLabel);
+        const numericRows = patrimonialMovements.filter((movement) => /^\d/.test(movement.code));
+
+        if (numericRows.length > 0) {
+            return getPatrimonialLeafRows(
+                numericRows.filter(
+                    (movement) =>
+                        normalizePatrimonialText(getPatrimonialSectionFromCode(movement.code) || '') === normalizedGroup
+                )
+            ).reduce((sum, movement) => sum + (movement.values[monthIdx] || 0), 0);
+        }
+
         return patrimonialMovements
-            .filter(m => m.level === 2 && norm(m.category || '') === grp)
-            .reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
-    };
+            .filter(
+                (movement) =>
+                    movement.level === 2 &&
+                    normalizePatrimonialText(movement.category || '') === normalizedGroup
+            )
+            .reduce((sum, movement) => sum + (movement.values[monthIdx] || 0), 0);
+    }
 
     // Importar Plano de Contas (CSV com colunas: CLASSIFICADOR, NÍVEL, TIPO, DESCRIÇÃO, Apelido, Relatório, DESCRIÇÃO RELATÓRIO)
+    const patMonthlyDataByGroup = (() => {
+        const mapGroup = (groupLabel: string) =>
+            months.map((month, monthIdx) => ({
+                name: month.substring(0, 3),
+                value: getSumByGroup(groupLabel, monthIdx),
+            }));
+
+        return {
+            ativoCirc: mapGroup('ATIVO CIRCULANTE'),
+            ativoNaoCirc: mapGroup('ATIVO NÃO CIRCULANTE'),
+            totalAtivo: months.map((month, monthIdx) => ({
+                name: month.substring(0, 3),
+                value: getSumByGroup('ATIVO CIRCULANTE', monthIdx) + getSumByGroup('ATIVO NÃO CIRCULANTE', monthIdx),
+            })),
+            passivoCirc: mapGroup('PASSIVO CIRCULANTE'),
+            passivoNaoCirc: mapGroup('PASSIVO NÃO CIRCULANTE'),
+            patrimonioLiq: mapGroup('PATRIMÔNIO LÍQUIDO'),
+            totalPassivo: months.map((month, monthIdx) => ({
+                name: month.substring(0, 3),
+                value: getSumByGroup('PASSIVO CIRCULANTE', monthIdx) + getSumByGroup('PASSIVO NÃO CIRCULANTE', monthIdx) + getSumByGroup('PATRIMÔNIO LÍQUIDO', monthIdx),
+            })),
+        };
+    })();
+
     const handleImportPlanoDeContas = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -901,6 +934,7 @@ const ClientDashboard = () => {
                     })
                     .map(row => ({
                         code: row[0]!.toString().trim(),
+                        reduced_code: row[7]?.toString().trim() || undefined,
                         name: (row[3]?.toString().trim() || row[1]?.toString().trim() || ''),
                         level: parseInt(row[1]?.toString() || '1') || 1,
                         type: row[2]?.toString().trim() === 'T' ? 'T' : 'A',
@@ -931,6 +965,7 @@ const ClientDashboard = () => {
                 const dbAccounts = await chartOfAccountsService.getAll(targetClientId);
                 const mapped: Account[] = dbAccounts.map(a => ({
                     classification: a.code,
+                    reduced_code: a.reduced_code || undefined,
                     name: a.name.trim(),
                     values: Array(12).fill('0,00'),
                     total: '0,00',
@@ -1441,10 +1476,10 @@ const ClientDashboard = () => {
                         {(() => {
                             const d = calcDreForMonth(selectedMonthIndex);
                             const idx = selectedMonthIndex;
-                            const ativoCirc     = patMonthlyData.ativoCirc[idx]?.value    || 0;
-                            const passivoCirc   = patMonthlyData.passivoCirc[idx]?.value  || 0;
-                            const passivoNaoC   = patMonthlyData.passivoNaoCirc[idx]?.value || 0;
-                            const totalAtivo    = patMonthlyData.totalAtivo[idx]?.value   || 0;
+                            const ativoCirc     = patMonthlyDataByGroup.ativoCirc[idx]?.value    || 0;
+                            const passivoCirc   = patMonthlyDataByGroup.passivoCirc[idx]?.value  || 0;
+                            const passivoNaoC   = patMonthlyDataByGroup.passivoNaoCirc[idx]?.value || 0;
+                            const totalAtivo    = patMonthlyDataByGroup.totalAtivo[idx]?.value   || 0;
                             const liqCorr       = passivoCirc !== 0 ? ativoCirc / passivoCirc : 0;
                             const endividamento = totalAtivo  !== 0 ? ((passivoCirc + passivoNaoC) / totalAtivo) * 100 : 0;
                             const margemLiq     = d.recBruta  !== 0 ? (d.lucroLiq  / d.recBruta)   * 100 : 0;
@@ -1512,10 +1547,10 @@ const ClientDashboard = () => {
                                         setAiLoading(true);
                                         const d = calcDreForMonth(selectedMonthIndex);
                                         const idx = selectedMonthIndex;
-                                        const ativoCirc   = patMonthlyData.ativoCirc[idx]?.value    || 0;
-                                        const passivoCirc = patMonthlyData.passivoCirc[idx]?.value  || 0;
-                                        const passivoNaoC = patMonthlyData.passivoNaoCirc[idx]?.value || 0;
-                                        const totalAtivo  = patMonthlyData.totalAtivo[idx]?.value   || 0;
+                                        const ativoCirc   = patMonthlyDataByGroup.ativoCirc[idx]?.value    || 0;
+                                        const passivoCirc = patMonthlyDataByGroup.passivoCirc[idx]?.value  || 0;
+                                        const passivoNaoC = patMonthlyDataByGroup.passivoNaoCirc[idx]?.value || 0;
+                                        const totalAtivo  = patMonthlyDataByGroup.totalAtivo[idx]?.value   || 0;
                                         const body: Record<string, unknown> = {
                                             year: selectedYear,
                                             monthIndex: selectedMonthIndex,
@@ -1540,8 +1575,8 @@ const ClientDashboard = () => {
                                                 body: JSON.stringify(body),
                                             });
                                             if (!response.ok || !response.body) {
-                                                const err = await response.json().catch(() => ({}));
-                                                setAiError((err as any).message || 'Erro ao conectar com a IA');
+                                                const errorBody = await response.json().catch(() => null) as { message?: string } | null;
+                                                setAiError(errorBody?.message || 'Erro ao conectar com a IA');
                                                 setAiLoading(false);
                                                 return;
                                             }
@@ -1559,14 +1594,14 @@ const ClientDashboard = () => {
                                                     const payload = line.slice(6).trim();
                                                     if (payload === '[DONE]') break;
                                                     try {
-                                                        const parsed = JSON.parse(payload);
+                                                        const parsed = JSON.parse(payload) as { text?: string; error?: string };
                                                         if (parsed.text) setAiText(prev => prev + parsed.text);
                                                         if (parsed.error) setAiError(parsed.error);
                                                     } catch { /* ignorar */ }
                                                 }
                                             }
-                                        } catch (err: any) {
-                                            setAiError(err.message || 'Erro inesperado');
+                                        } catch (err: unknown) {
+                                            setAiError(err instanceof Error ? err.message : 'Erro inesperado');
                                         } finally {
                                             setAiLoading(false);
                                         }
@@ -1623,15 +1658,10 @@ const ClientDashboard = () => {
                 {activeTab === 'dre' && (
                     <div className="space-y-2 animate-in fade-in duration-500 pb-2">
                         <div className="flex gap-4 p-2 bg-white/5 backdrop-blur-xl border border-white/10 w-fit rounded-[20px]">
-                            {[
-                                { id: 'dre', label: 'DRE', show: true },
-                                { id: 'patrimonial', label: 'Patrimonial', show: true },
-                                { id: 'dfc', label: 'DFC', show: true },
-                                { id: 'contas', label: 'Plano de Contas', show: true },
-                            ].filter(t => t.show).map(tab => (
+                            {DRE_TABS.filter((tab) => tab.show).map((tab) => (
                                 <button
                                     key={tab.id}
-                                    onClick={() => setDreSubTab(tab.id as any)}
+                                    onClick={() => setDreSubTab(tab.id)}
                                     className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all ${dreSubTab === tab.id ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                                 >
                                     {tab.label}
@@ -1655,7 +1685,7 @@ const ClientDashboard = () => {
                                             ].map(mode => (
                                                 <button
                                                     key={mode.id}
-                                                    onClick={() => setDreViewMode(mode.id as any)}
+                                                    onClick={() => setDreViewMode(mode.id as ReportViewMode)}
                                                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${dreViewMode === mode.id ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
                                                 >
                                                     <mode.icon className="w-4 h-4" />
@@ -1936,7 +1966,7 @@ const ClientDashboard = () => {
                                             ].map(mode => (
                                                 <button
                                                     key={mode.id}
-                                                    onClick={() => setPatViewMode(mode.id as any)}
+                                                    onClick={() => setPatViewMode(mode.id as ReportViewMode)}
                                                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${patViewMode === mode.id ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
                                                 >
                                                     <mode.icon className="w-4 h-4" />
@@ -1948,7 +1978,7 @@ const ClientDashboard = () => {
                                             <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
                                                 Importar Saldo
-                                                <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handlePatrimonialFileUpload} />
+                                                <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handlePatrimonialRawFileUpload} />
                                             </label>
                                         )}
                                         <button onClick={() => handleExportPDF('Balanco_Patrimonial')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
@@ -1992,11 +2022,8 @@ const ClientDashboard = () => {
                                     };
 
                                     // Indicadores Financeiros (calculados para o mês selecionado)
-                                    const getChildVal = (childName: string): number => {
-                                        const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
-                                        const m = patrimonialMovements.find(r => r.level === 2 && norm(r.name).includes(norm(childName)));
-                                        return m ? (m.values[selectedMonthIndex] || 0) : 0;
-                                    };
+                                    const getChildVal = (childName: string): number =>
+                                        getPatrimonialValueByCategory(childName, selectedMonthIndex);
                                     const estoques      = getChildVal('Estoques');
                                     const disponivel    = getChildVal('Disponivel');
                                     const clientes      = getChildVal('Clientes');
@@ -2114,9 +2141,7 @@ const ClientDashboard = () => {
                                                                         </td>
                                                                     </tr>
                                                                     {expandedPatGroups.has(item.id) && (patGrpDef?.children ?? []).map((childName, ci) => {
-                                                                        const _n = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
-                                                                        const childRow = patrimonialMovements.find(r => r.level === 2 && _n(r.category || '') === _n(item.group) && _n(r.name) === _n(childName));
-                                                                        const childVals = months.map((_, mi) => childRow ? (childRow.values[mi] || 0) : 0);
+                                                                        const childVals = months.map((_, mi) => getPatrimonialValueByCategory(childName, mi));
                                                                         const childAccum = childVals.reduce((s, v) => s + v, 0);
                                                                         return (
                                                                             <tr key={`${idx}-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
@@ -2165,13 +2190,13 @@ const ClientDashboard = () => {
                                     if (patViewMode === 'graficos') return (
                                         <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6 animate-in zoom-in-95 duration-500 overflow-y-auto max-h-[70vh]">
                                             {[
-                                                { title: 'Ativo Circulante',       data: patMonthlyData.ativoCirc,     color: '#0ea5e9' },
-                                                { title: 'Ativo Não Circulante',   data: patMonthlyData.ativoNaoCirc,  color: '#2563eb' },
-                                                { title: 'Total do Ativo',         data: patMonthlyData.totalAtivo,    color: '#06b6d4' },
-                                                { title: 'Passivo Circulante',     data: patMonthlyData.passivoCirc,   color: '#f43f5e' },
-                                                { title: 'Passivo Não Circulante', data: patMonthlyData.passivoNaoCirc, color: '#f59e0b' },
-                                                { title: 'Patrimônio Líquido',     data: patMonthlyData.patrimonioLiq, color: '#10b981' },
-                                                { title: 'Total do Passivo',       data: patMonthlyData.totalPassivo,  color: '#8b5cf6' },
+                                                { title: 'Ativo Circulante',       data: patMonthlyDataByGroup.ativoCirc,     color: '#0ea5e9' },
+                                                { title: 'Ativo Não Circulante',   data: patMonthlyDataByGroup.ativoNaoCirc,  color: '#2563eb' },
+                                                { title: 'Total do Ativo',         data: patMonthlyDataByGroup.totalAtivo,    color: '#06b6d4' },
+                                                { title: 'Passivo Circulante',     data: patMonthlyDataByGroup.passivoCirc,   color: '#f43f5e' },
+                                                { title: 'Passivo Não Circulante', data: patMonthlyDataByGroup.passivoNaoCirc, color: '#f59e0b' },
+                                                { title: 'Patrimônio Líquido',     data: patMonthlyDataByGroup.patrimonioLiq, color: '#10b981' },
+                                                { title: 'Total do Passivo',       data: patMonthlyDataByGroup.totalPassivo,  color: '#8b5cf6' },
                                             ].map((indicator, i) => {
                                                 const currentVal = indicator.data[selectedMonthIndex]?.value || 0;
                                                 const prevVal = selectedMonthIndex > 0 ? indicator.data[selectedMonthIndex - 1]?.value : null;
@@ -2270,6 +2295,16 @@ const ClientDashboard = () => {
                                 })()}
                             </div>
                         ) : dreSubTab === 'dfc' ? (
+                            <ClientDfcSection
+                                clientId={clientId || client?.id}
+                                isAccountingView={isAccountingView}
+                                selectedYear={selectedYear}
+                                selectedMonthIndex={selectedMonthIndex}
+                                months={months}
+                                reportRef={reportRef}
+                                onExport={() => handleExportPDF('DFC')}
+                            />
+                        ) : showLegacyDfc ? (
                             <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl animate-in slide-in-from-right duration-500">
                                 {/* Cabeçalho */}
                                 <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">

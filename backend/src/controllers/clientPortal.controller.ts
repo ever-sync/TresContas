@@ -147,6 +147,7 @@ export const getClientMovements = async (req: AuthRequest, res: Response) => {
             select: {
                 id: true,
                 code: true,
+                reduced_code: true,
                 name: true,
                 level: true,
                 type: true,
@@ -177,6 +178,7 @@ export const getClientChartOfAccounts = async (req: AuthRequest, res: Response) 
             select: {
                 id: true,
                 code: true,
+                reduced_code: true,
                 name: true,
                 level: true,
                 type: true,

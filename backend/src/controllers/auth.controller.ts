@@ -26,22 +26,21 @@ export const register = async (req: Request, res: Response) => {
         const phone = rawPhone ? rawPhone.replace(/\D/g, '') : null;
 
         if (!name || !cnpj || !email || !password) {
-            return res.status(400).json({ message: 'Nome, CNPJ, email e senha são obrigatórios' });
+            return res.status(400).json({ message: 'Nome, CNPJ, email e senha sao obrigatorios' });
         }
 
         if (!isValidEmail(email)) {
-            return res.status(400).json({ message: 'Email inválido' });
+            return res.status(400).json({ message: 'Email invalido' });
         }
 
         if (phone && phone.length < 10) {
-            return res.status(400).json({ message: 'Telefone inválido' });
+            return res.status(400).json({ message: 'Telefone invalido' });
         }
 
         if (password.length < 8) {
             return res.status(400).json({ message: 'Senha deve ter pelo menos 8 caracteres' });
         }
 
-        // Check if accounting already exists
         const existingAccounting = await prisma.accounting.findFirst({
             where: {
                 OR: [{ email }, { cnpj }],
@@ -49,21 +48,19 @@ export const register = async (req: Request, res: Response) => {
         });
 
         if (existingAccounting) {
-            return res.status(400).json({ message: 'Email ou CNPJ já cadastrado' });
+            return res.status(400).json({ message: 'Email ou CNPJ ja cadastrado' });
         }
 
-        // Check if email is already used by another user
         const existingUser = await prisma.user.findUnique({
             where: { email },
         });
 
         if (existingUser) {
-            return res.status(400).json({ message: 'Email já cadastrado' });
+            return res.status(400).json({ message: 'Email ja cadastrado' });
         }
 
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        // Create Accounting + Admin User in a transaction
         const result = await prisma.$transaction(async (tx) => {
             const accounting = await tx.accounting.create({
                 data: {
@@ -115,7 +112,7 @@ export const register = async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error('Detailed Registration Error:', error);
         if (error.code === 'P2002') {
-            return res.status(400).json({ message: 'Email ou CNPJ já cadastrado no banco' });
+            return res.status(400).json({ message: 'Email ou CNPJ ja cadastrado no banco' });
         }
         res.status(500).json({ message: 'Erro ao realizar cadastro no servidor' });
     }
@@ -128,21 +125,20 @@ export const login = async (req: Request, res: Response) => {
         const password = isNonEmptyString(req.body?.password) ? req.body.password : '';
 
         if (!email || !password) {
-            return res.status(400).json({ message: 'Email e senha são obrigatórios' });
+            return res.status(400).json({ message: 'Email e senha sao obrigatorios' });
         }
 
         if (!isValidEmail(email)) {
-            return res.status(400).json({ message: 'Email inválido' });
+            return res.status(400).json({ message: 'Email invalido' });
         }
 
-        // Find user by email (includes admin and collaborator)
         const user = await prisma.user.findUnique({
             where: { email },
             include: { accounting: true },
         });
 
         if (!user) {
-            return res.status(401).json({ message: 'Credenciais inválidas' });
+            return res.status(401).json({ message: 'Credenciais invalidas' });
         }
 
         if (user.status !== 'active') {
@@ -152,7 +148,7 @@ export const login = async (req: Request, res: Response) => {
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
         if (!isPasswordValid) {
-            return res.status(401).json({ message: 'Credenciais inválidas' });
+            return res.status(401).json({ message: 'Credenciais invalidas' });
         }
 
         const token = jwt.sign(
@@ -194,37 +190,60 @@ export const clientLogin = async (req: Request, res: Response) => {
         const email = rawEmail || '';
 
         if ((!email && !cnpj) || !password) {
-            return res.status(400).json({ message: 'Email/CNPJ e senha são obrigatórios' });
+            return res.status(400).json({ message: 'Email/CNPJ e senha sao obrigatorios' });
         }
 
-        const whereConditions = [];
-        if (email) {
-            whereConditions.push({ representative_email: email });
-            whereConditions.push({ email });
-        }
-        if (cnpj) {
-            whereConditions.push({ cnpj });
-        }
+        const emailMatchesClient = (client: { email: string | null; representative_email: string | null }) =>
+            !email || client.email === email || client.representative_email === email;
 
-        if (whereConditions.length === 0) {
-            return res.status(400).json({ message: 'Email ou CNPJ inválido' });
-        }
+        let client = null;
 
-        const client = await prisma.client.findFirst({
-            where: {
-                ...(client_id ? { id: client_id } : {}),
-                OR: whereConditions as any,
-            },
-        });
+        if (client_id) {
+            const requestedClient = await prisma.client.findUnique({
+                where: { id: client_id },
+            });
+
+            if (!requestedClient || (cnpj && requestedClient.cnpj !== cnpj) || !emailMatchesClient(requestedClient)) {
+                return res.status(401).json({ message: 'Credenciais invalidas' });
+            }
+
+            client = requestedClient;
+        } else if (cnpj) {
+            const requestedClient = await prisma.client.findUnique({
+                where: { cnpj },
+            });
+
+            if (!requestedClient || !emailMatchesClient(requestedClient)) {
+                return res.status(401).json({ message: 'Credenciais invalidas' });
+            }
+
+            client = requestedClient;
+        } else {
+            const matchedClients = await prisma.client.findMany({
+                where: {
+                    OR: [{ representative_email: email }, { email }],
+                },
+                take: 2,
+                orderBy: { created_at: 'asc' },
+            });
+
+            if (matchedClients.length > 1) {
+                return res.status(409).json({
+                    message: 'Mais de um cliente encontrado para este email. Informe tambem o CNPJ.',
+                });
+            }
+
+            client = matchedClients[0] || null;
+        }
 
         if (!client) {
             console.warn('Client login: nenhum cliente encontrado para', { email, cnpj: cnpj ? '***' : '', client_id });
-            return res.status(401).json({ message: 'Credenciais inválidas' });
+            return res.status(401).json({ message: 'Credenciais invalidas' });
         }
 
         if (!client.password_hash) {
             console.warn('Client login: cliente sem senha definida:', client.id);
-            return res.status(401).json({ message: 'Senha não configurada. Solicite à sua contabilidade.' });
+            return res.status(401).json({ message: 'Senha nao configurada. Solicite a sua contabilidade.' });
         }
 
         if (client.status !== 'active') {
@@ -233,7 +252,7 @@ export const clientLogin = async (req: Request, res: Response) => {
 
         const isPasswordValid = await bcrypt.compare(password, client.password_hash);
         if (!isPasswordValid) {
-            return res.status(401).json({ message: 'Credenciais inválidas' });
+            return res.status(401).json({ message: 'Credenciais invalidas' });
         }
 
         const token = jwt.sign(

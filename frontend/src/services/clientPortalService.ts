@@ -22,6 +22,7 @@ export interface SupportTicket {
 export interface ClientMovementRow {
   id: string;
   code: string;
+  reduced_code: string | null;
   name: string;
   level: number;
   type: string;

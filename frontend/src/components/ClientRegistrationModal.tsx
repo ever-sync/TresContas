@@ -26,6 +26,20 @@ const clientSchema = z.object({
 });
 
 type ClientFormData = z.infer<typeof clientSchema>;
+type ClientUpdatePayload = Partial<Client> & { password?: string };
+
+type BrasilApiCnpjResponse = {
+  razao_social?: string;
+  cnae_fiscal_descricao?: string;
+  email?: string;
+  ddd_telefone_1?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  municipio?: string;
+  uf?: string;
+};
 
 interface Props {
   isOpen: boolean;
@@ -60,7 +74,7 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
         phone: client.phone || '',
         industry: client.industry || '',
         address: client.address || '',
-        tax_regime: (client.tax_regime as any) || 'simples',
+        tax_regime: (client.tax_regime as ClientFormData['tax_regime'] | null) || 'simples',
         password: '',
       });
     } else {
@@ -93,7 +107,7 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
       const fetchData = async () => {
         setIsFetchingCNPJ(true);
         try {
-          const response = await axios.get(`https://brasilapi.com.br/api/cnpj/v1/${rawCNPJ}`);
+          const response = await axios.get<BrasilApiCnpjResponse>(`https://brasilapi.com.br/api/cnpj/v1/${rawCNPJ}`);
           const data = response.data;
           
           if (data.razao_social) setValue('name', data.razao_social);
@@ -104,7 +118,7 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
           const fullAddress = `${data.logradouro}, ${data.numero}${data.complemento ? ' ' + data.complemento : ''}, ${data.bairro}, ${data.municipio} - ${data.uf}`;
           setValue('address', fullAddress);
           
-        } catch (error) {
+        } catch (error: unknown) {
           console.error('Erro ao buscar CNPJ:', error);
         } finally {
           setIsFetchingCNPJ(false);
@@ -120,9 +134,9 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
       await navigator.clipboard.writeText(passwordValue);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
+      } catch (err: unknown) {
+        console.error('Failed to copy text: ', err);
+      }
   };
 
   const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,12 +144,12 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
   };
 
   const onSubmit = async (data: ClientFormData) => {
-    try {
-      if (client) {
-        // Clean up data for update: if password is empty, don't send it
-        const updateData: any = { ...data };
-        if (!updateData.password) delete updateData.password;
-        await clientService.update(client.id, updateData);
+      try {
+        if (client) {
+          // Clean up data for update: if password is empty, don't send it
+          const updateData: ClientUpdatePayload = { ...data };
+          if (!updateData.password) delete updateData.password;
+          await clientService.update(client.id, updateData);
       } else {
         // Criacao: senha e obrigatoria para o cliente poder logar
         if (!data.password || data.password.length < 6) {

@@ -5,6 +5,7 @@ import prisma from '../lib/prisma';
 const accountSelect = {
     id: true,
     code: true,
+    reduced_code: true,
     name: true,
     level: true,
     type: true,
@@ -14,11 +15,8 @@ const accountSelect = {
     parent_id: true,
     is_analytic: true,
     created_at: true,
-};
+} as const;
 
-/**
- * Verify that the client belongs to the authenticated accounting firm.
- */
 const verifyClientOwnership = async (clientId: string, accountingId: string) => {
     const client = await prisma.client.findFirst({
         where: { id: clientId, accounting_id: accountingId },
@@ -27,9 +25,6 @@ const verifyClientOwnership = async (clientId: string, accountingId: string) => 
     return client !== null;
 };
 
-/**
- * GET /api/clients/:clientId/chart-of-accounts
- */
 export const getAll = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
@@ -59,9 +54,6 @@ export const getAll = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * POST /api/clients/:clientId/chart-of-accounts
- */
 export const create = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
@@ -73,8 +65,7 @@ export const create = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente não encontrado' });
         }
 
-        const { code, name, level, type, alias, report_type, report_category, parent_id } = req.body;
-
+        const { code, reduced_code, name, level, type, alias, report_type, report_category, parent_id } = req.body;
         if (!code || !name) {
             return res.status(400).json({ message: 'Código e nome são obrigatórios' });
         }
@@ -83,8 +74,9 @@ export const create = async (req: AuthRequest, res: Response) => {
             data: {
                 accounting_id: req.accountingId,
                 client_id: clientId,
-                code: code.trim(),
-                name: name.trim(),
+                code: String(code).trim(),
+                reduced_code: reduced_code ? String(reduced_code).trim() : null,
+                name: String(name).trim(),
                 level: level || 1,
                 type: type || 'A',
                 alias: alias?.trim() || null,
@@ -99,17 +91,13 @@ export const create = async (req: AuthRequest, res: Response) => {
         res.status(201).json(account);
     } catch (error: any) {
         if (error?.code === 'P2002') {
-            return res.status(400).json({ message: 'Código de conta já existe para este cliente' });
+            return res.status(400).json({ message: 'Código ou código reduzido já existe para este cliente' });
         }
         console.error('Erro ao criar conta:', error);
         res.status(500).json({ message: 'Erro ao criar conta' });
     }
 };
 
-/**
- * POST /api/clients/:clientId/chart-of-accounts/import
- * Importação em massa: substitui todo o plano de contas do cliente.
- */
 export const bulkImport = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
@@ -122,57 +110,92 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
         }
 
         const { accounts } = req.body;
-
         if (!Array.isArray(accounts) || accounts.length === 0) {
             return res.status(400).json({ message: 'Lista de contas é obrigatória' });
         }
 
-        // Validação básica
         for (const acc of accounts) {
             if (!acc.code || !acc.name) {
-                return res.status(400).json({ message: `Conta inválida: código e nome obrigatórios (código: ${acc.code || 'vazio'})` });
+                return res.status(400).json({
+                    message: `Conta inválida: código e nome obrigatórios (código: ${acc.code || 'vazio'})`,
+                });
             }
         }
 
-        // Sem transação para compatibilidade com pgBouncer
-        // Passo 1: deletar plano anterior
+        const normalizedAccounts = accounts.map((acc: any) => ({
+            code: String(acc.code).trim(),
+            reduced_code: acc.reduced_code ? String(acc.reduced_code).trim() : null,
+            name: String(acc.name).trim(),
+            level: parseInt(acc.level) || 1,
+            type: String(acc.type || 'A').trim(),
+            alias: acc.alias ? String(acc.alias).trim() : null,
+            report_type: acc.report_type ? String(acc.report_type).trim() : null,
+            report_category: acc.report_category ? String(acc.report_category).trim() : null,
+            parent_id: null,
+            is_analytic: String(acc.type || 'A').trim() !== 'T',
+        }));
+
+        const incomingCodes = normalizedAccounts.map((acc) => acc.code);
+        const batchSize = 25;
+        let totalUpserted = 0;
+
+        for (let i = 0; i < normalizedAccounts.length; i += batchSize) {
+            const batch = normalizedAccounts.slice(i, i + batchSize);
+            await Promise.all(
+                batch.map((acc) =>
+                    prisma.chartOfAccounts.upsert({
+                        where: {
+                            client_id_code: {
+                                client_id: clientId,
+                                code: acc.code,
+                            },
+                        },
+                        update: {
+                            reduced_code: acc.reduced_code,
+                            name: acc.name,
+                            level: acc.level,
+                            type: acc.type,
+                            alias: acc.alias,
+                            report_type: acc.report_type,
+                            report_category: acc.report_category,
+                            parent_id: acc.parent_id,
+                            is_analytic: acc.is_analytic,
+                        },
+                        create: {
+                            accounting_id: req.accountingId!,
+                            client_id: clientId,
+                            code: acc.code,
+                            reduced_code: acc.reduced_code,
+                            name: acc.name,
+                            level: acc.level,
+                            type: acc.type,
+                            alias: acc.alias,
+                            report_type: acc.report_type,
+                            report_category: acc.report_category,
+                            parent_id: acc.parent_id,
+                            is_analytic: acc.is_analytic,
+                        },
+                    })
+                )
+            );
+            totalUpserted += batch.length;
+        }
+
         await prisma.chartOfAccounts.deleteMany({
             where: {
                 client_id: clientId,
-                ...(req.accountingId ? { accounting_id: req.accountingId } : {}),
+                code: { notIn: incomingCodes },
             },
         });
 
-        // Passo 2: inserir novo plano em lotes de 100
-        const batchSize = 100;
-        let totalCreated = 0;
-
-        for (let i = 0; i < accounts.length; i += batchSize) {
-            const batch = accounts.slice(i, i + batchSize);
-            const created = await prisma.chartOfAccounts.createMany({
-                data: batch.map((acc: any) => ({
-                    accounting_id: req.accountingId!,
-                    client_id: clientId,
-                    code: String(acc.code).trim(),
-                    name: String(acc.name).trim(),
-                    level: parseInt(acc.level) || 1,
-                    type: String(acc.type || 'A').trim(),
-                    alias: acc.alias ? String(acc.alias).trim() : null,
-                    report_type: acc.report_type ? String(acc.report_type).trim() : null,
-                    report_category: acc.report_category ? String(acc.report_category).trim() : null,
-                    parent_id: null,
-                    is_analytic: String(acc.type || 'A').trim() !== 'T',
-                })),
-                skipDuplicates: true,
-            });
-            totalCreated += created.count;
-        }
-
         res.json({
-            message: `Plano de contas importado com sucesso`,
-            count: totalCreated,
+            message: 'Plano de contas importado com sucesso',
+            count: totalUpserted,
         });
     } catch (error: any) {
+        if (error?.code === 'P2002') {
+            return res.status(400).json({ message: 'Código ou código reduzido duplicado no plano de contas' });
+        }
         console.error('Erro ao importar plano de contas:', error);
         res.status(500).json({
             message: 'Erro ao importar plano de contas',
@@ -183,9 +206,6 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * DELETE /api/clients/:clientId/chart-of-accounts/:id
- */
 export const remove = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
@@ -213,9 +233,6 @@ export const remove = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * DELETE /api/clients/:clientId/chart-of-accounts
- */
 export const removeAll = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {

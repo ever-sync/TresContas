@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authClientMiddleware, requireRole } from '../middlewares/auth.middleware';
 import { getClientProfile, createClientSupportTicket, getClientSupportTickets, getClientChartOfAccounts, getClientMovements } from '../controllers/clientPortal.controller';
 import { analyzeFinancials } from '../controllers/aiAnalysis.controller';
+import { getPortalDfcReport } from '../controllers/dfc.controller';
 
 const router = Router();
 
@@ -13,6 +14,7 @@ router.get('/chart-of-accounts', authClientMiddleware, getClientChartOfAccounts)
 
 // Client movements — DRE e Patrimonial (read-only)
 router.get('/movements', authClientMiddleware, getClientMovements);
+router.get('/dfc', authClientMiddleware, getPortalDfcReport);
 
 // AI financial analysis (streaming SSE) — accessible by client OR accounting staff
 router.post('/ai-analysis', requireRole('admin', 'collaborator', 'client'), analyzeFinancials);

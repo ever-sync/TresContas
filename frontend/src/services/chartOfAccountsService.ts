@@ -4,6 +4,7 @@ import clientApi from './clientApi';
 export interface ChartAccount {
     id: string;
     code: string;
+    reduced_code: string | null;
     name: string;
     level: number;
     type: string;
@@ -16,6 +17,7 @@ export interface ChartAccount {
 
 export interface ImportAccount {
     code: string;
+    reduced_code?: string;
     name: string;
     level: number;
     type: string;

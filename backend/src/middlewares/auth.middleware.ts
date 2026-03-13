@@ -42,7 +42,11 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
-        const role = decoded.role ?? 'admin';
+        const role = decoded.role;
+
+        if (!role) {
+            return res.status(401).json({ message: 'Token invÃ¡lido' });
+        }
 
         if (role !== 'admin' && role !== 'collaborator') {
             return res.status(403).json({ message: 'Acesso negado' });
@@ -70,7 +74,11 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
 
         try {
             const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
-            const role = decoded.role ?? 'admin';
+            const role = decoded.role;
+
+            if (!role) {
+                return res.status(401).json({ message: 'Token invÃ¡lido' });
+            }
 
             if (!allowedRoles.includes(role)) {
                 return res.status(403).json({ message: 'Acesso negado. Permissão insuficiente.' });

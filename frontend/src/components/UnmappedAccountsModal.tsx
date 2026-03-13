@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { dreMappingService } from '../services/dreMappingService';
@@ -35,13 +35,7 @@ export const UnmappedAccountsModal: React.FC<UnmappedAccountsModalProps> = ({
 
     const validCategories = dreMappingService.getValidCategories();
 
-    useEffect(() => {
-        if (isOpen) {
-            loadUnmappedAccounts();
-        }
-    }, [isOpen, clientId, year, type]);
-
-    const loadUnmappedAccounts = async () => {
+    const loadUnmappedAccounts = useCallback(async () => {
         try {
             setIsLoading(true);
             const accounts = await dreMappingService.getUnmappedMovements(clientId, year, type);
@@ -58,13 +52,19 @@ export const UnmappedAccountsModal: React.FC<UnmappedAccountsModalProps> = ({
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [clientId, type, year]);
+
+    useEffect(() => {
+        if (isOpen) {
+            loadUnmappedAccounts();
+        }
+    }, [isOpen, loadUnmappedAccounts]);
 
     const handleSaveMappings = async () => {
         // Validar se todas as contas foram mapeadas
         const unmappedCodes = Object.entries(mappings)
-            .filter(([_, category]) => !category)
-            .map(([code, _]) => code);
+            .filter(([, category]) => !category)
+            .map(([code]) => code);
 
         if (unmappedCodes.length > 0) {
             toast.error(`${unmappedCodes.length} conta(s) ainda não foram mapeadas`);

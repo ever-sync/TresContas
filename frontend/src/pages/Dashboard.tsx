@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     Users,
     Plus,
@@ -55,7 +55,7 @@ const Dashboard = () => {
 
     const isAdmin = user?.role === 'admin';
 
-    const fetchClients = async () => {
+    const fetchClients = useCallback(async () => {
         try {
             setIsLoading(true);
             const data = await clientService.getAll();
@@ -70,11 +70,11 @@ const Dashboard = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [logout, navigate]);
 
     useEffect(() => {
         fetchClients();
-    }, []);
+    }, [fetchClients]);
 
     const handleToggleStatus = async (e: React.MouseEvent, client: Client) => {
         e.stopPropagation();
@@ -98,7 +98,7 @@ const Dashboard = () => {
         setEditingClient(null);
     };
 
-    const fetchSupportTickets = async (status?: SupportTicket['status']) => {
+    const fetchSupportTickets = useCallback(async (status?: SupportTicket['status']) => {
         try {
             setIsSupportLoading(true);
             const data = await supportService.getAll(status);
@@ -113,15 +113,15 @@ const Dashboard = () => {
         } finally {
             setIsSupportLoading(false);
         }
-    };
+    }, [logout, navigate]);
 
     useEffect(() => {
         if (activeView === 'support') {
             fetchSupportTickets(supportFilter === 'all' ? undefined : supportFilter);
         }
-    }, [activeView, supportFilter]);
+    }, [activeView, fetchSupportTickets, supportFilter]);
 
-    const fetchTeamMembers = async () => {
+    const fetchTeamMembers = useCallback(async () => {
         try {
             setIsTeamLoading(true);
             const data = await userService.getAll();
@@ -136,13 +136,13 @@ const Dashboard = () => {
         } finally {
             setIsTeamLoading(false);
         }
-    };
+    }, [logout, navigate]);
 
     useEffect(() => {
         if (activeView === 'team' || activeView === 'dashboard') {
             fetchTeamMembers();
         }
-    }, [activeView]);
+    }, [activeView, fetchTeamMembers]);
 
     const handleDeleteUser = async (userId: string) => {
         if (!confirm('Tem certeza que deseja remover este colaborador?')) return;
