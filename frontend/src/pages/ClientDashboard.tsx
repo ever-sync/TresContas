@@ -915,6 +915,22 @@ const ClientDashboard = () => {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        const isTitleType = (value: unknown) => {
+            const normalized = String(value || 'A')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toUpperCase();
+
+            return (
+                normalized === 'T' ||
+                normalized === 'S' ||
+                normalized === 'TOTAL' ||
+                normalized.includes('SINT') ||
+                normalized.includes('TIT')
+            );
+        };
+
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
@@ -937,7 +953,7 @@ const ClientDashboard = () => {
                         reduced_code: row[7]?.toString().trim() || undefined,
                         name: (row[3]?.toString().trim() || row[1]?.toString().trim() || ''),
                         level: parseInt(row[1]?.toString() || '1') || 1,
-                        type: row[2]?.toString().trim() === 'T' ? 'T' : 'A',
+                        type: isTitleType(row[2]) ? 'T' : 'A',
                         alias: row[4]?.toString().trim() || undefined,
                         report_type: row[5]?.toString().trim() || undefined,
                         report_category: row[6]?.toString().trim() || undefined,

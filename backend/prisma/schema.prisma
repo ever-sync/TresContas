@@ -109,7 +109,8 @@ model AccountingPeriod {
 
 model ChartOfAccounts {
   id              String                @id @default(uuid())
-  client_id       String
+  accounting_id   String
+  client_id       String?
   code            String
   reduced_code    String?
   name            String
@@ -118,7 +119,6 @@ model ChartOfAccounts {
   is_analytic     Boolean               @default(true)
   created_at      DateTime              @default(now())
   updated_at      DateTime              @updatedAt
-  accounting_id   String?
   level           Int                   @default(1)
   alias           String?
   report_type     String?
@@ -126,11 +126,11 @@ model ChartOfAccounts {
   is_mapped       Boolean               @default(false)
   items           AccountingEntryItem[]
   dfcLineMappings DFCLineMapping[]
-  accounting      Accounting?           @relation(fields: [accounting_id], references: [id])
-  client          Client                @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  accounting      Accounting            @relation(fields: [accounting_id], references: [id])
+  client          Client?               @relation(fields: [client_id], references: [id], onDelete: SetNull)
 
-  @@unique([client_id, code])
-  @@unique([client_id, reduced_code])
+  @@unique([accounting_id, code])
+  @@unique([accounting_id, reduced_code])
   @@index([accounting_id])
   @@index([client_id])
   @@index([code])

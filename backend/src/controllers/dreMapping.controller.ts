@@ -20,17 +20,17 @@ const VALID_DRE_CATEGORIES = [
     'Reserva De Lucros', 'Resultado Do Exercicio', 'Tributos A CompensarCP',
 ];
 
-type MappingSyncClient = Pick<typeof prisma, 'chartOfAccounts' | 'monthlyMovement'>;
+type MappingSyncClient = Pick<typeof prisma, 'chartOfAccounts' | 'monthlyMovement' | 'dREMapping'>;
 
 const syncMappingState = async (
     tx: MappingSyncClient,
-    clientId: string,
+    accountingId: string,
     accountCode: string,
     category: string | null
 ) => {
     await tx.chartOfAccounts.updateMany({
         where: {
-            client_id: clientId,
+            accounting_id: accountingId,
             code: accountCode,
         },
         data: {
@@ -41,8 +41,9 @@ const syncMappingState = async (
 
     await tx.monthlyMovement.updateMany({
         where: {
-            client_id: clientId,
+            accounting_id: accountingId,
             code: accountCode,
+            type: 'dre',
         },
         data: {
             category,
@@ -51,10 +52,22 @@ const syncMappingState = async (
     });
 };
 
-/**
- * GET /api/clients/:clientId/dre-mappings
- * Retorna todos os mapeamentos DE-PARA para um cliente.
- */
+const getSharedMappings = async (accountingId: string) => {
+    const mappings = await prisma.dREMapping.findMany({
+        where: { accounting_id: accountingId },
+        orderBy: [{ account_code: 'asc' }, { updated_at: 'desc' }],
+    });
+
+    const uniqueByCode = new Map<string, typeof mappings[number]>();
+    for (const mapping of mappings) {
+        if (!uniqueByCode.has(mapping.account_code)) {
+            uniqueByCode.set(mapping.account_code, mapping);
+        }
+    }
+
+    return Array.from(uniqueByCode.values()).sort((a, b) => a.account_code.localeCompare(b.account_code));
+};
+
 export const getDREMappings = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
@@ -64,14 +77,10 @@ export const getDREMappings = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente nao encontrado' });
         }
 
-        const mappings = await prisma.dREMapping.findMany({
-            where: { client_id: clientId },
-            orderBy: { account_code: 'asc' },
-        });
-
+        const mappings = await getSharedMappings(req.accountingId);
         res.json(mappings);
     } catch (error: any) {
-        console.error('Erro ao buscar mapeamentos DRE:', error);
+        console.error('Erro ao buscar mapeamentos DRE compartilhados:', error);
         res.status(500).json({
             message: 'Erro ao buscar mapeamentos DRE',
             detail: error?.message || String(error),
@@ -79,10 +88,6 @@ export const getDREMappings = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * POST /api/clients/:clientId/dre-mappings
- * Cria ou atualiza um mapeamento DE-PARA.
- */
 export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
@@ -93,7 +98,6 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
         }
 
         const { account_code, account_name, category } = req.body;
-
         if (!account_code || !account_name || !category) {
             return res.status(400).json({ message: 'account_code, account_name e category sao obrigatorios' });
         }
@@ -130,11 +134,11 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
                 },
             });
 
-            await syncMappingState(tx, clientId, accountCode, normalizedCategory);
+            await syncMappingState(tx, req.accountingId!, accountCode, normalizedCategory);
             return upserted;
         });
 
-        res.json({ message: 'Mapeamento DRE salvo com sucesso', mapping });
+        res.json({ message: 'Mapeamento DRE compartilhado salvo com sucesso', mapping });
     } catch (error: any) {
         console.error('Erro ao salvar mapeamento DRE:', error);
         res.status(500).json({
@@ -144,10 +148,6 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
     }
 };
 
-/**
- * DELETE /api/clients/:clientId/dre-mappings/:account_code
- * Remove um mapeamento DE-PARA.
- */
 export const deleteDREMapping = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
@@ -160,16 +160,23 @@ export const deleteDREMapping = async (req: AuthRequest, res: Response) => {
         }
 
         await prisma.$transaction(async (tx) => {
-            await tx.dREMapping.delete({
+            await tx.dREMapping.deleteMany({
                 where: {
-                    client_id_account_code: {
-                        client_id: clientId,
-                        account_code: accountCode,
-                    },
+                    accounting_id: req.accountingId!,
+                    client_id: clientId,
+                    account_code: accountCode,
                 },
             });
 
-            await syncMappingState(tx, clientId, accountCode, null);
+            const fallback = await tx.dREMapping.findFirst({
+                where: {
+                    accounting_id: req.accountingId!,
+                    account_code: accountCode,
+                },
+                orderBy: { updated_at: 'desc' },
+            });
+
+            await syncMappingState(tx, req.accountingId!, accountCode, fallback?.category || null);
         });
 
         res.json({ message: 'Mapeamento DRE removido com sucesso' });
@@ -182,10 +189,6 @@ export const deleteDREMapping = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * GET /api/clients/:clientId/unmapped-movements?year=2025&type=dre
- * Retorna movimentacoes que nao estao mapeadas no Plano de Contas.
- */
 export const getUnmappedMovements = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
@@ -226,10 +229,6 @@ export const getUnmappedMovements = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * POST /api/clients/:clientId/bulk-dre-mappings
- * Cria ou atualiza multiplos mapeamentos DE-PARA em uma unica requisicao.
- */
 export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
@@ -240,7 +239,6 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
         }
 
         const { mappings } = req.body;
-
         if (!Array.isArray(mappings) || mappings.length === 0) {
             return res.status(400).json({ message: 'mappings deve ser um array nao vazio' });
         }
@@ -294,7 +292,7 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
                             },
                         });
 
-                        await syncMappingState(tx, clientId, mapping.account_code, mapping.category);
+                        await syncMappingState(tx, req.accountingId!, mapping.account_code, mapping.category);
                     })
                 );
 
@@ -303,7 +301,7 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
         });
 
         res.json({
-            message: 'Mapeamentos DRE importados com sucesso',
+            message: 'Mapeamentos DRE compartilhados importados com sucesso',
             count: totalProcessed,
         });
     } catch (error: any) {

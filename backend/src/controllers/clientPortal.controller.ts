@@ -28,7 +28,7 @@ const clientSelect = {
 export const getClientProfile = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            return res.status(401).json({ message: 'NÃ£o autorizado' });
         }
 
         const client = await prisma.client.findUnique({
@@ -37,7 +37,7 @@ export const getClientProfile = async (req: AuthRequest, res: Response) => {
         });
 
         if (!client) {
-            return res.status(404).json({ message: 'Cliente não encontrado' });
+            return res.status(404).json({ message: 'Cliente nÃ£o encontrado' });
         }
 
         res.json(client);
@@ -46,13 +46,10 @@ export const getClientProfile = async (req: AuthRequest, res: Response) => {
     }
 };
 
-/**
- * Get support tickets for the authenticated client.
- */
 export const getClientSupportTickets = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            return res.status(401).json({ message: 'NÃ£o autorizado' });
         }
 
         const tickets = await prisma.supportTicket.findMany({
@@ -76,13 +73,10 @@ export const getClientSupportTickets = async (req: AuthRequest, res: Response) =
     }
 };
 
-/**
- * Create a support ticket as the authenticated client.
- */
 export const createClientSupportTicket = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId || !req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            return res.status(401).json({ message: 'NÃ£o autorizado' });
         }
 
         const subject = isNonEmptyString(req.body?.subject) ? req.body.subject.trim() : '';
@@ -90,11 +84,11 @@ export const createClientSupportTicket = async (req: AuthRequest, res: Response)
         const priority = isNonEmptyString(req.body?.priority) ? req.body.priority.trim() : 'medium';
 
         if (!subject || !message) {
-            return res.status(400).json({ message: 'Assunto e descrição são obrigatórios' });
+            return res.status(400).json({ message: 'Assunto e descriÃ§Ã£o sÃ£o obrigatÃ³rios' });
         }
 
         if (!isValidPriority(priority)) {
-            return res.status(400).json({ message: 'Prioridade inválida' });
+            return res.status(400).json({ message: 'Prioridade invÃ¡lida' });
         }
 
         const ticket = await prisma.supportTicket.create({
@@ -123,14 +117,10 @@ export const createClientSupportTicket = async (req: AuthRequest, res: Response)
     }
 };
 
-/**
- * GET /api/client-portal/movements?year=2025&type=dre|patrimonial
- * Retorna movimentações do cliente autenticado (leitura própria).
- */
 export const getClientMovements = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            return res.status(401).json({ message: 'NÃ£o autorizado' });
         }
 
         const year = parseInt(req.query.year as string) || new Date().getFullYear();
@@ -158,22 +148,19 @@ export const getClientMovements = async (req: AuthRequest, res: Response) => {
 
         res.json(movements);
     } catch (error) {
-        console.error('Erro ao buscar movimentações do cliente:', error);
-        res.status(500).json({ message: 'Erro ao buscar movimentações' });
+        console.error('Erro ao buscar movimentaÃ§Ãµes do cliente:', error);
+        res.status(500).json({ message: 'Erro ao buscar movimentaÃ§Ãµes' });
     }
 };
 
-/**
- * Get chart of accounts for the authenticated client.
- */
 export const getClientChartOfAccounts = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.clientId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+        if (!req.clientId || !req.accountingId) {
+            return res.status(401).json({ message: 'NÃ£o autorizado' });
         }
 
         const accounts = await prisma.chartOfAccounts.findMany({
-            where: { client_id: req.clientId },
+            where: { accounting_id: req.accountingId },
             orderBy: { code: 'asc' },
             select: {
                 id: true,
@@ -191,7 +178,7 @@ export const getClientChartOfAccounts = async (req: AuthRequest, res: Response) 
 
         res.json(accounts);
     } catch (error) {
-        console.error('Erro ao buscar plano de contas do cliente:', error);
+        console.error('Erro ao buscar plano de contas compartilhado:', error);
         res.status(500).json({ message: 'Erro ao buscar plano de contas' });
     }
 };

@@ -20,7 +20,7 @@ export const getClientDfcConfig = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente não encontrado' });
         }
 
-        const config = await getDfcConfig(clientId);
+        const config = await getDfcConfig(clientId, req.accountingId);
         res.json(config);
     } catch (error: any) {
         console.error('Erro ao buscar configuração DFC:', error);

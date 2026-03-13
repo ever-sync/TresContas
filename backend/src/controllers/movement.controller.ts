@@ -106,14 +106,21 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
         }
 
         const chartAccounts = await prisma.chartOfAccounts.findMany({
-            where: { client_id: clientId },
+            where: { accounting_id: req.accountingId },
             select: {
                 code: true,
                 reduced_code: true,
+                report_category: true,
             },
         });
-        const reducedCodeByCode = new Map(
-            chartAccounts.map((account) => [account.code.trim(), account.reduced_code])
+        const chartAccountByCode = new Map(
+            chartAccounts.map((account) => [
+                account.code.trim(),
+                {
+                    reduced_code: account.reduced_code,
+                    report_category: account.report_category,
+                },
+            ])
         );
 
         const normalizedMovements = incomingMovements.map((movement) => {
@@ -125,7 +132,12 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
 
             const code = String(movement.code).trim();
             const payloadReducedCode = movement.reduced_code ? String(movement.reduced_code).trim() : null;
-            const reducedCode = reducedCodeByCode.get(code) || payloadReducedCode || null;
+            const sharedAccount = chartAccountByCode.get(code);
+            const reducedCode = sharedAccount?.reduced_code || payloadReducedCode || null;
+            const sharedCategory = sharedAccount?.report_category ? removeDiacritics(sharedAccount.report_category) : null;
+            const resolvedCategory = movementType === 'dre'
+                ? normalizedCategory || sharedCategory
+                : normalizedCategory;
 
             return {
                 accounting_id: req.accountingId!,
@@ -136,9 +148,9 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
                 name: String(movement.name).trim(),
                 level: parseInt(String(movement.level || '1'), 10) || 1,
                 type: movementType,
-                category: normalizedCategory,
+                category: resolvedCategory,
                 values: movement.values.map((value) => parseFloat(String(value)) || 0),
-                is_mapped: !!(normalizedCategory && normalizedCategory !== '#ref' && normalizedCategory !== ''),
+                is_mapped: !!(resolvedCategory && resolvedCategory !== '#ref' && resolvedCategory !== ''),
             };
         });
 

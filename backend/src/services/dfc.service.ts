@@ -130,8 +130,35 @@ const badRequest = (message: string) => {
     return error;
 };
 
-const isTitleAccount = (account: ChartAccountRecord) =>
-    account.type === 'T' || account.is_analytic === false;
+const normalizeAccountType = (type: string) =>
+    type
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase();
+
+const isDescendantCode = (parentCode: string, candidateCode: string) =>
+    candidateCode === parentCode || candidateCode.startsWith(`${parentCode}.`);
+
+const hasDescendantAccount = (account: ChartAccountRecord, accounts: ChartAccountRecord[]) =>
+    accounts.some(
+        (candidate) =>
+            candidate.id !== account.id &&
+            isDescendantCode(account.code, candidate.code)
+    );
+
+const isTitleAccount = (account: ChartAccountRecord, accounts: ChartAccountRecord[]) => {
+    const normalizedType = normalizeAccountType(account.type || 'A');
+    return (
+        normalizedType === 'T' ||
+        normalizedType === 'S' ||
+        normalizedType === 'TOTAL' ||
+        normalizedType.includes('SINT') ||
+        normalizedType.includes('TIT') ||
+        account.is_analytic === false ||
+        hasDescendantAccount(account, accounts)
+    );
+};
 
 const getAccountBucket = (code: string): 'dre' | 'asset' | 'liability' | 'equity' | 'unknown' => {
     const normalizedCode = code.trim();
@@ -150,9 +177,6 @@ const isAccountCompatibleWithSourceType = (account: ChartAccountRecord, sourceTy
 };
 
 const isNumericCode = (code: string) => /^\d/.test(code.trim());
-
-const isDescendantCode = (parentCode: string, candidateCode: string) =>
-    candidateCode === parentCode || candidateCode.startsWith(`${parentCode}.`);
 
 const getMonthValue = (values: number[], monthIdx: number) => values[monthIdx] || 0;
 
@@ -298,10 +322,10 @@ const calculateConfiguredLineValues = (
     );
 };
 
-export const getDfcConfig = async (clientId: string): Promise<DFCConfigResponse> => {
+export const getDfcConfig = async (clientId: string, accountingId: string): Promise<DFCConfigResponse> => {
     const [accounts, mappings] = await Promise.all([
         prisma.chartOfAccounts.findMany({
-            where: { client_id: clientId },
+            where: { accounting_id: accountingId },
             orderBy: [{ code: 'asc' }],
             select: TITLE_ACCOUNT_SELECT,
         }),
@@ -321,7 +345,9 @@ export const getDfcConfig = async (clientId: string): Promise<DFCConfigResponse>
             .slice()
             .sort((a, b) => a.order - b.order)
             .map(toConfigLine),
-        eligibleAccounts: accounts.filter(isTitleAccount).map(toEligibleAccount),
+        eligibleAccounts: accounts
+            .filter((account) => isTitleAccount(account as ChartAccountRecord, accounts as ChartAccountRecord[]))
+            .map(toEligibleAccount),
         mappings: mappings.map((mapping) => toConfigMapping(mapping as PersistedMappingRecord)),
     };
 };
@@ -332,12 +358,10 @@ export const saveDfcConfig = async (
     mappingsInput: DFCConfigMappingInput[]
 ) => {
     const lineKeys = new Set(DFC_LINE_DEFINITIONS.filter((line) => line.configurable).map((line) => line.key));
-    const uniqueAccountIds = [...new Set(mappingsInput.map((mapping) => mapping.chart_account_id))];
 
     const accounts = await prisma.chartOfAccounts.findMany({
         where: {
-            client_id: clientId,
-            id: { in: uniqueAccountIds },
+            accounting_id: accountingId,
         },
         select: TITLE_ACCOUNT_SELECT,
     });
@@ -356,9 +380,9 @@ export const saveDfcConfig = async (
 
         const account = accountsById.get(mapping.chart_account_id);
         if (!account) {
-            throw badRequest(`Conta não encontrada para o cliente: ${mapping.chart_account_id}`);
+            throw badRequest(`Conta nao encontrada no plano compartilhado: ${mapping.chart_account_id}`);
         }
-        if (!isTitleAccount(account)) {
+        if (!isTitleAccount(account, accounts as ChartAccountRecord[])) {
             throw badRequest(`A conta ${account.code} precisa ser uma conta-título.`);
         }
 
@@ -395,7 +419,7 @@ export const saveDfcConfig = async (
         }),
     ]);
 
-    return getDfcConfig(clientId);
+    return getDfcConfig(clientId, accountingId);
 };
 
 export const getDfcReport = async (clientId: string, year: number): Promise<DFCReportResponse> => {
