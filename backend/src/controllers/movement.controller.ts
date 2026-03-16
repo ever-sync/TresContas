@@ -123,6 +123,24 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             ])
         );
 
+        // Inferência automática de categoria DRE pelo prefixo do código contábil
+        // Usado como último fallback quando não há DE-PARA no CSV nem report_category no plano de contas
+        const inferDreCategoryFromCode = (code: string): string | null => {
+            if (code.startsWith('03.1.01')) return 'receita bruta';
+            if (code.startsWith('03.1.02')) return 'deducoes de vendas';
+            if (code.startsWith('03.1.03')) return 'receitas financeiras';
+            if (code.startsWith('03.1.05')) return 'outras receitas';
+            if (code.startsWith('03.2'))    return 'outras receitas';
+            if (code.startsWith('04.1.01')) return 'custos das vendas';
+            if (code.startsWith('04.1.07')) return 'outras despesas';
+            if (code.startsWith('04.2.01')) return 'despesas comerciais';
+            if (code.startsWith('04.2.02')) return 'despesas administrativas';
+            if (code.startsWith('04.2.03')) return 'despesas financeiras';
+            if (code.startsWith('04.2.05')) return 'despesas tributarias';
+            if (code.startsWith('04.3'))    return 'irpj e csll';
+            return null;
+        };
+
         const normalizedMovements = incomingMovements.map((movement) => {
             let normalizedCategory = null;
             if (movement.category && movement.category !== '#REF!' && movement.category !== '#REF') {
@@ -135,8 +153,9 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             const sharedAccount = chartAccountByCode.get(code);
             const reducedCode = sharedAccount?.reduced_code || payloadReducedCode || null;
             const sharedCategory = sharedAccount?.report_category ? removeDiacritics(sharedAccount.report_category) : null;
+            const inferredCategory = movementType === 'dre' ? inferDreCategoryFromCode(code) : null;
             const resolvedCategory = movementType === 'dre'
-                ? normalizedCategory || sharedCategory
+                ? normalizedCategory || sharedCategory || inferredCategory
                 : normalizedCategory;
 
             return {
