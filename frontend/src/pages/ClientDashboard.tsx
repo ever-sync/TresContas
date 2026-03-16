@@ -655,6 +655,30 @@ const ClientDashboard = () => {
                     const ws = wb.Sheets[wsname];
                     const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as (string | number | undefined)[][];
 
+                    // Auto-detectar ano a partir dos cabeçalhos (ex: "01/2025", "02/2025")
+                    const headerRow = data[0] || [];
+                    for (let ci = 2; ci <= 13 && ci < headerRow.length; ci++) {
+                        const colHeader = String(headerRow[ci] || '').trim();
+                        const yearMatch = colHeader.match(/(\d{1,2})\/(\d{4})/);
+                        if (yearMatch) {
+                            const detectedYear = parseInt(yearMatch[2], 10);
+                            if (detectedYear !== selectedYear) {
+                                setSelectedYear(detectedYear);
+                                toast(`Ano detectado no arquivo: ${detectedYear}`, { icon: 'ℹ️', duration: 4000 });
+                            }
+                            break;
+                        }
+                    }
+                    // Usar o ano detectado (ou o selectedYear atual) para o import
+                    const importYear = (() => {
+                        for (let ci = 2; ci <= 13 && ci < headerRow.length; ci++) {
+                            const colHeader = String(headerRow[ci] || '').trim();
+                            const yearMatch = colHeader.match(/(\d{1,2})\/(\d{4})/);
+                            if (yearMatch) return parseInt(yearMatch[2], 10);
+                        }
+                        return selectedYear;
+                    })();
+
                     // Col 0 = Classificação, Col 1 = Nome, Cols 2-13 = Jan-Dez
                     // Col 14 = Total (ignorado), Col 15 = NÍVEL, Col 16 = DE-PARA
                     const parseBrNumber = (v: unknown): number => {
@@ -667,7 +691,7 @@ const ClientDashboard = () => {
                         return isNaN(result) ? 0 : result;
                     };
 
-                    const parsedMovements = (data.map(row => {
+                    const allParsedRows = (data.map(row => {
                         const code = row[0]?.toString().trim() || '';
                         if (!code || !/^\d/.test(code)) return null;
 
@@ -687,9 +711,31 @@ const ClientDashboard = () => {
                         return { code, name, level, values: values.slice(0, 12), category };
                     }).filter(m => m !== null)) as MovementRow[];
 
-                    if (parsedMovements.length === 0) {
+                    if (allParsedRows.length === 0) {
                         toast.error('Nenhuma movimentação encontrada no arquivo');
                         return;
+                    }
+
+                    // Detectar se é um "comparativo" (mistura patrimonial 01/02 + DRE 03/04)
+                    const hasPat = allParsedRows.some(m => m.code.startsWith('01') || m.code.startsWith('02'));
+                    const hasDre = allParsedRows.some(m => m.code.startsWith('03') || m.code.startsWith('04'));
+                    const isComparativo = hasPat && hasDre;
+
+                    // Separar contas por tipo
+                    let parsedMovements: MovementRow[];
+                    let patrimonialFromComparativo: MovementRow[] = [];
+
+                    if (movType === 'dre' && isComparativo) {
+                        // Filtrar apenas contas DRE (03.x, 04.x)
+                        parsedMovements = allParsedRows.filter(m => m.code.startsWith('03') || m.code.startsWith('04'));
+                        // Separar contas patrimoniais para auto-importar
+                        patrimonialFromComparativo = allParsedRows.filter(m => m.code.startsWith('01') || m.code.startsWith('02'));
+                        toast(`Comparativo detectado: ${parsedMovements.length} contas DRE + ${patrimonialFromComparativo.length} contas patrimoniais`, {
+                            icon: 'ℹ️',
+                            duration: 5000,
+                        });
+                    } else {
+                        parsedMovements = allParsedRows;
                     }
 
                     // Verifica categorias DE-PARA não reconhecidas pelo sistema (apenas para DRE)
@@ -729,12 +775,26 @@ const ClientDashboard = () => {
                     const targetClientId = clientId || client?.id;
                     if (isAccountingView && targetClientId) {
                         toast.loading(`Salvando ${parsedMovements.length} linhas (${label})...`, { id: toastId });
-                        const result = await movementService.bulkImport(targetClientId, selectedYear, parsedMovements, movType);
-                        toast.success(`${result.count} linhas importadas para ${selectedYear} (${label})!`, { id: toastId });
-                    }
+                        const result = await movementService.bulkImport(targetClientId, importYear, parsedMovements, movType);
+                        toast.success(`${result.count} linhas importadas para ${importYear} (${label})!`, { id: toastId });
 
-                    // Atualizar estado local
-                    setMovFn(parsedMovements);
+                        // Re-fetch do banco para obter categorias resolvidas pelo backend (plano de contas)
+                        const savedData = await movementService.getAll(targetClientId, importYear, movType);
+                        setMovFn(savedData as MovementRow[]);
+
+                        // Auto-importar patrimonial se comparativo detectado
+                        if (patrimonialFromComparativo.length > 0) {
+                            toast.loading(`Salvando ${patrimonialFromComparativo.length} contas patrimoniais...`, { id: 'import-pat-auto' });
+                            const patResult = await movementService.bulkImport(targetClientId, importYear, patrimonialFromComparativo, 'patrimonial');
+                            toast.success(`${patResult.count} contas patrimoniais importadas automaticamente!`, { id: 'import-pat-auto' });
+                            // Re-fetch patrimonial com dados resolvidos
+                            const savedPatData = await movementService.getAll(targetClientId, importYear, 'patrimonial');
+                            setPatrimonialMovements(savedPatData as MovementRow[]);
+                        }
+                    } else {
+                        // Sem persistência: usar dados raw
+                        setMovFn(parsedMovements);
+                    }
                 } catch (error) {
                     console.error(`Erro ao importar ${label}:`, error);
                     toast.error(`Erro ao importar ${label}`, { id: toastId });
@@ -780,6 +840,22 @@ const ClientDashboard = () => {
                 }
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as Array<Array<string | number>>;
+
+                // Auto-detectar ano a partir dos cabeçalhos (ex: "01/2025", "02/2025")
+                const patHeaderRow = rows[0] || [];
+                const patImportYear = (() => {
+                    for (let ci = 2; ci <= 13 && ci < patHeaderRow.length; ci++) {
+                        const colHeader = String(patHeaderRow[ci] || '').trim();
+                        const yearMatch = colHeader.match(/(\d{1,2})\/(\d{4})/);
+                        if (yearMatch) return parseInt(yearMatch[2], 10);
+                    }
+                    return selectedYear;
+                })();
+                if (patImportYear !== selectedYear) {
+                    setSelectedYear(patImportYear);
+                    toast(`Ano detectado no arquivo: ${patImportYear}`, { icon: 'ℹ️', duration: 4000 });
+                }
+
                 const reducedCodeByClassification = new Map(
                     accounts.map((account) => [account.classification, account.reduced_code || null])
                 );
@@ -818,8 +894,8 @@ const ClientDashboard = () => {
                 const targetClientId = clientId || client?.id;
                 if (isAccountingView && targetClientId) {
                     toast.loading(`Salvando ${movements.length} contas (Patrimonial)...`, { id: toastId });
-                    const result = await movementService.bulkImport(targetClientId, selectedYear, movements, 'patrimonial');
-                    toast.success(`${result.count} contas importadas (Patrimonial ${selectedYear})!`, { id: toastId });
+                    const result = await movementService.bulkImport(targetClientId, patImportYear, movements, 'patrimonial');
+                    toast.success(`${result.count} contas importadas (Patrimonial ${patImportYear})!`, { id: toastId });
                 } else {
                     toast.success(`${movements.length} contas patrimoniais carregadas!`);
                 }
@@ -1458,7 +1534,7 @@ const ClientDashboard = () => {
                                         ].filter(p => p.value > 0);
                                         return (
                                             <div className="flex-1 min-h-[220px]">
-                                                <ResponsiveContainer width="100%" height="100%">
+                                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                                     <RechartsPie>
                                                         <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
                                                             {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="transparent" />)}
@@ -1483,7 +1559,7 @@ const ClientDashboard = () => {
                                         </div>
                                     </div>
                                     <div className="flex-1 min-h-[220px]">
-                                        <ResponsiveContainer width="100%" height="100%">
+                                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                             <AreaChart data={months.map((m, i) => {
                                                 const d = allMonthsDre[i];
                                                 return { name: m.substring(0, 3), receita: d?.recBruta || 0, despesa: (d?.custos || 0) + (d?.despAdm || 0) + (d?.despCom || 0) + (d?.despTrib || 0) + (d?.despFin || 0) };
@@ -1588,7 +1664,7 @@ const ClientDashboard = () => {
                             <h4 className="text-white font-bold mb-1">Evolução das Margens</h4>
                             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Margem bruta, líquida e EBITDA ao longo do ano (%)</p>
                             <div className="h-[260px]">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <LineChart data={allMonthsDre.map((d, i) => ({
                                         name: months[i].substring(0, 3),
                                         margemBruta:  d.recLiquida !== 0 ? parseFloat(((d.lucroBruto / d.recLiquida) * 100).toFixed(2)) : 0,
@@ -1617,7 +1693,7 @@ const ClientDashboard = () => {
                             <h4 className="text-white font-bold mb-1">Para onde vai o dinheiro</h4>
                             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Distribuição da receita bruta por mês</p>
                             <div className="h-[280px]">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <BarChart data={allMonthsDre.map((d, i) => ({
                                         name: months[i].substring(0, 3),
                                         deducoes:  Math.abs(d.deducoes),
@@ -2065,7 +2141,7 @@ const ClientDashboard = () => {
                                                     </div>
                                                     
                                                     <div className="h-32 -mx-2">
-                                                        <ResponsiveContainer width="100%" height="100%">
+                                                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                                             <AreaChart data={indicator.data}>
                                                                 <defs>
                                                                     <linearGradient id={`grad-${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -2426,7 +2502,7 @@ const ClientDashboard = () => {
                                                             </div>
                                                         </div>
                                                         <div className="h-32 -mx-2">
-                                                            <ResponsiveContainer width="100%" height="100%">
+                                                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                                                 <AreaChart data={indicator.data}>
                                                                     <defs>
                                                                         <linearGradient id={`pat-grad-${i}`} x1="0" y1="0" x2="0" y2="1">
