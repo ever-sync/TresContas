@@ -80,6 +80,11 @@ const makeLocalId = () =>
 const stripAccents = (s: string) =>
     s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
+// Converte key para o formato esperado pelo backend (Title Case, sem acentos)
+// Ex: 'deducoes de vendas' → 'Deducoes De Vendas'
+const toBackendCategory = (key: string) =>
+    key.replace(/\b\w/g, (c) => c.toUpperCase());
+
 // ─── Component ──────────────────────────────────────────────────────────────
 export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }) => {
     const [loading, setLoading] = useState(true);
@@ -205,7 +210,7 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                     mappings: draftMappings.map((m) => ({
                         account_code: m.account_code,
                         account_name: m.account_name,
-                        category: categoryLabel(m.category),
+                        category: toBackendCategory(m.category),
                     })),
                 });
             }
@@ -228,12 +233,12 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
             if (code.startsWith('03.1.03')) return 'receitas financeiras';
             if (code.startsWith('03.1.05')) return 'outras receitas';
             if (code.startsWith('03.2'))    return 'outras receitas';
-            if (code.startsWith('04.1.01')) return 'custos das vendas';
-            if (code.startsWith('04.1.07')) return 'outras despesas';
+            if (code.startsWith('04.1'))    return 'custos das vendas';
             if (code.startsWith('04.2.01')) return 'despesas comerciais';
             if (code.startsWith('04.2.02')) return 'despesas administrativas';
             if (code.startsWith('04.2.03')) return 'despesas financeiras';
             if (code.startsWith('04.2.05')) return 'despesas tributarias';
+            if (code.startsWith('04.2'))    return 'outras despesas';
             if (code.startsWith('04.3'))    return 'irpj e csll';
             return null;
         };
