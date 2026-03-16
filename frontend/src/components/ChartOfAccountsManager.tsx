@@ -21,9 +21,10 @@ const normalizeSpreadsheetHeader = (value: unknown) =>
 
 const findSpreadsheetColumn = (headers: string[], aliases: string[]) => {
     const normalizedAliases = aliases.map(normalizeSpreadsheetHeader);
-    return headers.findIndex((header) =>
-        normalizedAliases.some((alias) => header === alias || header.includes(alias))
-    );
+    return headers.findIndex((header) => {
+        if (!header) return false;
+        return normalizedAliases.some((alias) => header === alias || header.includes(alias));
+    });
 };
 
 const looksLikeAccountClassifier = (value: unknown) =>
