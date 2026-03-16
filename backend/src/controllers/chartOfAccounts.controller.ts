@@ -160,7 +160,7 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
         }
 
         const incomingCodes = normalizedAccounts.map((account) => account.code);
-        const batchSize = 25;
+        const batchSize = 50;
         let totalUpserted = 0;
 
         await prisma.$transaction(async (tx) => {
@@ -204,7 +204,7 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
                     code: { notIn: incomingCodes },
                 },
             });
-        });
+        }, { timeout: 120000 }); // 2 min para planos grandes (3000+ contas)
 
         res.json({
             message: 'Plano de contas compartilhado importado com sucesso',

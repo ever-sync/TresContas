@@ -98,20 +98,29 @@ export const ChartOfAccountsManager = ({
                 const rawHeaders = (data[0] || []).map(normalizeSpreadsheetHeader);
                 const rows = data.slice(1);
 
-                const codeColumn = findSpreadsheetColumn(rawHeaders, [
+                // Prioridade: 'classificacao' é o código hierárquico (01.1.01.01.0001)
+                // 'codigo' sozinho pode ser o numérico/reduzido (10000)
+                const classificacaoColumn = findSpreadsheetColumn(rawHeaders, [
                     'classificador',
                     'classificacao',
+                ]);
+                const codigoColumn = findSpreadsheetColumn(rawHeaders, [
                     'codigo da conta',
                     'conta contabil',
                     'codigo contabil',
                     'codigo',
                 ]);
-                const reducedCodeColumn = findSpreadsheetColumn(rawHeaders, [
-                    'codigo reduzido',
-                    'cod reduzido',
-                    'reduzido',
-                    'reduced_code',
-                ]);
+                // Se achou 'classificacao', ele é o code; 'codigo' vira reduced_code
+                // Se só achou 'codigo', ele é o code
+                const codeColumn = classificacaoColumn >= 0 ? classificacaoColumn : codigoColumn;
+                const reducedCodeColumn = classificacaoColumn >= 0 && codigoColumn >= 0 && codigoColumn !== classificacaoColumn
+                    ? codigoColumn
+                    : findSpreadsheetColumn(rawHeaders, [
+                        'codigo reduzido',
+                        'cod reduzido',
+                        'reduzido',
+                        'reduced_code',
+                    ]);
                 const levelColumn = findSpreadsheetColumn(rawHeaders, ['nivel']);
                 const typeColumn = findSpreadsheetColumn(rawHeaders, ['tipo']);
                 const nameColumn = findSpreadsheetColumn(rawHeaders, [
