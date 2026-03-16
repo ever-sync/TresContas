@@ -688,12 +688,22 @@ const ClientDashboard = () => {
                     // Col 14 = Total (ignorado), Col 15 = NÍVEL, Col 16 = DE-PARA
                     const parseBrNumber = (v: unknown): number => {
                         if (typeof v === 'number') return v; // .xlsx: número JS já correto
-                        const s = String(v || '0').trim();
+                        let s = String(v || '0').trim();
                         if (s === '' || s === '-') return 0;
+                        // Detectar negativo: parênteses = negativo no formato contábil BR
+                        let negative = false;
+                        if (s.startsWith('(') && s.endsWith(')')) {
+                            negative = true;
+                            s = s.slice(1, -1).trim();
+                        } else if (s.startsWith('-')) {
+                            negative = true;
+                            s = s.slice(1).trim();
+                        }
                         // Formato BR: remove pontos de milhar, troca vírgula decimal por ponto
                         const cleaned = s.replace(/\./g, '').replace(',', '.');
                         const result = parseFloat(cleaned);
-                        return isNaN(result) ? 0 : result;
+                        if (isNaN(result)) return 0;
+                        return negative ? -result : result;
                     };
 
                     const allParsedRows = (data.map(row => {
@@ -825,11 +835,21 @@ const ClientDashboard = () => {
 
         const parseBrNumber = (v: unknown): number => {
             if (typeof v === 'number') return v;
-            const s = String(v || '').trim();
+            let s = String(v || '').trim();
             if (!s || s === '-' || s.startsWith('#')) return 0;
+            // Detectar negativo: parênteses = negativo no formato contábil BR
+            let negative = false;
+            if (s.startsWith('(') && s.endsWith(')')) {
+                negative = true;
+                s = s.slice(1, -1).trim();
+            } else if (s.startsWith('-')) {
+                negative = true;
+                s = s.slice(1).trim();
+            }
             const cleaned = s.replace(/\./g, '').replace(',', '.');
             const result = parseFloat(cleaned);
-            return isNaN(result) ? 0 : result;
+            if (isNaN(result)) return 0;
+            return negative ? -result : result;
         };
 
         const reader = new FileReader();

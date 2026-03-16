@@ -105,6 +105,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             }
         }
 
+        // Buscar plano de contas universal da contabilidade
         const chartAccounts = await prisma.chartOfAccounts.findMany({
             where: { accounting_id: req.accountingId },
             select: {
@@ -123,20 +124,33 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             ])
         );
 
+        // Buscar mapeamentos DRE configurados na tela de parametrização (prioridade máxima)
+        const dreMappings = movementType === 'dre'
+            ? await prisma.dREMapping.findMany({
+                where: { client_id: clientId },
+                select: { account_code: true, category: true },
+            })
+            : [];
+        const dreMappingByCode = new Map(
+            dreMappings.map((m) => [m.account_code.trim(), m.category])
+        );
+
         // Inferência automática de categoria DRE pelo prefixo do código contábil
         // Usado como último fallback quando não há DE-PARA no CSV nem report_category no plano de contas
         const inferDreCategoryFromCode = (code: string): string | null => {
+            // 03 - RECEITAS
             if (code.startsWith('03.1.01')) return 'receita bruta';
             if (code.startsWith('03.1.02')) return 'deducoes de vendas';
             if (code.startsWith('03.1.03')) return 'receitas financeiras';
             if (code.startsWith('03.1.05')) return 'outras receitas';
             if (code.startsWith('03.2'))    return 'outras receitas';
-            if (code.startsWith('04.1.01')) return 'custos das vendas';
-            if (code.startsWith('04.1.07')) return 'outras despesas';
+            // 04 - CUSTOS E DESPESAS
+            if (code.startsWith('04.1'))    return 'custos das vendas';   // 04.1.01, 04.1.02, etc
             if (code.startsWith('04.2.01')) return 'despesas comerciais';
             if (code.startsWith('04.2.02')) return 'despesas administrativas';
             if (code.startsWith('04.2.03')) return 'despesas financeiras';
             if (code.startsWith('04.2.05')) return 'despesas tributarias';
+            if (code.startsWith('04.2'))    return 'outras despesas';     // qualquer 04.2 não mapeado acima
             if (code.startsWith('04.3'))    return 'irpj e csll';
             return null;
         };
@@ -152,10 +166,17 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             const payloadReducedCode = movement.reduced_code ? String(movement.reduced_code).trim() : null;
             const sharedAccount = chartAccountByCode.get(code);
             const reducedCode = sharedAccount?.reduced_code || payloadReducedCode || null;
+
+            // Prioridade de resolução de categoria DRE:
+            // 1. Mapeamento configurado na tela de parametrização (DREMapping)
+            // 2. Categoria vinda do CSV (DE-PARA)
+            // 3. report_category do plano de contas compartilhado
+            // 4. Inferência automática pelo prefixo do código
+            const configuredCategory = dreMappingByCode.get(code) || null;
             const sharedCategory = sharedAccount?.report_category ? removeDiacritics(sharedAccount.report_category) : null;
             const inferredCategory = movementType === 'dre' ? inferDreCategoryFromCode(code) : null;
             const resolvedCategory = movementType === 'dre'
-                ? normalizedCategory || sharedCategory || inferredCategory
+                ? configuredCategory || normalizedCategory || sharedCategory || inferredCategory
                 : normalizedCategory;
 
             return {
