@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 import api from '../services/api';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -357,11 +358,12 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                                             </div>
                                         ) : (
                                             lineMappings.map((mapping) => {
-                                                // Show: this mapping's account + all unmapped accounts
-                                                const selectOptions = [
-                                                    dreAccounts.find((a) => a.code === mapping.account_code),
-                                                    ...unmappedAccounts,
-                                                ].filter((a): a is DreAccount => !!a);
+                                                // Show: all DRE accounts (for search)
+                                                const allOptions: AccountOption[] = dreAccounts.map((a) => ({
+                                                    id: a.code,
+                                                    code: a.code,
+                                                    name: a.name,
+                                                }));
 
                                                 return (
                                                     <div
@@ -372,26 +374,12 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                                                             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/35">
                                                                 Conta
                                                             </label>
-                                                            <select
+                                                            <SearchableAccountSelect
+                                                                options={allOptions}
                                                                 value={mapping.account_code}
-                                                                onChange={(e) =>
-                                                                    updateMappingAccount(mapping.localId, e.target.value)
-                                                                }
-                                                                className="w-full rounded-xl bg-[#0d1829] border border-white/10 text-white text-sm px-4 py-3 outline-none"
-                                                            >
-                                                                {selectOptions.map((a) => (
-                                                                    <option
-                                                                        key={a.code}
-                                                                        value={a.code}
-                                                                        className="bg-[#0d1829]"
-                                                                    >
-                                                                        {a.code} • {a.name}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                            <div className="text-xs text-white/45 font-mono">
-                                                                Código: {mapping.account_code}
-                                                            </div>
+                                                                onChange={(code) => updateMappingAccount(mapping.localId, code)}
+                                                                placeholder="Buscar conta DRE..."
+                                                            />
                                                         </div>
                                                         <button
                                                             onClick={() => removeMapping(mapping.localId)}

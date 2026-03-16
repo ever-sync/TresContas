@@ -9,6 +9,7 @@ import {
     Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 import {
     clientPortalDfcService,
     dfcService,
@@ -483,17 +484,17 @@ export const ClientDfcSection = ({
                                                                         <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/35">
                                                                             Conta-título
                                                                         </label>
-                                                                        <select
+                                                                        <SearchableAccountSelect
+                                                                            options={selectAccounts.map((account): AccountOption => ({
+                                                                                id: account.id,
+                                                                                code: account.code,
+                                                                                name: account.name,
+                                                                                reducedCode: account.reduced_code,
+                                                                            }))}
                                                                             value={mapping.chart_account_id}
-                                                                            onChange={(event) => updateMapping(mapping.localId, { chart_account_id: event.target.value })}
-                                                                            className="w-full rounded-xl bg-[#0d1829] border border-white/10 text-white text-sm px-4 py-3 outline-none"
-                                                                        >
-                                                                            {selectAccounts.map((account) => (
-                                                                                <option key={account.id} value={account.id} className="bg-[#0d1829]">
-                                                                                    {account.code} {account.reduced_code ? `• ${account.reduced_code}` : ''} • {account.name}
-                                                                                </option>
-                                                                            ))}
-                                                                        </select>
+                                                                            onChange={(id) => updateMapping(mapping.localId, { chart_account_id: id })}
+                                                                            placeholder="Buscar conta-título..."
+                                                                        />
                                                                         {selectedAccount ? (
                                                                             <div className="text-xs text-white/45 font-mono">
                                                                                 Código: {selectedAccount.code} {selectedAccount.reduced_code ? `• Reduzido: ${selectedAccount.reduced_code}` : ''}
