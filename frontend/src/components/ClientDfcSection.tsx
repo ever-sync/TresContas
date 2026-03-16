@@ -455,8 +455,19 @@ export const ClientDfcSection = ({
                                                 </div>
                                                 <div className="space-y-3">
                                                     {(mappingsByLine[line.key] || []).length === 0 ? (
-                                                        <div className="rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-5 text-sm text-white/35">
-                                                            Nenhuma conta configurada nesta linha.
+                                                        <div className="rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-5">
+                                                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                                                <div className="text-sm text-white/35">
+                                                                    Nenhuma conta configurada nesta linha.
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => handleAddMapping(line.key)}
+                                                                    className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300 text-xs font-bold uppercase tracking-[0.15em]"
+                                                                >
+                                                                    <Plus className="w-4 h-4" />
+                                                                    Adicionar conta
+                                                                </button>
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         (mappingsByLine[line.key] || []).map((mapping) => {

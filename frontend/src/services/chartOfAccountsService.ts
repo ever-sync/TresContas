@@ -28,6 +28,30 @@ export interface ImportAccount {
 
 /** Staff-side service (uses accounting auth token) */
 export const chartOfAccountsService = {
+    getSharedAll: async (): Promise<ChartAccount[]> => {
+        const response = await api.get('/chart-of-accounts');
+        return response.data;
+    },
+
+    bulkImportShared: async (accounts: ImportAccount[]): Promise<{ message: string; count: number }> => {
+        const response = await api.post('/chart-of-accounts/import', { accounts });
+        return response.data;
+    },
+
+    createShared: async (data: ImportAccount): Promise<ChartAccount> => {
+        const response = await api.post('/chart-of-accounts', data);
+        return response.data;
+    },
+
+    removeShared: async (id: string): Promise<void> => {
+        await api.delete(`/chart-of-accounts/${id}`);
+    },
+
+    removeAllShared: async (): Promise<{ message: string; count: number }> => {
+        const response = await api.delete('/chart-of-accounts');
+        return response.data;
+    },
+
     getAll: async (clientId: string): Promise<ChartAccount[]> => {
         const response = await api.get(`/clients/${clientId}/chart-of-accounts`);
         return response.data;

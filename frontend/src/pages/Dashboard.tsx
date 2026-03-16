@@ -27,11 +27,14 @@ import { useNavigate } from 'react-router-dom';
 import { clientService } from '../services/clientService';
 import type { Client } from '../services/clientService';
 import { supportService } from '../services/supportService';
-import type { SupportTicket } from '../services/supportService';
+import type { SupportTicket, SupportTicketMessage } from '../services/supportService';
 import { userService } from '../services/userService';
 import type { User as TeamUser } from '../services/userService';
 import { ClientRegistrationModal } from '../components/ClientRegistrationModal';
 import { UserModal } from '../components/UserModal';
+import { ChartOfAccountsManager } from '../components/ChartOfAccountsManager';
+import { StaffClientDocumentsManager } from '../components/StaffClientDocumentsManager';
+import SupportTicketDetailPanel from '../components/support/SupportTicketDetailPanel';
 
 const Dashboard = () => {
     const { user, logout } = useAuthStore();
@@ -42,10 +45,15 @@ const Dashboard = () => {
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
-    const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'support' | 'team'>('dashboard');
+    const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team'>('dashboard');
     const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
     const [isSupportLoading, setIsSupportLoading] = useState(false);
     const [supportFilter, setSupportFilter] = useState<'open' | 'in_progress' | 'closed' | 'all'>('open');
+    const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
+    const [supportMessages, setSupportMessages] = useState<SupportTicketMessage[]>([]);
+    const [isSupportMessagesLoading, setIsSupportMessagesLoading] = useState(false);
+    const [supportReplyDraft, setSupportReplyDraft] = useState('');
+    const [isSubmittingSupportReply, setIsSubmittingSupportReply] = useState(false);
 
     // Team management state
     const [teamMembers, setTeamMembers] = useState<TeamUser[]>([]);
@@ -98,10 +106,10 @@ const Dashboard = () => {
         setEditingClient(null);
     };
 
-    const fetchSupportTickets = useCallback(async (status?: SupportTicket['status']) => {
+    const fetchSupportTickets = useCallback(async () => {
         try {
             setIsSupportLoading(true);
-            const data = await supportService.getAll(status);
+            const data = await supportService.getAll();
             setSupportTickets(data);
         } catch (error) {
             if (axios.isAxiosError(error) && error.response?.status === 401) {
@@ -117,9 +125,9 @@ const Dashboard = () => {
 
     useEffect(() => {
         if (activeView === 'support') {
-            fetchSupportTickets(supportFilter === 'all' ? undefined : supportFilter);
+            fetchSupportTickets();
         }
-    }, [activeView, fetchSupportTickets, supportFilter]);
+    }, [activeView, fetchSupportTickets]);
 
     const fetchTeamMembers = useCallback(async () => {
         try {
@@ -170,12 +178,90 @@ const Dashboard = () => {
 
     const filteredTickets = supportTickets.filter(ticket => {
         const term = searchTerm.toLowerCase();
-        return (
+        const matchesSearch = (
             ticket.subject.toLowerCase().includes(term) ||
+            ticket.message.toLowerCase().includes(term) ||
             ticket.client.name.toLowerCase().includes(term) ||
             ticket.client.cnpj.includes(term)
         );
+        const matchesStatus = supportFilter === 'all' || ticket.status === supportFilter;
+        return matchesSearch && matchesStatus;
     });
+
+    const selectedSupportTicket = filteredTickets.find((ticket) => ticket.id === selectedSupportTicketId)
+        || supportTickets.find((ticket) => ticket.id === selectedSupportTicketId)
+        || null;
+
+    useEffect(() => {
+        if (activeView !== 'support') return;
+
+        if (!filteredTickets.length) {
+            setSelectedSupportTicketId(null);
+            setSupportMessages([]);
+            return;
+        }
+
+        const stillVisible = filteredTickets.some((ticket) => ticket.id === selectedSupportTicketId);
+        if (!selectedSupportTicketId || !stillVisible) {
+            setSelectedSupportTicketId(filteredTickets[0].id);
+        }
+    }, [activeView, filteredTickets, selectedSupportTicketId]);
+
+    const fetchSupportMessages = useCallback(async (ticketId: string) => {
+        try {
+            setIsSupportMessagesLoading(true);
+            const data = await supportService.getMessages(ticketId);
+            setSupportMessages(data);
+        } catch (error) {
+            console.error('Error fetching support messages:', error);
+            toast.error('Erro ao carregar conversa do chamado');
+        } finally {
+            setIsSupportMessagesLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeView !== 'support' || !selectedSupportTicketId) return;
+        fetchSupportMessages(selectedSupportTicketId);
+    }, [activeView, selectedSupportTicketId, fetchSupportMessages]);
+
+    useEffect(() => {
+        setSupportReplyDraft('');
+    }, [selectedSupportTicketId]);
+
+    const handleSupportStatusChange = async (ticketId: string, status: SupportTicket['status']) => {
+        try {
+            await supportService.updateStatus(ticketId, status);
+            toast.success('Status atualizado');
+            await fetchSupportTickets();
+        } catch (error) {
+            console.error('Error updating support ticket status:', error);
+            toast.error('Erro ao atualizar status do chamado');
+        }
+    };
+
+    const handleSupportReply = async () => {
+        if (!selectedSupportTicketId || !supportReplyDraft.trim()) {
+            toast.error('Escreva a resposta antes de enviar');
+            return;
+        }
+
+        try {
+            setIsSubmittingSupportReply(true);
+            await supportService.reply(selectedSupportTicketId, supportReplyDraft.trim());
+            setSupportReplyDraft('');
+            await Promise.all([
+                fetchSupportMessages(selectedSupportTicketId),
+                fetchSupportTickets(),
+            ]);
+            toast.success('Resposta enviada');
+        } catch (error) {
+            console.error('Error replying support ticket:', error);
+            toast.error('Erro ao enviar resposta');
+        } finally {
+            setIsSubmittingSupportReply(false);
+        }
+    };
 
     // Get current greeting based on time
     const getGreeting = () => {
@@ -251,7 +337,26 @@ const Dashboard = () => {
                     <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Relatórios">
                         <BarChart3 className="w-5 h-5" />
                     </button>
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Documentos">
+                    <button
+                        onClick={() => setActiveView('chartOfAccounts')}
+                        title="Plano de Contas"
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
+                            activeView === 'chartOfAccounts'
+                                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
+                                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
+                        }`}
+                    >
+                        <FileText className="w-5 h-5" />
+                    </button>
+                    <button
+                        onClick={() => setActiveView('documents')}
+                        title="Documentos"
+                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
+                            activeView === 'documents'
+                                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
+                                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
+                        }`}
+                    >
                         <FileText className="w-5 h-5" />
                     </button>
                     <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Configurações">
@@ -280,7 +385,17 @@ const Dashboard = () => {
                 <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-[#0a1628]/60 backdrop-blur-xl sticky top-0 z-40">
                     <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-white">
-                            {activeView === 'dashboard' ? 'Dashboard' : activeView === 'clients' ? 'Clientes' : activeView === 'team' ? 'Equipe' : 'Suporte'}
+                            {activeView === 'dashboard'
+                                ? 'Dashboard'
+                                : activeView === 'clients'
+                                ? 'Clientes'
+                                : activeView === 'chartOfAccounts'
+                                ? 'Plano de Contas'
+                                : activeView === 'documents'
+                                ? 'Documentos'
+                                : activeView === 'team'
+                                ? 'Equipe'
+                                : 'Suporte'}
                         </h1>
                     </div>
 
@@ -289,7 +404,13 @@ const Dashboard = () => {
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                         <input
                             type="text"
-                            placeholder={activeView === 'support' ? 'Buscar chamado, cliente...' : 'Buscar cliente, CNPJ...'}
+                            placeholder={activeView === 'support'
+                                ? 'Buscar chamado, cliente...'
+                                : activeView === 'chartOfAccounts'
+                                ? 'Buscar conta, codigo ou apelido...'
+                                : activeView === 'documents'
+                                ? 'Buscar arquivo, categoria ou cliente...'
+                                : 'Buscar cliente, CNPJ...'}
                             className="w-full bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl py-3 pl-11 pr-20 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -536,13 +657,17 @@ const Dashboard = () => {
                                 )}
                             </div>
                         </div>
+                    ) : activeView === 'chartOfAccounts' ? (
+                        <ChartOfAccountsManager searchTerm={searchTerm} />
+                    ) : activeView === 'documents' ? (
+                        <StaffClientDocumentsManager searchTerm={searchTerm} />
                     ) : activeView === 'support' ? (
                         /* SUPPORT VIEW */
                         <div className="space-y-6 animate-in fade-in duration-300">
                             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                                 <div>
                                     <h2 className="text-3xl font-bold text-white">Chamados de Suporte</h2>
-                                    <p className="text-slate-400">Acompanhe e responda os pedidos dos seus clientes</p>
+                                    <p className="text-slate-400">Triagem, andamento e conversa com cada cliente no mesmo fluxo.</p>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                     {(['open', 'in_progress', 'closed', 'all'] as const).map((filter) => (
@@ -583,7 +708,7 @@ const Dashboard = () => {
                             <div className="bg-[#0d1829]/80 backdrop-blur-xl rounded-2xl border border-white/5 overflow-hidden">
                                 <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
                                     <h3 className="text-white font-semibold">Chamados recentes</h3>
-                                    <span className="text-xs text-slate-500">{supportTickets.length} chamados</span>
+                                    <span className="text-xs text-slate-500">{filteredTickets.length} chamados</span>
                                 </div>
                                 <div className="divide-y divide-white/5">
                                     {isSupportLoading ? (
@@ -594,7 +719,13 @@ const Dashboard = () => {
                                         </div>
                                     ) : filteredTickets.length > 0 ? (
                                         filteredTickets.map((ticket) => (
-                                            <div key={ticket.id} className="px-6 py-5 hover:bg-white/5 transition-all">
+                                            <div
+                                                key={ticket.id}
+                                                onClick={() => setSelectedSupportTicketId(ticket.id)}
+                                                className={`px-6 py-5 transition-all cursor-pointer ${
+                                                    ticket.id === selectedSupportTicketId ? 'bg-cyan-500/10' : 'hover:bg-white/5'
+                                                }`}
+                                            >
                                                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                                                     <div className="space-y-2">
                                                         <div className="flex flex-wrap items-center gap-3">
@@ -628,13 +759,16 @@ const Dashboard = () => {
                                                             <span>•</span>
                                                             <span>CNPJ: {ticket.client.cnpj}</span>
                                                             <span>•</span>
-                                                            <span>{new Date(ticket.created_at).toLocaleString('pt-BR')}</span>
+                                                            <span>{new Date(ticket.updated_at).toLocaleString('pt-BR')}</span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         {ticket.status === 'open' && (
                                                             <button
-                                                                onClick={() => supportService.updateStatus(ticket.id, 'in_progress').then(() => fetchSupportTickets(supportFilter === 'all' ? undefined : supportFilter))}
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    handleSupportStatusChange(ticket.id, 'in_progress');
+                                                                }}
                                                                 className="px-4 py-2 rounded-lg text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition-all"
                                                             >
                                                                 Iniciar
@@ -642,7 +776,10 @@ const Dashboard = () => {
                                                         )}
                                                         {ticket.status !== 'closed' && (
                                                             <button
-                                                                onClick={() => supportService.updateStatus(ticket.id, 'closed').then(() => fetchSupportTickets(supportFilter === 'all' ? undefined : supportFilter))}
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    handleSupportStatusChange(ticket.id, 'closed');
+                                                                }}
                                                                 className="px-4 py-2 rounded-lg text-xs font-semibold bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 transition-all"
                                                             >
                                                                 Resolver
@@ -659,6 +796,58 @@ const Dashboard = () => {
                                     )}
                                 </div>
                             </div>
+
+                            <SupportTicketDetailPanel
+                                ticket={selectedSupportTicket}
+                                messages={supportMessages}
+                                isLoadingMessages={isSupportMessagesLoading}
+                                replyDraft={supportReplyDraft}
+                                isSubmittingReply={isSubmittingSupportReply}
+                                onReplyDraftChange={setSupportReplyDraft}
+                                onReplySubmit={handleSupportReply}
+                                metadata={selectedSupportTicket ? (
+                                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400">
+                                        <span>{selectedSupportTicket.client.name}</span>
+                                        <span>CNPJ: {selectedSupportTicket.client.cnpj}</span>
+                                        {selectedSupportTicket.client.industry && <span>{selectedSupportTicket.client.industry}</span>}
+                                        <span>Criado em {new Date(selectedSupportTicket.created_at).toLocaleString('pt-BR')}</span>
+                                    </div>
+                                ) : undefined}
+                                statusActions={selectedSupportTicket ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {selectedSupportTicket.status === 'open' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSupportStatusChange(selectedSupportTicket.id, 'in_progress')}
+                                                className="px-4 py-2 rounded-xl text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition-all"
+                                            >
+                                                Iniciar atendimento
+                                            </button>
+                                        )}
+                                        {selectedSupportTicket.status !== 'closed' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSupportStatusChange(selectedSupportTicket.id, 'closed')}
+                                                className="px-4 py-2 rounded-xl text-xs font-semibold bg-white/5 text-slate-300 border border-white/10 hover:bg-white/10 transition-all"
+                                            >
+                                                Marcar como resolvido
+                                            </button>
+                                        )}
+                                        {selectedSupportTicket.status === 'closed' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSupportStatusChange(selectedSupportTicket.id, 'in_progress')}
+                                                className="px-4 py-2 rounded-xl text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-purple-500/30 transition-all"
+                                            >
+                                                Reabrir atendimento
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : undefined}
+                                emptyTitle="Nenhum chamado selecionado"
+                                emptyDescription="Escolha um ticket da fila para responder, atualizar o status e acompanhar o historico."
+                                replyLabel="Resposta da contabilidade"
+                            />
                         </div>
                     ) : (
                         /* DASHBOARD VIEW */

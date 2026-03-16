@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import {
+    createSupportTicketMessage,
     listSupportTickets,
+    listSupportTicketMessages,
     createSupportTicket,
     updateSupportTicket,
 } from '../controllers/support.controller';
@@ -15,5 +17,7 @@ router.use(authMiddleware);
 router.get('/', listSupportTickets);
 router.post('/', createSupportTicket);
 router.patch('/:id', updateSupportTicket);
+router.get('/:id/messages', listSupportTicketMessages);
+router.post('/:id/messages', createSupportTicketMessage);
 
 export default router;

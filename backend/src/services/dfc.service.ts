@@ -13,6 +13,7 @@ type ChartAccountRecord = {
     code: string;
     reduced_code: string | null;
     name: string;
+    alias?: string | null;
     type: string;
     level: number;
     is_analytic: boolean;
@@ -107,6 +108,7 @@ const TITLE_ACCOUNT_SELECT = {
     code: true,
     reduced_code: true,
     name: true,
+    alias: true,
     type: true,
     level: true,
     is_analytic: true,
@@ -137,6 +139,49 @@ const normalizeAccountType = (type: string) =>
         .trim()
         .toUpperCase();
 
+const looksLikeHierarchicalCode = (value: string | null | undefined) =>
+    /^\d+(?:\.\d+)+$/.test(String(value || '').trim());
+
+const looksLikeTitleMarker = (value: string | null | undefined) => {
+    const normalized = normalizeAccountType(String(value || 'A'));
+    return (
+        normalized === 'T' ||
+        normalized === 'S' ||
+        normalized === 'TOTAL' ||
+        normalized.includes('SINT') ||
+        normalized.includes('TIT')
+    );
+};
+
+const getEffectiveAccountCode = (account: ChartAccountRecord) => {
+    if (looksLikeHierarchicalCode(account.code)) {
+        return account.code.trim();
+    }
+
+    if (looksLikeHierarchicalCode(account.name)) {
+        return account.name.trim();
+    }
+
+    return account.code.trim();
+};
+
+const getEffectiveAccountName = (account: ChartAccountRecord) => {
+    if (looksLikeHierarchicalCode(account.name) && account.report_category && account.alias) {
+        return account.alias.trim();
+    }
+
+    return account.name.trim();
+};
+
+const getEffectiveAccountLevel = (account: ChartAccountRecord) => {
+    const code = getEffectiveAccountCode(account);
+    if (looksLikeHierarchicalCode(code)) {
+        return code.split('.').length;
+    }
+
+    return account.level;
+};
+
 const isDescendantCode = (parentCode: string, candidateCode: string) =>
     candidateCode === parentCode || candidateCode.startsWith(`${parentCode}.`);
 
@@ -144,19 +189,30 @@ const hasDescendantAccount = (account: ChartAccountRecord, accounts: ChartAccoun
     accounts.some(
         (candidate) =>
             candidate.id !== account.id &&
-            isDescendantCode(account.code, candidate.code)
+            isDescendantCode(getEffectiveAccountCode(account), getEffectiveAccountCode(candidate))
+    );
+
+const hasMalformedChartLayout = (accounts: ChartAccountRecord[]) =>
+    accounts.length > 0 &&
+    accounts.every(
+        (account) =>
+            normalizeAccountType(account.type || 'A') === 'A' &&
+            account.is_analytic === true
     );
 
 const isTitleAccount = (account: ChartAccountRecord, accounts: ChartAccountRecord[]) => {
     const normalizedType = normalizeAccountType(account.type || 'A');
+    const malformedLayout = hasMalformedChartLayout(accounts);
     return (
         normalizedType === 'T' ||
         normalizedType === 'S' ||
         normalizedType === 'TOTAL' ||
         normalizedType.includes('SINT') ||
         normalizedType.includes('TIT') ||
+        looksLikeTitleMarker(account.name) ||
         account.is_analytic === false ||
-        hasDescendantAccount(account, accounts)
+        hasDescendantAccount(account, accounts) ||
+        (malformedLayout && !!getEffectiveAccountCode(account))
     );
 };
 
@@ -170,7 +226,7 @@ const getAccountBucket = (code: string): 'dre' | 'asset' | 'liability' | 'equity
 };
 
 const isAccountCompatibleWithSourceType = (account: ChartAccountRecord, sourceType: DFCSourceType) => {
-    const bucket = getAccountBucket(account.code);
+    const bucket = getAccountBucket(getEffectiveAccountCode(account));
     if (sourceType === 'cash') return bucket === 'asset';
     if (sourceType === 'equity') return bucket === 'equity';
     return bucket === sourceType;
@@ -247,11 +303,11 @@ const buildMonthlyArray = (factory: (monthIdx: number) => number | null) =>
 
 const toEligibleAccount = (account: ChartAccountRecord): DFCEligibleAccount => ({
     id: account.id,
-    code: account.code,
+    code: getEffectiveAccountCode(account),
     reduced_code: account.reduced_code,
-    name: account.name,
+    name: getEffectiveAccountName(account),
     type: account.type,
-    level: account.level,
+    level: getEffectiveAccountLevel(account),
 });
 
 const toConfigMapping = (mapping: PersistedMappingRecord): DFCConfigMapping => ({
@@ -347,7 +403,8 @@ export const getDfcConfig = async (clientId: string, accountingId: string): Prom
             .map(toConfigLine),
         eligibleAccounts: accounts
             .filter((account) => isTitleAccount(account as ChartAccountRecord, accounts as ChartAccountRecord[]))
-            .map(toEligibleAccount),
+            .map(toEligibleAccount)
+            .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true })),
         mappings: mappings.map((mapping) => toConfigMapping(mapping as PersistedMappingRecord)),
     };
 };
@@ -382,17 +439,18 @@ export const saveDfcConfig = async (
         if (!account) {
             throw badRequest(`Conta nao encontrada no plano compartilhado: ${mapping.chart_account_id}`);
         }
+        const effectiveCode = getEffectiveAccountCode(account);
         if (!isTitleAccount(account, accounts as ChartAccountRecord[])) {
-            throw badRequest(`A conta ${account.code} precisa ser uma conta-título.`);
+            throw badRequest(`A conta ${effectiveCode} precisa ser uma conta-título.`);
         }
 
         if (!isAccountCompatibleWithSourceType(account, lineDefinition.sourceType)) {
-            throw badRequest(`A conta ${account.code} nÃ£o Ã© compatÃ­vel com a linha ${lineDefinition.label}.`);
+            throw badRequest(`A conta ${effectiveCode} nÃ£o Ã© compatÃ­vel com a linha ${lineDefinition.label}.`);
         }
 
         const dedupeKey = `${mapping.line_key}::${mapping.chart_account_id}`;
         if (dedupe.has(dedupeKey)) {
-            throw badRequest(`A conta ${account.code} foi repetida na linha ${lineDefinition.label}.`);
+            throw badRequest(`A conta ${effectiveCode} foi repetida na linha ${lineDefinition.label}.`);
         }
         dedupe.add(dedupeKey);
 
@@ -401,7 +459,7 @@ export const saveDfcConfig = async (
             client_id: clientId,
             line_key: mapping.line_key,
             chart_account_id: account.id,
-            account_code_snapshot: account.code,
+            account_code_snapshot: effectiveCode,
             reduced_code_snapshot: account.reduced_code,
             source_type: lineDefinition.sourceType,
             multiplier: Number.isFinite(mapping.multiplier) ? Number(mapping.multiplier) : (lineDefinition.defaultMultiplier || 1),

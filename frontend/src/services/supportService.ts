@@ -1,5 +1,15 @@
 import api from './api';
 
+export interface SupportTicketMessage {
+  id: string;
+  support_ticket_id: string;
+  author_role: 'client' | 'staff';
+  author_name: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SupportTicket {
   id: string;
   subject: string;
@@ -35,6 +45,14 @@ export const supportService = {
   },
   updateStatus: async (id: string, status: SupportTicket['status']): Promise<SupportTicket> => {
     const response = await api.patch(`/support/${id}`, { status });
+    return response.data;
+  },
+  getMessages: async (id: string): Promise<SupportTicketMessage[]> => {
+    const response = await api.get(`/support/${id}/messages`);
+    return response.data;
+  },
+  reply: async (id: string, body: string): Promise<SupportTicketMessage> => {
+    const response = await api.post(`/support/${id}/messages`, { body });
     return response.data;
   },
 };

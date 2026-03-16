@@ -39,7 +39,7 @@ import axios from 'axios';
 import { clientService } from '../services/clientService';
 import type { Client } from '../services/clientService';
 import { clientPortalService } from '../services/clientPortalService';
-import type { SupportTicket } from '../services/clientPortalService';
+import type { SupportTicket, SupportTicketMessage } from '../services/clientPortalService';
 import { chartOfAccountsService, clientChartOfAccountsService } from '../services/chartOfAccountsService';
 import type { ImportAccount } from '../services/chartOfAccountsService';
 import { movementService } from '../services/movementService';
@@ -48,6 +48,8 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
 import ClientDfcSection from '../components/ClientDfcSection';
+import ClientDocumentUploadPanel from '../components/ClientDocumentUploadPanel';
+import SupportTicketDetailPanel from '../components/support/SupportTicketDetailPanel';
 import { TooltipCurrency, TooltipPercent } from '../components/client-dashboard/ChartTooltips';
 import type { DreMonthData } from '../components/client-dashboard/constants';
 
@@ -144,7 +146,6 @@ const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
     { id: 'dre', label: 'DRE', show: true },
     { id: 'patrimonial', label: 'Patrimonial', show: true },
     { id: 'dfc', label: 'DFC', show: true },
-    { id: 'contas', label: 'Plano de Contas', show: true },
 ];
 
 const ClientDashboard = () => {
@@ -215,6 +216,11 @@ const ClientDashboard = () => {
     const [supportError, setSupportError] = useState<string | null>(null);
     const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
     const [isTicketsLoading, setIsTicketsLoading] = useState(false);
+    const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
+    const [supportMessages, setSupportMessages] = useState<SupportTicketMessage[]>([]);
+    const [isSupportMessagesLoading, setIsSupportMessagesLoading] = useState(false);
+    const [supportReplyDraft, setSupportReplyDraft] = useState('');
+    const [isSubmittingSupportReply, setIsSubmittingSupportReply] = useState(false);
     const accountingToken = useAuthStore((state) => state.token);
     const clientToken = useClientAuthStore((state) => state.token);
     const clientLogout = useClientAuthStore((state) => state.logout);
@@ -238,6 +244,10 @@ const ClientDashboard = () => {
         'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
         'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
     ], []);
+    const availableYears = useMemo(() => {
+        const currentYear = new Date().getFullYear();
+        return Array.from({ length: 8 }, (_, index) => currentYear + 1 - index);
+    }, []);
     const showLegacyDfc = false;
 
     // Mock data
@@ -374,6 +384,10 @@ const ClientDashboard = () => {
                 setIsTicketsLoading(true);
                 const tickets = await clientPortalService.getSupportTickets();
                 setSupportTickets(tickets);
+                setSelectedSupportTicketId((current) => {
+                    if (current && tickets.some((ticket) => ticket.id === current)) return current;
+                    return tickets[0]?.id || null;
+                });
             } catch (error) {
                 console.error('Erro ao carregar tickets:', error);
             } finally {
@@ -382,6 +396,31 @@ const ClientDashboard = () => {
         };
         loadTickets();
     }, [isClientView, activeTab]);
+
+    useEffect(() => {
+        const loadSupportMessages = async () => {
+            if (!isClientView || activeTab !== 'suporte' || !selectedSupportTicketId) {
+                setSupportMessages([]);
+                return;
+            }
+
+            try {
+                setIsSupportMessagesLoading(true);
+                const messages = await clientPortalService.getSupportTicketMessages(selectedSupportTicketId);
+                setSupportMessages(messages);
+            } catch (error) {
+                console.error('Erro ao carregar conversa do chamado:', error);
+            } finally {
+                setIsSupportMessagesLoading(false);
+            }
+        };
+
+        loadSupportMessages();
+    }, [isClientView, activeTab, selectedSupportTicketId]);
+
+    useEffect(() => {
+        setSupportReplyDraft('');
+    }, [selectedSupportTicketId]);
 
     // Remove acentos e normaliza string para comparação à prova de encoding
     const stripAccents = (s: string): string =>
@@ -911,6 +950,26 @@ const ClientDashboard = () => {
         };
     })();
 
+    const normalizeSpreadsheetHeader = (value: unknown) =>
+        String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .trim()
+            .toLowerCase();
+
+    const findSpreadsheetColumn = (headers: string[], aliases: string[]) => {
+        const normalizedAliases = aliases.map(normalizeSpreadsheetHeader);
+        return headers.findIndex((header) =>
+            normalizedAliases.some((alias) => header === alias || header.includes(alias))
+        );
+    };
+
+    const looksLikeAccountClassifier = (value: unknown) =>
+        /^\d+(?:\.\d+)+$/.test(String(value || '').trim());
+
+    const looksLikeReducedAccountCode = (value: unknown) =>
+        /^\d+$/.test(String(value || '').trim());
+
     const handleImportPlanoDeContas = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -940,24 +999,92 @@ const ClientDashboard = () => {
                 const ws = wb.Sheets[wsname];
                 const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as (string | number | undefined)[][];
 
-                // Pular header (primeira linha)
+                const rawHeaders = (data[0] || []).map(normalizeSpreadsheetHeader);
                 const rows = data.slice(1);
 
-                const importAccounts: ImportAccount[] = rows
-                    .filter(row => {
-                        const code = row[0]?.toString().trim();
-                        return code && /^\d/.test(code);
+                const codeColumn = findSpreadsheetColumn(rawHeaders, [
+                    'classificador',
+                    'classificacao',
+                    'codigo da conta',
+                    'conta contabil',
+                    'codigo contabil',
+                    'codigo',
+                ]);
+                const reducedCodeColumn = findSpreadsheetColumn(rawHeaders, [
+                    'codigo reduzido',
+                    'cod reduzido',
+                    'reduzido',
+                    'reduced_code',
+                ]);
+                const levelColumn = findSpreadsheetColumn(rawHeaders, ['nivel']);
+                const typeColumn = findSpreadsheetColumn(rawHeaders, ['tipo']);
+                const nameColumn = findSpreadsheetColumn(rawHeaders, [
+                    'descricao',
+                    'nome',
+                    'descricao da conta',
+                    'conta',
+                ]);
+                const aliasColumn = findSpreadsheetColumn(rawHeaders, ['apelido', 'alias']);
+                const reportTypeColumn = findSpreadsheetColumn(rawHeaders, [
+                    'relatorio',
+                    'tipo relatorio',
+                    'report_type',
+                ]);
+                const reportCategoryColumn = findSpreadsheetColumn(rawHeaders, [
+                    'descricao relatorio',
+                    'categoria relatorio',
+                    'report_category',
+                    'categoria',
+                ]);
+
+                const importAccounts = rows
+                    .map<ImportAccount | null>((row) => {
+                        const cells = row.map((cell) => String(cell || '').trim());
+                        const pickColumnValue = (columnIndex: number) =>
+                            columnIndex >= 0 ? cells[columnIndex] || '' : '';
+
+                        const inferredCode = cells.find(looksLikeAccountClassifier) || '';
+                        const rawCode = pickColumnValue(codeColumn) || inferredCode;
+                        if (!rawCode || !/^\d/.test(rawCode)) {
+                            return null;
+                        }
+
+                        const inferredReducedCode = cells.find((cell) =>
+                            looksLikeReducedAccountCode(cell) && cell !== rawCode
+                        );
+                        const reducedCode = pickColumnValue(reducedCodeColumn) || inferredReducedCode || undefined;
+
+                        const rawAlias = pickColumnValue(aliasColumn);
+                        const rawName = pickColumnValue(nameColumn);
+                        const fallbackName = cells.find((cell) =>
+                            Boolean(cell) &&
+                            cell !== rawCode &&
+                            cell !== reducedCode &&
+                            !looksLikeAccountClassifier(cell) &&
+                            !looksLikeReducedAccountCode(cell) &&
+                            !isTitleType(cell)
+                        ) || '';
+                        const name = [rawName, rawAlias, fallbackName].find((value) => value && value !== rawCode) || '';
+
+                        const explicitLevel = parseInt(pickColumnValue(levelColumn), 10);
+                        const level = Number.isFinite(explicitLevel) && explicitLevel > 0
+                            ? explicitLevel
+                            : rawCode.split('.').length;
+
+                        const inferredType = cells.find((cell) => isTitleType(cell));
+
+                        return {
+                            code: rawCode,
+                            reduced_code: reducedCode,
+                            name,
+                            level,
+                            type: isTitleType(pickColumnValue(typeColumn) || inferredType) ? 'T' : 'A',
+                            alias: rawAlias || undefined,
+                            report_type: pickColumnValue(reportTypeColumn) || undefined,
+                            report_category: pickColumnValue(reportCategoryColumn) || undefined,
+                        };
                     })
-                    .map(row => ({
-                        code: row[0]!.toString().trim(),
-                        reduced_code: row[7]?.toString().trim() || undefined,
-                        name: (row[3]?.toString().trim() || row[1]?.toString().trim() || ''),
-                        level: parseInt(row[1]?.toString() || '1') || 1,
-                        type: isTitleType(row[2]) ? 'T' : 'A',
-                        alias: row[4]?.toString().trim() || undefined,
-                        report_type: row[5]?.toString().trim() || undefined,
-                        report_category: row[6]?.toString().trim() || undefined,
-                    }));
+                    .filter((account): account is ImportAccount => Boolean(account && account.code && account.name));
 
                 if (importAccounts.length === 0) {
                     toast.error('Nenhuma conta encontrada no arquivo');
@@ -1038,6 +1165,7 @@ const ClientDashboard = () => {
                 try {
                     const tickets = await clientPortalService.getSupportTickets();
                     setSupportTickets(tickets);
+                    setSelectedSupportTicketId(tickets[0]?.id || null);
                 } catch { /* silently ignore */ }
             }
         } catch (error) {
@@ -1047,6 +1175,36 @@ const ClientDashboard = () => {
             setSupportError(message);
         } finally {
             setSupportSubmitting(false);
+        }
+    };
+
+    const selectedSupportTicket = supportTickets.find((ticket) => ticket.id === selectedSupportTicketId) || null;
+
+    const handleSupportReply = async () => {
+        if (!selectedSupportTicketId || !supportReplyDraft.trim()) {
+            toast.error('Escreva a sua mensagem antes de enviar');
+            return;
+        }
+
+        try {
+            setIsSubmittingSupportReply(true);
+            await clientPortalService.replySupportTicket(selectedSupportTicketId, supportReplyDraft.trim());
+            setSupportReplyDraft('');
+
+            const [tickets, messages] = await Promise.all([
+                clientPortalService.getSupportTickets(),
+                clientPortalService.getSupportTicketMessages(selectedSupportTicketId),
+            ]);
+
+            setSupportTickets(tickets);
+            setSupportMessages(messages);
+            setSelectedSupportTicketId(selectedSupportTicketId);
+            toast.success('Mensagem enviada');
+        } catch (error) {
+            console.error('Erro ao responder chamado:', error);
+            toast.error('Erro ao enviar mensagem');
+        } finally {
+            setIsSubmittingSupportReply(false);
         }
     };
 
@@ -1076,9 +1234,10 @@ const ClientDashboard = () => {
                 </div>
 
                 <div className="flex-1 flex flex-col gap-4">
-                    {[
+                    {[ 
                         { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
                         { id: 'dre', icon: Calculator, label: 'DRE' },
+                        ...(isClientView ? [{ id: 'arquivos', icon: Upload, label: 'Arquivos' }] : []),
                         ...(isClientView ? [{ id: 'suporte', icon: Ticket, label: 'Suporte' }] : []),
                     ].map((item) => (
                         <button
@@ -1180,7 +1339,7 @@ const ClientDashboard = () => {
                                 value={selectedYear}
                                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
                             >
-                                {[2024, 2025, 2026].map(y => (
+                                {availableYears.map(y => (
                                     <option key={y} value={y} className="bg-[#0d1829]">{y}</option>
                                 ))}
                             </select>
@@ -1687,12 +1846,12 @@ const ClientDashboard = () => {
 
                         {dreSubTab === 'dre' ? (
                             <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden">
-                                <div className="p-8 border-b border-white/5 flex justify-between items-center bg-white/5">
+                                <div className="p-8 border-b border-white/5 flex flex-wrap justify-between items-center gap-4 bg-white/5">
                                     <div>
                                         <h3 className="text-2xl font-bold text-white tracking-tight">Relatório Gerencial DRE</h3>
                                         <p className="text-sm text-white/40">Resultado Consolidado • {months[selectedMonthIndex]}</p>
                                     </div>
-                                    <div className="flex gap-4">
+                                    <div className="flex flex-wrap gap-4">
                                         <div className="flex p-1 bg-black/40 border border-white/5 rounded-2xl">
                                             {[
                                                 { id: 'lista', icon: FileSpreadsheet, label: 'Lista' },
@@ -1710,9 +1869,23 @@ const ClientDashboard = () => {
                                             ))}
                                         </div>
                                         {!isReadOnly && (
+                                            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold text-white/70">
+                                                Ano do arquivo
+                                                <select
+                                                    className="bg-transparent outline-none cursor-pointer text-sm font-black text-cyan-300"
+                                                    value={selectedYear}
+                                                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                                                >
+                                                    {availableYears.map((year) => (
+                                                        <option key={year} value={year} className="bg-[#0d1829]">{year}</option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                        )}
+                                        {!isReadOnly && (
                                             <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
-                                                Importar Balancete
+                                                Importar Balancete {selectedYear}
                                                 <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleDreFileUpload} />
                                             </label>
                                         )}
@@ -1973,7 +2146,7 @@ const ClientDashboard = () => {
                                         <h3 className="text-2xl font-bold text-white tracking-tight">Balanço Patrimonial</h3>
                                         <p className="text-sm text-white/40">Resultado Consolidado • {months[selectedMonthIndex]}</p>
                                     </div>
-                                    <div className="flex gap-4">
+                                    <div className="flex flex-wrap gap-4">
                                         <div className="flex p-1 bg-black/40 border border-white/5 rounded-2xl">
                                             {[
                                                 { id: 'lista', icon: FileSpreadsheet, label: 'Lista' },
@@ -1991,9 +2164,23 @@ const ClientDashboard = () => {
                                             ))}
                                         </div>
                                         {!isReadOnly && (
+                                            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold text-white/70">
+                                                Ano do arquivo
+                                                <select
+                                                    className="bg-transparent outline-none cursor-pointer text-sm font-black text-cyan-300"
+                                                    value={selectedYear}
+                                                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                                                >
+                                                    {availableYears.map((year) => (
+                                                        <option key={year} value={year} className="bg-[#0d1829]">{year}</option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                        )}
+                                        {!isReadOnly && (
                                             <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
-                                                Importar Saldo
+                                                Importar Saldo {selectedYear}
                                                 <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handlePatrimonialRawFileUpload} />
                                             </label>
                                         )}
@@ -2460,12 +2647,16 @@ const ClientDashboard = () => {
                 )}
 
                 {/* Aba de Suporte - visível apenas para clientes */}
+                {activeTab === 'arquivos' && isClientView && (
+                    <ClientDocumentUploadPanel />
+                )}
+
                 {activeTab === 'suporte' && isClientView && (
                     <div className="space-y-6 animate-in fade-in duration-500 pb-12">
                         <div className="flex items-center justify-between">
                             <div>
                                 <h3 className="text-2xl font-bold text-white tracking-tight">Meus Chamados</h3>
-                                <p className="text-white/40 text-sm">Acompanhe seus tickets de suporte</p>
+                                <p className="text-white/40 text-sm">Acompanhe o andamento e continue a conversa no mesmo chamado.</p>
                             </div>
                             <button
                                 onClick={() => setIsSupportOpen(true)}
@@ -2491,7 +2682,16 @@ const ClientDashboard = () => {
                         ) : (
                             <div className="space-y-4">
                                 {supportTickets.map((ticket) => (
-                                    <div key={ticket.id} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6 hover:bg-white/5 transition-all">
+                                    <button
+                                        key={ticket.id}
+                                        type="button"
+                                        onClick={() => setSelectedSupportTicketId(ticket.id)}
+                                        className={`w-full text-left bg-[#0d1829]/80 backdrop-blur-xl border rounded-2xl p-6 transition-all ${
+                                            ticket.id === selectedSupportTicketId
+                                                ? 'border-cyan-500/30 bg-cyan-500/10'
+                                                : 'border-white/5 hover:bg-white/5'
+                                        }`}
+                                    >
                                         <div className="flex items-start justify-between mb-3">
                                             <div className="flex-1">
                                                 <h4 className="text-white font-bold text-lg">{ticket.subject}</h4>
@@ -2517,13 +2717,35 @@ const ClientDashboard = () => {
                                         <div className="flex items-center gap-4 text-white/20 text-xs">
                                             <span className="flex items-center gap-1">
                                                 <Clock className="w-3 h-3" />
-                                                {new Date(ticket.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                Atualizado em {new Date(ticket.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
                                             </span>
                                         </div>
-                                    </div>
+                                    </button>
                                 ))}
                             </div>
                         )}
+
+                        <SupportTicketDetailPanel
+                            ticket={selectedSupportTicket}
+                            messages={supportMessages}
+                            isLoadingMessages={isSupportMessagesLoading}
+                            replyDraft={supportReplyDraft}
+                            isSubmittingReply={isSubmittingSupportReply}
+                            onReplyDraftChange={setSupportReplyDraft}
+                            onReplySubmit={handleSupportReply}
+                            metadata={selectedSupportTicket ? (
+                                <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400">
+                                    <span>{client?.name || 'Cliente'}</span>
+                                    <span>Abertura em {new Date(selectedSupportTicket.created_at).toLocaleString('pt-BR')}</span>
+                                    {selectedSupportTicket.closed_at && (
+                                        <span>Fechado em {new Date(selectedSupportTicket.closed_at).toLocaleString('pt-BR')}</span>
+                                    )}
+                                </div>
+                            ) : undefined}
+                            emptyTitle="Selecione um chamado"
+                            emptyDescription="Escolha um ticket para acompanhar a conversa com a contabilidade e enviar novas mensagens."
+                            replyLabel="Nova mensagem para a contabilidade"
+                        />
                     </div>
                 )}
             </div>

@@ -36,6 +36,21 @@ const verifyClientOwnership = async (clientId: string, accountingId: string) => 
     return client !== null;
 };
 
+const ensureSharedChartAccess = async (req: AuthRequest, res: Response) => {
+    if (!req.accountingId) {
+        res.status(401).json({ message: 'Nao autorizado' });
+        return false;
+    }
+
+    const clientId = req.params.clientId ? String(req.params.clientId) : null;
+    if (clientId && !await verifyClientOwnership(clientId, req.accountingId)) {
+        res.status(404).json({ message: 'Cliente nao encontrado' });
+        return false;
+    }
+
+    return true;
+};
+
 const normalizeAccountType = (type: unknown) =>
     String(type || 'A')
         .normalize('NFD')
@@ -72,13 +87,8 @@ const normalizeAccountInput = (account: ImportAccountPayload) => {
 
 export const getAll = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
-        }
-
-        const clientId = String(req.params.clientId);
-        if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nÃ£o encontrado' });
+        if (!await ensureSharedChartAccess(req, res)) {
+            return;
         }
 
         const accounts = await prisma.chartOfAccounts.findMany({
@@ -101,23 +111,18 @@ export const getAll = async (req: AuthRequest, res: Response) => {
 
 export const create = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
-        }
-
-        const clientId = String(req.params.clientId);
-        if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nÃ£o encontrado' });
+        if (!await ensureSharedChartAccess(req, res)) {
+            return;
         }
 
         const normalized = normalizeAccountInput(req.body as ImportAccountPayload);
         if (!normalized.code || !normalized.name) {
-            return res.status(400).json({ message: 'CÃ³digo e nome sÃ£o obrigatÃ³rios' });
+            return res.status(400).json({ message: 'Codigo e nome sao obrigatorios' });
         }
 
         const account = await prisma.chartOfAccounts.create({
             data: {
-                accounting_id: req.accountingId,
+                accounting_id: req.accountingId!,
                 client_id: null,
                 ...normalized,
             },
@@ -127,7 +132,7 @@ export const create = async (req: AuthRequest, res: Response) => {
         res.status(201).json(account);
     } catch (error: any) {
         if (error?.code === 'P2002') {
-            return res.status(400).json({ message: 'CÃ³digo ou cÃ³digo reduzido jÃ¡ existe no plano compartilhado' });
+            return res.status(400).json({ message: 'Codigo ou codigo reduzido ja existe no plano compartilhado' });
         }
         console.error('Erro ao criar conta no plano compartilhado:', error);
         res.status(500).json({ message: 'Erro ao criar conta' });
@@ -136,25 +141,20 @@ export const create = async (req: AuthRequest, res: Response) => {
 
 export const bulkImport = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
-        }
-
-        const clientId = String(req.params.clientId);
-        if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nÃ£o encontrado' });
+        if (!await ensureSharedChartAccess(req, res)) {
+            return;
         }
 
         const payloadAccounts = Array.isArray(req.body?.accounts) ? req.body.accounts as ImportAccountPayload[] : [];
         if (payloadAccounts.length === 0) {
-            return res.status(400).json({ message: 'Lista de contas Ã© obrigatÃ³ria' });
+            return res.status(400).json({ message: 'Lista de contas e obrigatoria' });
         }
 
         const normalizedAccounts = payloadAccounts.map(normalizeAccountInput);
         for (const account of normalizedAccounts) {
             if (!account.code || !account.name) {
                 return res.status(400).json({
-                    message: `Conta invÃ¡lida: cÃ³digo e nome obrigatÃ³rios (cÃ³digo: ${account.code || 'vazio'})`,
+                    message: `Conta invalida: codigo e nome obrigatorios (codigo: ${account.code || 'vazio'})`,
                 });
             }
         }
@@ -212,7 +212,7 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
         });
     } catch (error: any) {
         if (error?.code === 'P2002') {
-            return res.status(400).json({ message: 'CÃ³digo ou cÃ³digo reduzido duplicado no plano compartilhado' });
+            return res.status(400).json({ message: 'Codigo ou codigo reduzido duplicado no plano compartilhado' });
         }
         console.error('Erro ao importar plano de contas compartilhado:', error);
         res.status(500).json({
@@ -226,22 +226,17 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
 
 export const remove = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
+        if (!await ensureSharedChartAccess(req, res)) {
+            return;
         }
 
-        const clientId = String(req.params.clientId);
         const id = String(req.params.id);
-        if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nÃ£o encontrado' });
-        }
-
         const deleted = await prisma.chartOfAccounts.deleteMany({
             where: { id, accounting_id: req.accountingId },
         });
 
         if (deleted.count === 0) {
-            return res.status(404).json({ message: 'Conta nÃ£o encontrada' });
+            return res.status(404).json({ message: 'Conta nao encontrada' });
         }
 
         res.status(204).send();
@@ -253,13 +248,8 @@ export const remove = async (req: AuthRequest, res: Response) => {
 
 export const removeAll = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
-        }
-
-        const clientId = String(req.params.clientId);
-        if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nÃ£o encontrado' });
+        if (!await ensureSharedChartAccess(req, res)) {
+            return;
         }
 
         const deleted = await prisma.chartOfAccounts.deleteMany({

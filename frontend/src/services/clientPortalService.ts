@@ -13,8 +13,19 @@ export interface SupportTicket {
   id: string;
   subject: string;
   message: string;
-  priority: string;
-  status: string;
+  priority: 'low' | 'medium' | 'high';
+  status: 'open' | 'in_progress' | 'closed';
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+export interface SupportTicketMessage {
+  id: string;
+  support_ticket_id: string;
+  author_role: 'client' | 'staff';
+  author_name: string;
+  body: string;
   created_at: string;
   updated_at: string;
 }
@@ -71,6 +82,16 @@ export const clientPortalService = {
   },
 
   /** Busca movimentações do cliente logado (DRE ou Patrimonial) */
+  getSupportTicketMessages: async (ticketId: string): Promise<SupportTicketMessage[]> => {
+    const response = await clientApi.get(`/client-portal/support/${ticketId}/messages`);
+    return response.data;
+  },
+
+  replySupportTicket: async (ticketId: string, body: string): Promise<SupportTicketMessage> => {
+    const response = await clientApi.post(`/client-portal/support/${ticketId}/messages`, { body });
+    return response.data;
+  },
+
   getMovements: async (year: number, type: 'dre' | 'patrimonial'): Promise<ClientMovementRow[]> => {
     const response = await clientApi.get('/client-portal/movements', {
       params: { year, type },

@@ -8,6 +8,7 @@ import supportRoutes from './routes/support.routes';
 import clientPortalRoutes from './routes/client-portal.routes';
 import userRoutes from './routes/user.routes';
 import chartOfAccountsRoutes from './routes/chartOfAccounts.routes';
+import clientDocumentRoutes from './routes/client-document.routes';
 import movementRoutes from './routes/movement.routes';
 import dreMappingRoutes from './routes/dreMapping.routes';
 import dfcRoutes from './routes/dfc.routes';
@@ -53,10 +54,12 @@ app.use((req, res, next) => {
     next();
 });
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '25mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
+app.use('/api/chart-of-accounts', chartOfAccountsRoutes);
+app.use('/api/client-documents', clientDocumentRoutes);
 app.use('/api/clients/:clientId/chart-of-accounts', chartOfAccountsRoutes);
 app.use('/api/clients/:clientId/movements', movementRoutes);
 app.use('/api/clients/:clientId', dfcRoutes);

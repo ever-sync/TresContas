@@ -1,8 +1,21 @@
 import { Router } from 'express';
 import { authClientMiddleware, requireRole } from '../middlewares/auth.middleware';
-import { getClientProfile, createClientSupportTicket, getClientSupportTickets, getClientChartOfAccounts, getClientMovements } from '../controllers/clientPortal.controller';
+import {
+    getClientProfile,
+    createClientSupportTicket,
+    getClientSupportTickets,
+    getClientChartOfAccounts,
+    getClientMovements,
+    getClientSupportTicketMessages,
+    createClientSupportTicketMessage,
+} from '../controllers/clientPortal.controller';
 import { analyzeFinancials } from '../controllers/aiAnalysis.controller';
 import { getPortalDfcReport } from '../controllers/dfc.controller';
+import {
+    createClientPortalDocument,
+    downloadClientPortalDocument,
+    getClientPortalDocuments,
+} from '../controllers/clientDocument.controller';
 
 const router = Router();
 
@@ -22,5 +35,10 @@ router.post('/ai-analysis', requireRole('admin', 'collaborator', 'client'), anal
 // Client support tickets (read own + create)
 router.get('/support', authClientMiddleware, getClientSupportTickets);
 router.post('/support', authClientMiddleware, createClientSupportTicket);
+router.get('/support/:id/messages', authClientMiddleware, getClientSupportTicketMessages);
+router.post('/support/:id/messages', authClientMiddleware, createClientSupportTicketMessage);
+router.get('/documents', authClientMiddleware, getClientPortalDocuments);
+router.post('/documents', authClientMiddleware, createClientPortalDocument);
+router.get('/documents/:id/download', authClientMiddleware, downloadClientPortalDocument);
 
 export default router;

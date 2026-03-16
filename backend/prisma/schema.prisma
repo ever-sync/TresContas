@@ -19,6 +19,7 @@ model Accounting {
   updated_at       DateTime          @updatedAt
   chartOfAccounts  ChartOfAccounts[]
   clients          Client[]
+  documents        ClientDocument[]
   monthlyMovements MonthlyMovement[]
   supportTickets   SupportTicket[]
   users            User[]
@@ -68,6 +69,7 @@ model Client {
   accounting           Accounting         @relation(fields: [accounting_id], references: [id])
   incomeStatements     IncomeStatement[]
   monthlyMovements     MonthlyMovement[]
+  documents            ClientDocument[]
   supportTickets       SupportTicket[]
   dreMappings          DREMapping[]
   dfcLineMappings      DFCLineMapping[]
@@ -86,10 +88,42 @@ model SupportTicket {
   closed_at     DateTime?
   accounting    Accounting @relation(fields: [accounting_id], references: [id])
   client        Client     @relation(fields: [client_id], references: [id])
+  documents     SupportTicketDocument[]
+  messages      SupportTicketMessage[]
 
   @@index([accounting_id])
   @@index([client_id])
   @@index([status])
+}
+
+model SupportTicketMessage {
+  id                String        @id @default(uuid())
+  support_ticket_id String
+  author_role       String
+  author_name       String
+  body              String
+  created_at        DateTime      @default(now())
+  updated_at        DateTime      @updatedAt
+  ticket            SupportTicket @relation(fields: [support_ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([support_ticket_id])
+  @@index([created_at])
+}
+
+model SupportTicketDocument {
+  id                String         @id @default(uuid())
+  support_ticket_id String
+  client_document_id String
+  created_by_role   String
+  created_by_name   String
+  created_at        DateTime       @default(now())
+  updated_at        DateTime       @updatedAt
+  ticket            SupportTicket  @relation(fields: [support_ticket_id], references: [id], onDelete: Cascade)
+  document          ClientDocument @relation(fields: [client_document_id], references: [id], onDelete: Cascade)
+
+  @@unique([support_ticket_id, client_document_id], name: "support_ticket_id_client_document_id")
+  @@index([support_ticket_id])
+  @@index([client_document_id])
 }
 
 model AccountingPeriod {
@@ -278,4 +312,26 @@ model DFCLineMapping {
   @@index([client_id])
   @@index([line_key])
   @@index([chart_account_id])
+}
+
+model ClientDocument {
+  id            String     @id @default(uuid())
+  accounting_id String
+  client_id     String
+  original_name String
+  display_name  String
+  category      String
+  mime_type     String
+  size_bytes    Int
+  content       Bytes
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+  accounting    Accounting @relation(fields: [accounting_id], references: [id])
+  client        Client     @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  supportTickets SupportTicketDocument[]
+
+  @@index([accounting_id])
+  @@index([client_id])
+  @@index([category])
+  @@index([created_at])
 }
