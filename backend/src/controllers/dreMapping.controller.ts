@@ -11,13 +11,31 @@ const verifyClientOwnership = async (clientId: string, accountingId: string) => 
 };
 
 const VALID_DRE_CATEGORIES = [
-    'Adiantamentos', 'Clientes', 'Contas A Pagar Cp', 'Custos Das Vendas', 'Deducoes',
-    'Despesas Administrativas', 'Despesas Antecipadas', 'Despesas Comerciais', 'Despesas Financeiras',
-    'Despesas Tributarias', 'Disponivel', 'Emprestimos E Financiamentos Cp', 'Estoques', 'Fornecedores',
-    'Imobilizado', 'Intangivel', 'Irpj E Csll', 'Obrigacoes Trabalhistas', 'Obrigacoes Tributarias',
-    'Outras Contas A Pagar Lp', 'Outras Contas A Receber Lp', 'Outras Receitas', 'Parcelamentos Cp',
-    'Parcelamentos Lp', 'Processos Judiciais', 'Receita Bruta', 'Receitas Financeiras',
-    'Reserva De Lucros', 'Resultado Do Exercicio', 'Tributos A CompensarCP',
+    // DRE categories
+    'Custos Das Vendas', 'Custos Dos Servicos', 'Deducoes', 'Deducoes De Vendas',
+    'Despesas Administrativas', 'Despesas Comerciais', 'Despesas Financeiras',
+    'Despesas Tributarias', 'Irpj E Csll', 'Outras Despesas', 'Outras Receitas',
+    'Receita Bruta', 'Receitas Financeiras', 'Depreciacao E Amortizacao',
+    'Resultado Participacoes Societarias',
+    // Patrimonial — Ativo Circulante
+    'Adiantamentos', 'Clientes', 'Despesas Antecipadas', 'Disponivel', 'Estoques',
+    'Outras Contas A Receber', 'Tributos A CompensarCP',
+    // Patrimonial — Ativo Não Circulante
+    'Contas A Receber Lp', 'Imobilizado', 'Intangivel', 'Investimentos',
+    'Outras Contas A Receber Lp', 'Partes Relacionadas A Receber',
+    'Processos Judiciais', 'Tributos A RecuperarLP',
+    // Patrimonial — Passivo Circulante
+    'Contas A Pagar Cp', 'Emprestimos E Financiamentos Cp', 'Fornecedores',
+    'Obrigacoes Trabalhistas', 'Obrigacoes Tributarias', 'Parcelamentos Cp',
+    'Processos A Pagar Cp',
+    // Patrimonial — Passivo Não Circulante
+    'Conta Corrente Dos Socios', 'Emprestimos E Financiamentos Lp',
+    'Emprestimos Partes Relacionadas', 'Impostos Diferidos',
+    'Outras Contas A Pagar Lp', 'Parcelamentos Lp', 'Processos A Pagar Lp',
+    'Provisao Para Contingencias', 'Receita De Exercicio Futuro Lp',
+    // Patrimonial — Patrimônio Líquido
+    'Capital Social', 'Distribuicao De Lucros', 'Reserva De Capital',
+    'Reserva De Lucros', 'Resultado Do Exercicio',
 ];
 
 type MappingSyncClient = Pick<typeof prisma, 'chartOfAccounts' | 'monthlyMovement' | 'dREMapping'>;
@@ -43,7 +61,6 @@ const syncMappingState = async (
         where: {
             accounting_id: accountingId,
             code: accountCode,
-            type: 'dre',
         },
         data: {
             category,

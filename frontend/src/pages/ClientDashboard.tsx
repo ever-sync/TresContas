@@ -24,6 +24,7 @@ import {
     Sparkles,
     RefreshCw,
     ChevronRight,
+    Settings2,
 } from 'lucide-react';
 import {
     ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -48,6 +49,8 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
 import ClientDfcSection from '../components/ClientDfcSection';
+import ClientDreConfigPanel from '../components/ClientDreConfigPanel';
+import ClientPatConfigPanel from '../components/ClientPatConfigPanel';
 import ClientDocumentUploadPanel from '../components/ClientDocumentUploadPanel';
 import SupportTicketDetailPanel from '../components/support/SupportTicketDetailPanel';
 import { TooltipCurrency, TooltipPercent } from '../components/client-dashboard/ChartTooltips';
@@ -156,7 +159,9 @@ const ClientDashboard = () => {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
+    const [dreConfigMode, setDreConfigMode] = useState(false);
     const [patViewMode, setPatViewMode] = useState<ReportViewMode>('lista');
+    const [patConfigMode, setPatConfigMode] = useState(false);
     const [expandedPatGroups, setExpandedPatGroups] = useState<Set<string>>(
         new Set(['ativo_circ', 'ativo_nao', 'pass_circ', 'pass_nao', 'pat_liq'])
     );
@@ -1936,15 +1941,24 @@ const ClientDashboard = () => {
                                             ].map(mode => (
                                                 <button
                                                     key={mode.id}
-                                                    onClick={() => setDreViewMode(mode.id as ReportViewMode)}
-                                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${dreViewMode === mode.id ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                                                    onClick={() => { setDreConfigMode(false); setDreViewMode(mode.id as ReportViewMode); }}
+                                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${!dreConfigMode && dreViewMode === mode.id ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
                                                 >
                                                     <mode.icon className="w-4 h-4" />
                                                     {mode.label}
                                                 </button>
                                             ))}
+                                            {!isReadOnly && (
+                                                <button
+                                                    onClick={() => setDreConfigMode(!dreConfigMode)}
+                                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${dreConfigMode ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                                                >
+                                                    <Settings2 className="w-4 h-4" />
+                                                    Configuração
+                                                </button>
+                                            )}
                                         </div>
-                                        {!isReadOnly && (
+                                        {!dreConfigMode && !isReadOnly && (
                                             <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold text-white/70">
                                                 Ano do arquivo
                                                 <select
@@ -1958,20 +1972,24 @@ const ClientDashboard = () => {
                                                 </select>
                                             </label>
                                         )}
-                                        {!isReadOnly && (
+                                        {!dreConfigMode && !isReadOnly && (
                                             <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
                                                 Importar Balancete {selectedYear}
                                                 <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleDreFileUpload} />
                                             </label>
                                         )}
-                                        <button onClick={() => handleExportPDF('DRE')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
-                                            <Download className="w-5 h-5" />
-                                        </button>
+                                        {!dreConfigMode && (
+                                            <button onClick={() => handleExportPDF('DRE')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
+                                                <Download className="w-5 h-5" />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
-                                {dreViewMode === 'lista' ? (
+                                {dreConfigMode ? (
+                                    <ClientDreConfigPanel clientId={clientId!} selectedYear={selectedYear} />
+                                ) : dreViewMode === 'lista' ? (
                                     <div className="overflow-x-auto" ref={tableContainerRef}>
                                         <table className="w-full text-left border-collapse">
                                             <thead>
@@ -2231,15 +2249,24 @@ const ClientDashboard = () => {
                                             ].map(mode => (
                                                 <button
                                                     key={mode.id}
-                                                    onClick={() => setPatViewMode(mode.id as ReportViewMode)}
-                                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${patViewMode === mode.id ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                                                    onClick={() => { setPatConfigMode(false); setPatViewMode(mode.id as ReportViewMode); }}
+                                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${!patConfigMode && patViewMode === mode.id ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
                                                 >
                                                     <mode.icon className="w-4 h-4" />
                                                     {mode.label}
                                                 </button>
                                             ))}
+                                            {!isReadOnly && (
+                                                <button
+                                                    onClick={() => setPatConfigMode(!patConfigMode)}
+                                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${patConfigMode ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
+                                                >
+                                                    <Settings2 className="w-4 h-4" />
+                                                    Configuração
+                                                </button>
+                                            )}
                                         </div>
-                                        {!isReadOnly && (
+                                        {!patConfigMode && !isReadOnly && (
                                             <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold text-white/70">
                                                 Ano do arquivo
                                                 <select
@@ -2253,19 +2280,24 @@ const ClientDashboard = () => {
                                                 </select>
                                             </label>
                                         )}
-                                        {!isReadOnly && (
+                                        {!patConfigMode && !isReadOnly && (
                                             <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
                                                 Importar Saldo {selectedYear}
                                                 <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handlePatrimonialRawFileUpload} />
                                             </label>
                                         )}
-                                        <button onClick={() => handleExportPDF('Balanco_Patrimonial')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
-                                            <Download className="w-5 h-5" />
-                                        </button>
+                                        {!patConfigMode && (
+                                            <button onClick={() => handleExportPDF('Balanco_Patrimonial')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
+                                                <Download className="w-5 h-5" />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
 
+                                {patConfigMode ? (
+                                    <ClientPatConfigPanel clientId={clientId!} selectedYear={selectedYear} />
+                                ) : <>
                                 {/* Render Patrimonial — usa getSumByGroup (por nome de grupo textual) */}
                                 {(() => {
                                     // Valores para o mês selecionado
@@ -2572,6 +2604,7 @@ const ClientDashboard = () => {
                                         </div>
                                     );
                                 })()}
+                                </>}
                             </div>
                         ) : dreSubTab === 'dfc' ? (
                             <ClientDfcSection
