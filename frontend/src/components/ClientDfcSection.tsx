@@ -237,9 +237,10 @@ export const ClientDfcSection = ({
             const freshReport = await dfcService.getReport(clientId, selectedYear);
             setReport(freshReport);
             setMode('view');
-        } catch (error) {
+        } catch (error: any) {
             console.error('Erro ao salvar configuração DFC:', error);
-            toast.error('Erro ao salvar configuração DFC');
+            const msg = error?.response?.data?.message || 'Erro ao salvar configuração DFC';
+            toast.error(msg);
         } finally {
             setSavingConfig(false);
         }
