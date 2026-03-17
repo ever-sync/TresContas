@@ -441,10 +441,6 @@ export const saveDfcConfig = async (
             throw badRequest(`Conta nao encontrada no plano compartilhado: ${mapping.chart_account_id}`);
         }
         const effectiveCode = getEffectiveAccountCode(account);
-        if (!isTitleAccount(account, accounts as ChartAccountRecord[])) {
-            throw badRequest(`A conta ${effectiveCode} precisa ser uma conta-título.`);
-        }
-
         if (!isAccountCompatibleWithSourceType(account, lineDefinition.sourceType)) {
             throw badRequest(`A conta ${effectiveCode} nÃ£o Ã© compatÃ­vel com a linha ${lineDefinition.label}.`);
         }
