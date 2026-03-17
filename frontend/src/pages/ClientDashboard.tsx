@@ -662,19 +662,6 @@ const ClientDashboard = () => {
 
                     // Auto-detectar ano a partir dos cabeçalhos (ex: "01/2025", "02/2025")
                     const headerRow = data[0] || [];
-                    for (let ci = 2; ci <= 13 && ci < headerRow.length; ci++) {
-                        const colHeader = String(headerRow[ci] || '').trim();
-                        const yearMatch = colHeader.match(/(\d{1,2})\/(\d{4})/);
-                        if (yearMatch) {
-                            const detectedYear = parseInt(yearMatch[2], 10);
-                            if (detectedYear !== selectedYear) {
-                                setSelectedYear(detectedYear);
-                                toast(`Ano detectado no arquivo: ${detectedYear}`, { icon: 'ℹ️', duration: 4000 });
-                            }
-                            break;
-                        }
-                    }
-                    // Usar o ano detectado (ou o selectedYear atual) para o import
                     const importYear = (() => {
                         for (let ci = 2; ci <= 13 && ci < headerRow.length; ci++) {
                             const colHeader = String(headerRow[ci] || '').trim();
@@ -683,6 +670,12 @@ const ClientDashboard = () => {
                         }
                         return selectedYear;
                     })();
+                    // Avisa o usuário sobre o ano detectado (sem alterar o estado ainda
+                    // — o setSelectedYear acontece após o save para evitar race condition
+                    // com o useEffect que refaz o fetch ao mudar de ano)
+                    if (importYear !== selectedYear) {
+                        toast(`Ano detectado no arquivo: ${importYear}`, { icon: 'ℹ️', duration: 4000 });
+                    }
 
                     // Col 0 = Classificação, Col 1 = Nome, Cols 2-13 = Jan-Dez
                     // Col 14 = Total (ignorado), Col 15 = NÍVEL, Col 16 = DE-PARA
@@ -795,20 +788,26 @@ const ClientDashboard = () => {
 
                         // Re-fetch do banco para obter categorias resolvidas pelo backend (plano de contas)
                         const savedData = await movementService.getAll(targetClientId, importYear, movType);
-                        setMovFn(savedData as MovementRow[]);
 
                         // Auto-importar patrimonial se comparativo detectado
+                        let savedPatData: MovementRow[] | null = null;
                         if (patrimonialFromComparativo.length > 0) {
                             toast.loading(`Salvando ${patrimonialFromComparativo.length} contas patrimoniais...`, { id: 'import-pat-auto' });
                             const patResult = await movementService.bulkImport(targetClientId, importYear, patrimonialFromComparativo, 'patrimonial');
                             toast.success(`${patResult.count} contas patrimoniais importadas automaticamente!`, { id: 'import-pat-auto' });
                             // Re-fetch patrimonial com dados resolvidos
-                            const savedPatData = await movementService.getAll(targetClientId, importYear, 'patrimonial');
-                            setPatrimonialMovements(savedPatData as MovementRow[]);
+                            savedPatData = await movementService.getAll(targetClientId, importYear, 'patrimonial') as MovementRow[];
                         }
+
+                        // Atualiza estado e selectedYear juntos — após todos os saves,
+                        // evitando que o useEffect dispare fetch antes dos dados estarem prontos
+                        setMovFn(savedData as MovementRow[]);
+                        if (savedPatData) setPatrimonialMovements(savedPatData);
+                        if (importYear !== selectedYear) setSelectedYear(importYear);
                     } else {
                         // Sem persistência: usar dados raw
                         setMovFn(parsedMovements);
+                        if (importYear !== selectedYear) setSelectedYear(importYear);
                     }
                 } catch (error) {
                     console.error(`Erro ao importar ${label}:`, error);

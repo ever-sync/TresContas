@@ -20,9 +20,13 @@ interface DraftMapping {
 }
 
 interface DreAccount {
+    id: string;
     code: string;
     name: string;
     level: number;
+    type: string;
+    is_analytic?: boolean | null;
+    reduced_code?: string | null;
 }
 
 interface Props {
@@ -99,22 +103,19 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
         const load = async () => {
             try {
                 setLoading(true);
-                const [mappingsRes, movementsRes] = await Promise.all([
+                const [mappingsRes, chartRes] = await Promise.all([
                     api.get(`/clients/${clientId}/dre-mappings`),
-                    api.get(`/clients/${clientId}/movements`, { params: { year: selectedYear, type: 'dre' } }),
+                    api.get(`/clients/${clientId}/chart-of-accounts`),
                 ]);
 
                 const mappings: DREMappingRecord[] = mappingsRes.data;
-                const movements = movementsRes.data as Array<{ code: string; name: string; level: number }>;
+                const chart = chartRes.data as DreAccount[];
 
-                // DRE accounts = leaf accounts (03.x, 04.x)
-                const dreOnly = movements.filter(
+                // DRE accounts (03.x, 04.x) — all accounts including T and A
+                const dreOnly = chart.filter(
                     (m) => m.code.startsWith('03') || m.code.startsWith('04')
                 );
-                const leafAccounts = dreOnly.filter(
-                    (m) => !dreOnly.some((c) => c.code !== m.code && c.code.startsWith(m.code + '.'))
-                );
-                setDreAccounts(leafAccounts);
+                setDreAccounts(dreOnly);
 
                 // Build draft from existing mappings
                 const drafts: DraftMapping[] = mappings.map((m) => ({
@@ -367,6 +368,7 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                                                     id: a.code,
                                                     code: a.code,
                                                     name: a.name,
+                                                    accountType: a.is_analytic === true ? 'A' : 'T',
                                                 }));
 
                                                 return (

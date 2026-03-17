@@ -490,6 +490,7 @@ export const ClientDfcSection = ({
                                                                                 code: account.code,
                                                                                 name: account.name,
                                                                                 reducedCode: account.reduced_code,
+                                                                                accountType: account.is_analytic === true ? 'A' : 'T',
                                                                             }))}
                                                                             value={mapping.chart_account_id}
                                                                             onChange={(id) => updateMapping(mapping.localId, { chart_account_id: id })}

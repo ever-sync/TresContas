@@ -10,6 +10,7 @@ export interface DFCEligibleAccount {
     reduced_code: string | null;
     name: string;
     type: string;
+    is_analytic: boolean | null;
     level: number;
 }
 

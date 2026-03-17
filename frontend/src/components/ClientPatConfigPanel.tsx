@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface MappingRecord {
@@ -19,9 +20,13 @@ interface DraftMapping {
 }
 
 interface PatAccount {
+    id: string;
     code: string;
     name: string;
     level: number;
+    type: string;
+    is_analytic?: boolean | null;
+    reduced_code?: string | null;
 }
 
 interface Props {
@@ -160,22 +165,19 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
         const load = async () => {
             try {
                 setLoading(true);
-                const [mappingsRes, movementsRes] = await Promise.all([
+                const [mappingsRes, chartRes] = await Promise.all([
                     api.get(`/clients/${clientId}/dre-mappings`),
-                    api.get(`/clients/${clientId}/movements`, { params: { year: selectedYear, type: 'patrimonial' } }),
+                    api.get(`/clients/${clientId}/chart-of-accounts`),
                 ]);
 
                 const allMappings: MappingRecord[] = mappingsRes.data;
-                const movements = movementsRes.data as Array<{ code: string; name: string; level: number }>;
+                const chart = chartRes.data as PatAccount[];
 
-                // Patrimonial accounts = leaf accounts (01.x, 02.x)
-                const patOnly = movements.filter(
+                // Patrimonial accounts (01.x, 02.x) — all accounts including T and A
+                const patOnly = chart.filter(
                     (m) => m.code.startsWith('01') || m.code.startsWith('02')
                 );
-                const leafAccounts = patOnly.filter(
-                    (m) => !patOnly.some((c) => c.code !== m.code && c.code.startsWith(m.code + '.'))
-                );
-                setPatAccounts(leafAccounts);
+                setPatAccounts(patOnly);
 
                 // Filter mappings that are for patrimonial categories
                 const patCategoryKeys = new Set(ALL_CATEGORY_KEYS);
@@ -401,10 +403,12 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                                             </div>
                                         ) : (
                                             lineMappings.map((mapping) => {
-                                                const selectOptions = [
-                                                    patAccounts.find((a) => a.code === mapping.account_code),
-                                                    ...unmappedAccounts,
-                                                ].filter((a): a is PatAccount => !!a);
+                                                const allOptions: AccountOption[] = patAccounts.map((a) => ({
+                                                    id: a.code,
+                                                    code: a.code,
+                                                    name: a.name,
+                                                    accountType: a.is_analytic === true ? 'A' : 'T',
+                                                }));
 
                                                 return (
                                                     <div
@@ -415,26 +419,12 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                                                             <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/35">
                                                                 Conta
                                                             </label>
-                                                            <select
+                                                            <SearchableAccountSelect
+                                                                options={allOptions}
                                                                 value={mapping.account_code}
-                                                                onChange={(e) =>
-                                                                    updateMappingAccount(mapping.localId, e.target.value)
-                                                                }
-                                                                className="w-full rounded-xl bg-[#0d1829] border border-white/10 text-white text-sm px-4 py-3 outline-none"
-                                                            >
-                                                                {selectOptions.map((a) => (
-                                                                    <option
-                                                                        key={a.code}
-                                                                        value={a.code}
-                                                                        className="bg-[#0d1829]"
-                                                                    >
-                                                                        {a.code} • {a.name}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                            <div className="text-xs text-white/45 font-mono">
-                                                                Código: {mapping.account_code}
-                                                            </div>
+                                                                onChange={(code) => updateMappingAccount(mapping.localId, code)}
+                                                                placeholder="Buscar conta patrimonial..."
+                                                            />
                                                         </div>
                                                         <button
                                                             onClick={() => removeMapping(mapping.localId)}

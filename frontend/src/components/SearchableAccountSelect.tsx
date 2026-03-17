@@ -6,6 +6,7 @@ export interface AccountOption {
     code: string;     // código hierárquico (01.1.01.01.0001)
     name: string;
     reducedCode?: string | null;
+    accountType?: string | null; // 'T' = título/sintético, 'A' = analítico
 }
 
 interface Props {
@@ -141,6 +142,15 @@ export const SearchableAccountSelect: React.FC<Props> = ({
                                         {option.reducedCode && (
                                             <span className="font-mono text-xs text-white/25 shrink-0">
                                                 {option.reducedCode}
+                                            </span>
+                                        )}
+                                        {option.accountType && (
+                                            <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                                                option.accountType === 'A'
+                                                    ? 'bg-cyan-500/15 text-cyan-400'
+                                                    : 'bg-amber-500/15 text-amber-400'
+                                            }`}>
+                                                {option.accountType === 'A' ? 'A' : 'T'}
                                             </span>
                                         )}
                                         <span className="truncate">{option.name}</span>

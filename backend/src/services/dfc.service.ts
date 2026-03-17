@@ -54,6 +54,7 @@ export interface DFCEligibleAccount {
     reduced_code: string | null;
     name: string;
     type: string;
+    is_analytic: boolean | null;
     level: number;
 }
 
@@ -307,6 +308,7 @@ const toEligibleAccount = (account: ChartAccountRecord): DFCEligibleAccount => (
     reduced_code: account.reduced_code,
     name: getEffectiveAccountName(account),
     type: account.type,
+    is_analytic: account.is_analytic,
     level: getEffectiveAccountLevel(account),
 });
 
@@ -402,7 +404,6 @@ export const getDfcConfig = async (clientId: string, accountingId: string): Prom
             .sort((a, b) => a.order - b.order)
             .map(toConfigLine),
         eligibleAccounts: accounts
-            .filter((account) => isTitleAccount(account as ChartAccountRecord, accounts as ChartAccountRecord[]))
             .map(toEligibleAccount)
             .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true })),
         mappings: mappings.map((mapping) => toConfigMapping(mapping as PersistedMappingRecord)),
