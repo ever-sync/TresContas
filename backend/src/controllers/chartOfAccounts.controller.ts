@@ -182,16 +182,33 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
         const batchSize = 500;
         let totalCreated = 0;
 
-        // Primeiro, remover referências de DFCLineMapping que apontam para contas que serão deletadas
-        await prisma.dFCLineMapping.deleteMany({
-            where: {
-                chart_account: { accounting_id: req.accountingId! },
-            },
-        });
-
-        await prisma.chartOfAccounts.deleteMany({
+        // Buscar IDs das contas atuais para limpar FKs
+        const existingAccountIds = (await prisma.chartOfAccounts.findMany({
             where: { accounting_id: req.accountingId! },
-        });
+            select: { id: true },
+        })).map((a) => a.id);
+
+        if (existingAccountIds.length > 0) {
+            // Remover AccountingEntryItems que referenciam essas contas
+            await prisma.accountingEntryItem.deleteMany({
+                where: { account_id: { in: existingAccountIds } },
+            });
+
+            // Remover DFCLineMappings (FK para ChartOfAccounts)
+            await prisma.dFCLineMapping.deleteMany({
+                where: { accounting_id: req.accountingId! },
+            });
+
+            // Remover DREMappings
+            await prisma.dREMapping.deleteMany({
+                where: { accounting_id: req.accountingId! },
+            });
+
+            // Deletar contas existentes
+            await prisma.chartOfAccounts.deleteMany({
+                where: { accounting_id: req.accountingId! },
+            });
+        }
 
         for (let i = 0; i < uniqueAccounts.length; i += batchSize) {
             const batch = uniqueAccounts.slice(i, i + batchSize);

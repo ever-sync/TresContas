@@ -201,9 +201,10 @@ export const ChartOfAccountsManager = ({
                 const result = await chartOfAccountsService.bulkImportShared(importAccounts);
                 toast.success(`${result.count} contas importadas com sucesso!`, { id: 'import-shared-coa' });
                 await loadAccounts();
-            } catch (error) {
+            } catch (error: any) {
                 console.error('Erro ao importar plano de contas:', error);
-                toast.error('Erro ao importar plano de contas', { id: 'import-shared-coa' });
+                const msg = error?.response?.data?.message || error?.response?.data?.detail || 'Erro ao importar plano de contas';
+                toast.error(msg, { id: 'import-shared-coa' });
             }
         };
 
