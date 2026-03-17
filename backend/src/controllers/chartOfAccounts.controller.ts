@@ -159,56 +159,56 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
             }
         }
 
-        const incomingCodes = normalizedAccounts.map((account) => account.code);
-        const batchSize = 50;
-        let totalUpserted = 0;
+        // Deduplicar por code (manter o último se houver repetidos)
+        const deduped = new Map<string, typeof normalizedAccounts[number]>();
+        for (const account of normalizedAccounts) {
+            deduped.set(account.code, account);
+        }
+        const uniqueAccounts = Array.from(deduped.values());
 
-        await prisma.$transaction(async (tx) => {
-            for (let i = 0; i < normalizedAccounts.length; i += batchSize) {
-                const batch = normalizedAccounts.slice(i, i + batchSize);
-                await Promise.all(
-                    batch.map((account) =>
-                        tx.chartOfAccounts.upsert({
-                            where: {
-                                accounting_id_code: {
-                                    accounting_id: req.accountingId!,
-                                    code: account.code,
-                                },
-                            },
-                            update: {
-                                reduced_code: account.reduced_code,
-                                name: account.name,
-                                level: account.level,
-                                type: account.type,
-                                alias: account.alias,
-                                report_type: account.report_type,
-                                report_category: account.report_category,
-                                parent_id: account.parent_id,
-                                is_analytic: account.is_analytic,
-                                client_id: null,
-                            },
-                            create: {
-                                accounting_id: req.accountingId!,
-                                client_id: null,
-                                ...account,
-                            },
-                        })
-                    )
-                );
-                totalUpserted += batch.length;
+        // Deduplicar reduced_code (null é ok, mas dois iguais não)
+        const seenReducedCodes = new Set<string>();
+        for (const account of uniqueAccounts) {
+            if (account.reduced_code) {
+                if (seenReducedCodes.has(account.reduced_code)) {
+                    account.reduced_code = null; // limpar duplicado
+                } else {
+                    seenReducedCodes.add(account.reduced_code);
+                }
             }
+        }
 
-            await tx.chartOfAccounts.deleteMany({
-                where: {
+        // Estratégia: delete all + createMany (muito mais rápido que N upserts)
+        const batchSize = 500;
+        let totalCreated = 0;
+
+        // Primeiro, remover referências de DFCLineMapping que apontam para contas que serão deletadas
+        await prisma.dFCLineMapping.deleteMany({
+            where: {
+                chart_account: { accounting_id: req.accountingId! },
+            },
+        });
+
+        await prisma.chartOfAccounts.deleteMany({
+            where: { accounting_id: req.accountingId! },
+        });
+
+        for (let i = 0; i < uniqueAccounts.length; i += batchSize) {
+            const batch = uniqueAccounts.slice(i, i + batchSize);
+            const result = await prisma.chartOfAccounts.createMany({
+                data: batch.map((account) => ({
                     accounting_id: req.accountingId!,
-                    code: { notIn: incomingCodes },
-                },
+                    client_id: null,
+                    ...account,
+                })),
+                skipDuplicates: true,
             });
-        }, { timeout: 120000 }); // 2 min para planos grandes (3000+ contas)
+            totalCreated += result.count;
+        }
 
         res.json({
             message: 'Plano de contas compartilhado importado com sucesso',
-            count: totalUpserted,
+            count: totalCreated,
         });
     } catch (error: any) {
         if (error?.code === 'P2002') {
