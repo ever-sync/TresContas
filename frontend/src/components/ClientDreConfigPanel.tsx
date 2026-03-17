@@ -191,10 +191,6 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
         setDraftMappings((prev) => prev.filter((m) => m.localId !== localId));
     };
 
-    // Map display label for category key
-    const categoryLabel = (key: string) =>
-        DRE_SECTIONS.flatMap((s) => s.categories).find((c) => c.key === key)?.label || key;
-
     const handleSave = async () => {
         try {
             setSaving(true);
