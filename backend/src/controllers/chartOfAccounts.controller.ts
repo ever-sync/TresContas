@@ -141,6 +141,8 @@ export const create = async (req: AuthRequest, res: Response) => {
 
 export const bulkImport = async (req: AuthRequest, res: Response) => {
     try {
+        console.log('[bulkImport] accountingId:', req.accountingId, 'body keys:', Object.keys(req.body || {}), 'accounts count:', Array.isArray(req.body?.accounts) ? req.body.accounts.length : 'N/A');
+
         if (!await ensureSharedChartAccess(req, res)) {
             return;
         }

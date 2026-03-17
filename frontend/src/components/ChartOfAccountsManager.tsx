@@ -247,14 +247,14 @@ export const ChartOfAccountsManager = ({
                     <div className="overflow-x-auto max-h-[72vh] overflow-y-auto">
                         <table className="w-full text-left border-collapse">
                             <thead className="sticky top-0 z-10">
-                                <tr className="bg-[#0a1628] border-b border-white/5">
-                                    <th className="p-4 px-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[160px]">Codigo</th>
-                                    <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[50px]">Niv</th>
-                                    <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[50px]">Tipo</th>
-                                    <th className="p-4 px-6 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[300px]">Descricao</th>
-                                    <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[100px]">Apelido</th>
-                                    <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[120px]">Relatorio</th>
-                                    <th className="p-4 px-3 text-[10px] font-black text-white/40 uppercase tracking-[0.2em] min-w-[160px]">Desc. Relatorio</th>
+                                <tr className="bg-[#0a1628] border-b border-white/10">
+                                    <th className="p-4 px-6 text-xs font-bold text-white/60 uppercase tracking-wider min-w-[180px]">Código</th>
+                                    <th className="p-4 px-3 text-xs font-bold text-white/60 uppercase tracking-wider min-w-[50px]">Cód. Red.</th>
+                                    <th className="p-4 px-3 text-xs font-bold text-white/60 uppercase tracking-wider min-w-[50px]">Nív</th>
+                                    <th className="p-4 px-3 text-xs font-bold text-white/60 uppercase tracking-wider min-w-[60px]">Tipo</th>
+                                    <th className="p-4 px-6 text-xs font-bold text-white/60 uppercase tracking-wider min-w-[320px]">Descrição</th>
+                                    <th className="p-4 px-3 text-xs font-bold text-white/60 uppercase tracking-wider min-w-[120px]">Apelido</th>
+                                    <th className="p-4 px-3 text-xs font-bold text-white/60 uppercase tracking-wider min-w-[140px]">Relatório</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
@@ -263,29 +263,28 @@ export const ChartOfAccountsManager = ({
                                     return (
                                         <tr
                                             key={item.id}
-                                            className={`hover:bg-white/5 transition-colors ${
-                                                item.level === 1 ? 'bg-white/10 font-black text-white' :
-                                                item.level <= 7 ? 'bg-white/5 font-bold text-white' :
-                                                isTotalizador ? 'font-semibold text-white/80' : 'text-white/50'
+                                            className={`hover:bg-white/[0.06] transition-colors ${
+                                                item.level === 1 ? 'bg-white/[0.08] font-bold text-white' :
+                                                isTotalizador ? 'bg-white/[0.03] font-semibold text-white/90' : 'text-white/70'
                                             }`}
                                         >
-                                            <td className="p-3 px-6 text-xs font-mono text-cyan-400">{item.code}</td>
-                                            <td className="p-3 px-3 text-xs text-center text-white/30">{item.level}</td>
-                                            <td className="p-3 px-3 text-xs text-center">
+                                            <td className="p-3 px-6 text-sm font-mono text-cyan-400">{item.code}</td>
+                                            <td className="p-3 px-3 text-sm font-mono text-white/50 text-center">{item.reduced_code || '-'}</td>
+                                            <td className="p-3 px-3 text-sm text-center text-white/50">{item.level}</td>
+                                            <td className="p-3 px-3 text-sm text-center">
                                                 {isTotalizador ? (
-                                                    <span className="px-2 py-0.5 bg-cyan-500/10 text-cyan-400 rounded-md text-[10px] font-bold">T</span>
+                                                    <span className="px-2.5 py-1 bg-cyan-500/15 text-cyan-300 rounded-md text-xs font-bold">T</span>
                                                 ) : (
-                                                    <span className="text-white/20">A</span>
+                                                    <span className="text-white/40 text-xs">A</span>
                                                 )}
                                             </td>
                                             <td className="p-3 px-6 text-sm">
-                                                <div style={{ paddingLeft: `${Math.min((item.level - 1) * 8, 80)}px` }}>
+                                                <div style={{ paddingLeft: `${Math.min((item.level - 1) * 12, 96)}px` }}>
                                                     {item.name}
                                                 </div>
                                             </td>
-                                            <td className="p-3 px-3 text-[10px] text-white/30 font-mono">{item.alias || '-'}</td>
-                                            <td className="p-3 px-3 text-[10px] text-white/30">{item.report_type || '-'}</td>
-                                            <td className="p-3 px-3 text-[10px] text-white/30">{item.report_category || '-'}</td>
+                                            <td className="p-3 px-3 text-sm text-white/50">{item.alias || '-'}</td>
+                                            <td className="p-3 px-3 text-sm text-white/50">{item.report_type || '-'}</td>
                                         </tr>
                                     );
                                 })}

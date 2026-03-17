@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import prisma from '../lib/prisma';
+import { getPool } from '../lib/prisma';
 
 const verifyClientOwnership = async (clientId: string, accountingId: string) => {
     const client = await prisma.client.findFirst({
@@ -247,6 +248,7 @@ export const getUnmappedMovements = async (req: AuthRequest, res: Response) => {
 };
 
 export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => {
+    console.log('[bulkDRE] === HANDLER V2 CALLED ===');
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
 
@@ -260,12 +262,13 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
             return res.status(400).json({ message: 'mappings deve ser um array nao vazio' });
         }
 
-        const normalizedMappings = mappings.map((mapping) => ({
+        const normalizedMappings = mappings.map((mapping: any) => ({
             account_code: String(mapping.account_code || '').trim(),
             account_name: String(mapping.account_name || '').trim(),
             category: String(mapping.category || '').trim(),
         }));
 
+        const invalidMappings: string[] = [];
         for (const mapping of normalizedMappings) {
             if (!mapping.account_code || !mapping.account_name || !mapping.category) {
                 return res.status(400).json({
@@ -273,56 +276,94 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
                 });
             }
             if (!VALID_DRE_CATEGORIES.includes(mapping.category)) {
-                return res.status(400).json({
-                    message: `Categoria invalida: ${mapping.category}`,
-                });
+                invalidMappings.push(mapping.category);
             }
         }
 
-        const batchSize = 100;
-        let totalProcessed = 0;
+        if (invalidMappings.length > 0) {
+            console.log('[bulkDRE] Categorias invalidas recebidas:', [...new Set(invalidMappings)]);
+            return res.status(400).json({
+                message: `Categorias invalidas: ${[...new Set(invalidMappings)].join(', ')}`,
+                valid_categories: VALID_DRE_CATEGORIES,
+            });
+        }
 
-        await prisma.$transaction(async (tx) => {
-            for (let i = 0; i < normalizedMappings.length; i += batchSize) {
-                const batch = normalizedMappings.slice(i, i + batchSize);
+        const accountingId = req.accountingId!;
+        console.log(`[bulkDRE] Salvando ${normalizedMappings.length} mapeamentos para client ${clientId}, accountingId: ${accountingId}`);
+        console.log(`[bulkDRE] Primeiro mapping:`, JSON.stringify(normalizedMappings[0]));
 
-                await Promise.all(
-                    batch.map(async (mapping) => {
-                        await tx.dREMapping.upsert({
-                            where: {
-                                client_id_account_code: {
-                                    client_id: clientId,
-                                    account_code: mapping.account_code,
-                                },
-                            },
-                            update: {
-                                account_name: mapping.account_name,
-                                category: mapping.category,
-                                updated_at: new Date(),
-                            },
-                            create: {
-                                accounting_id: req.accountingId!,
-                                client_id: clientId,
-                                account_code: mapping.account_code,
-                                account_name: mapping.account_name,
-                                category: mapping.category,
-                            },
-                        });
+        // ===== USAR SQL RAW DIRETO (bypassa Prisma transactions) =====
+        const pool = getPool();
 
-                        await syncMappingState(tx, req.accountingId!, mapping.account_code, mapping.category);
-                    })
-                );
+        // STEP 1: Deletar existentes
+        const delResult = await pool.query(
+            `DELETE FROM "DREMapping" WHERE accounting_id = $1 AND client_id = $2`,
+            [accountingId, clientId]
+        );
+        console.log(`[bulkDRE] STEP1 delete OK: ${delResult.rowCount} removidos`);
 
-                totalProcessed += batch.length;
-            }
-        });
+        // STEP 2: Insert em batch via SQL (muito mais rápido que N creates Prisma)
+        let created = 0;
+        const batchSize = 50;
+        for (let i = 0; i < normalizedMappings.length; i += batchSize) {
+            const batch = normalizedMappings.slice(i, i + batchSize);
+            const values: any[] = [];
+            const placeholders: string[] = [];
+
+            batch.forEach((m: any, idx: number) => {
+                const offset = idx * 5;
+                placeholders.push(`(gen_random_uuid(), $${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, NOW(), NOW())`);
+                values.push(accountingId, clientId, m.account_code, m.account_name, m.category);
+            });
+
+            const sql = `INSERT INTO "DREMapping" (id, accounting_id, client_id, account_code, account_name, category, created_at, updated_at)
+                         VALUES ${placeholders.join(', ')}
+                         ON CONFLICT (client_id, account_code) DO UPDATE SET
+                           account_name = EXCLUDED.account_name,
+                           category = EXCLUDED.category,
+                           updated_at = NOW()`;
+
+            const result = await pool.query(sql, values);
+            created += result.rowCount || 0;
+        }
+        console.log(`[bulkDRE] STEP2 insert OK: ${created} criados`);
+
+        // STEP 3: Sincronizar chart_of_accounts e monthly_movement (best-effort)
+        try {
+            // Batch update via subquery — 1 query em vez de N
+            await pool.query(
+                `UPDATE "ChartOfAccounts" ca
+                 SET report_category = dm.category, is_mapped = true
+                 FROM "DREMapping" dm
+                 WHERE ca.accounting_id = $1
+                   AND dm.accounting_id = $1
+                   AND dm.client_id = $2
+                   AND ca.code = dm.account_code`,
+                [accountingId, clientId]
+            );
+            await pool.query(
+                `UPDATE "MonthlyMovement" mm
+                 SET category = dm.category, is_mapped = true
+                 FROM "DREMapping" dm
+                 WHERE mm.accounting_id = $1
+                   AND dm.accounting_id = $1
+                   AND dm.client_id = $2
+                   AND mm.code = dm.account_code`,
+                [accountingId, clientId]
+            );
+            console.log(`[bulkDRE] STEP3 sync OK`);
+        } catch (e: any) {
+            console.warn('[bulkDRE] STEP3 sync falhou (não-crítico):', e.message);
+        }
+
+        console.log(`[bulkDRE] ${created} mapeamentos salvos com sucesso`);
 
         res.json({
             message: 'Mapeamentos DRE compartilhados importados com sucesso',
-            count: totalProcessed,
+            count: created,
         });
     } catch (error: any) {
-        console.error('Erro ao importar mapeamentos DRE:', error);
+        console.error('Erro GERAL ao importar mapeamentos DRE:', error.message, error.stack);
         res.status(500).json({
             message: 'Erro ao importar mapeamentos DRE',
             detail: error?.message || String(error),

@@ -218,9 +218,13 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
             toast.success('Configuração DRE salva!');
-        } catch (error) {
+        } catch (error: any) {
             console.error('Erro ao salvar config DRE:', error);
-            toast.error('Erro ao salvar configuração DRE');
+            console.error('Response data:', JSON.stringify(error?.response?.data));
+            console.error('Response status:', error?.response?.status);
+            const detail = error?.response?.data?.detail || '';
+            const msg = error?.response?.data?.message || 'Erro ao salvar configuração DRE';
+            toast.error(detail ? `${msg}: ${detail}` : msg);
         } finally {
             setSaving(false);
         }
