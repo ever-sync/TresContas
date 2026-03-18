@@ -125,12 +125,10 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
         );
 
         // Buscar mapeamentos DRE configurados na tela de parametrização (prioridade máxima)
-        const dreMappings = movementType === 'dre'
-            ? await prisma.dREMapping.findMany({
-                where: { client_id: clientId },
-                select: { account_code: true, category: true },
-            })
-            : [];
+        const dreMappings = await prisma.dREMapping.findMany({
+            where: { client_id: clientId },
+            select: { account_code: true, category: true },
+        });
         const dreMappingByCode = new Map(
             dreMappings.map((m) => [m.account_code.trim(), m.category])
         );
@@ -167,7 +165,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             const sharedAccount = chartAccountByCode.get(code);
             const reducedCode = sharedAccount?.reduced_code || payloadReducedCode || null;
 
-            // Prioridade de resolução de categoria DRE:
+            // Prioridade de resolução de categoria:
             // 1. Mapeamento configurado na tela de parametrização (DREMapping)
             // 2. Categoria vinda do CSV (DE-PARA)
             // 3. report_category do plano de contas compartilhado
@@ -175,9 +173,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             const configuredCategory = dreMappingByCode.get(code) || null;
             const sharedCategory = sharedAccount?.report_category ? removeDiacritics(sharedAccount.report_category) : null;
             const inferredCategory = movementType === 'dre' ? inferDreCategoryFromCode(code) : null;
-            const resolvedCategory = movementType === 'dre'
-                ? configuredCategory || normalizedCategory || sharedCategory || inferredCategory
-                : normalizedCategory;
+            const resolvedCategory = configuredCategory || normalizedCategory || sharedCategory || inferredCategory;
 
             return {
                 accounting_id: req.accountingId!,
@@ -257,3 +253,4 @@ export const removeMovements = async (req: AuthRequest, res: Response) => {
         });
     }
 };
+

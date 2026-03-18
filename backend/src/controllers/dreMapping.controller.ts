@@ -136,31 +136,29 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
             });
         }
 
-        const mapping = await prisma.$transaction(async (tx) => {
-            const upserted = await tx.dREMapping.upsert({
-                where: {
-                    client_id_account_code: {
-                        client_id: clientId,
-                        account_code: accountCode,
-                    },
-                },
-                update: {
-                    account_name: accountName,
-                    category: normalizedCategory,
-                    updated_at: new Date(),
-                },
-                create: {
-                    accounting_id: req.accountingId!,
+        const mapping = await prisma.dREMapping.upsert({
+            where: {
+                client_id_account_code: {
                     client_id: clientId,
                     account_code: accountCode,
-                    account_name: accountName,
-                    category: normalizedCategory,
                 },
-            });
-
-            await syncMappingState(tx, req.accountingId!, clientId, accountCode, normalizedCategory);
-            return upserted;
+            },
+            update: {
+                account_name: accountName,
+                category: normalizedCategory,
+                updated_at: new Date(),
+            },
+            create: {
+                accounting_id: req.accountingId!,
+                client_id: clientId,
+                account_code: accountCode,
+                account_name: accountName,
+                category: normalizedCategory,
+            },
         });
+
+        // Sync em modo direto evita expiração de interactive transaction em bases maiores.
+        await syncMappingState(prisma, req.accountingId!, clientId, accountCode, normalizedCategory);
 
         res.json({ message: 'Mapeamento DRE compartilhado salvo com sucesso', mapping });
     } catch (error: any) {
@@ -183,26 +181,24 @@ export const deleteDREMapping = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente nao encontrado' });
         }
 
-        await prisma.$transaction(async (tx) => {
-            await tx.dREMapping.deleteMany({
-                where: {
-                    accounting_id: req.accountingId!,
-                    client_id: clientId,
-                    account_code: accountCode,
-                },
-            });
-
-            const fallback = await tx.dREMapping.findFirst({
-                where: {
-                    accounting_id: req.accountingId!,
-                    client_id: clientId,
-                    account_code: accountCode,
-                },
-                orderBy: { updated_at: 'desc' },
-            });
-
-            await syncMappingState(tx, req.accountingId!, clientId, accountCode, fallback?.category || null);
+        await prisma.dREMapping.deleteMany({
+            where: {
+                accounting_id: req.accountingId!,
+                client_id: clientId,
+                account_code: accountCode,
+            },
         });
+
+        const fallback = await prisma.dREMapping.findFirst({
+            where: {
+                accounting_id: req.accountingId!,
+                client_id: clientId,
+                account_code: accountCode,
+            },
+            orderBy: { updated_at: 'desc' },
+        });
+
+        await syncMappingState(prisma, req.accountingId!, clientId, accountCode, fallback?.category || null);
 
         res.json({ message: 'Mapeamento DRE removido com sucesso' });
     } catch (error: any) {
@@ -295,25 +291,26 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
             });
         }
 
+        // Evita conflito de upsert quando o payload traz o mesmo account_code repetido.
+        // Regra: o ultimo mapeamento recebido para a conta prevalece.
+        const dedupedByAccountCode = new Map<string, { account_code: string; account_name: string; category: string }>();
+        for (const mapping of normalizedMappings) {
+            dedupedByAccountCode.set(mapping.account_code, mapping);
+        }
+        const uniqueMappings = Array.from(dedupedByAccountCode.values());
+
         const accountingId = req.accountingId!;
-        console.log(`[bulkDRE] Salvando ${normalizedMappings.length} mapeamentos para client ${clientId}, accountingId: ${accountingId}`);
-        console.log(`[bulkDRE] Primeiro mapping:`, JSON.stringify(normalizedMappings[0]));
+        console.log(`[bulkDRE] Salvando ${uniqueMappings.length} mapeamentos para client ${clientId}, accountingId: ${accountingId}`);
+        console.log(`[bulkDRE] Primeiro mapping:`, JSON.stringify(uniqueMappings[0]));
 
         // ===== USAR SQL RAW DIRETO (bypassa Prisma transactions) =====
         const pool = getPool();
 
-        // STEP 1: Deletar existentes
-        const delResult = await pool.query(
-            `DELETE FROM "DREMapping" WHERE accounting_id = $1 AND client_id = $2`,
-            [accountingId, clientId]
-        );
-        console.log(`[bulkDRE] STEP1 delete OK: ${delResult.rowCount} removidos`);
-
-        // STEP 2: Insert em batch via SQL (muito mais rápido que N creates Prisma)
+        // STEP 1: Upsert em batch via SQL (preserva mapeamentos fora do payload)
         let created = 0;
         const batchSize = 50;
-        for (let i = 0; i < normalizedMappings.length; i += batchSize) {
-            const batch = normalizedMappings.slice(i, i + batchSize);
+        for (let i = 0; i < uniqueMappings.length; i += batchSize) {
+            const batch = uniqueMappings.slice(i, i + batchSize);
             const values: any[] = [];
             const placeholders: string[] = [];
 
@@ -333,9 +330,9 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
             const result = await pool.query(sql, values);
             created += result.rowCount || 0;
         }
-        console.log(`[bulkDRE] STEP2 insert OK: ${created} criados`);
+        console.log(`[bulkDRE] STEP1 upsert OK: ${created} linhas afetadas`);
 
-        // STEP 3: Sincronizar chart_of_accounts e monthly_movement (best-effort)
+        // STEP 2: Sincronizar chart_of_accounts e monthly_movement (best-effort)
         try {
             // Batch update via subquery — 1 query em vez de N
             await pool.query(
@@ -360,9 +357,9 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
                    AND mm.code = dm.account_code`,
                 [accountingId, clientId]
             );
-            console.log(`[bulkDRE] STEP3 sync OK`);
+            console.log(`[bulkDRE] STEP2 sync OK`);
         } catch (e: any) {
-            console.warn('[bulkDRE] STEP3 sync falhou (não-crítico):', e.message);
+            console.warn('[bulkDRE] STEP2 sync falhou (não-crítico):', e.message);
         }
 
         console.log(`[bulkDRE] ${created} mapeamentos salvos com sucesso`);
@@ -379,3 +376,4 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
         });
     }
 };
+
