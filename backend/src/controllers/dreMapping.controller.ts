@@ -3,13 +3,8 @@ import { AuthRequest } from '../middlewares/auth.middleware';
 import prisma from '../lib/prisma';
 import { getPool } from '../lib/prisma';
 
-const verifyClientOwnership = async (clientId: string, accountingId: string) => {
-    const client = await prisma.client.findFirst({
-        where: { id: clientId, accounting_id: accountingId },
-        select: { id: true },
-    });
-    return client !== null;
-};
+const stripAccents = (s: string) =>
+    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 
 const VALID_DRE_CATEGORIES = [
     // DRE categories
@@ -39,17 +34,31 @@ const VALID_DRE_CATEGORIES = [
     'Reserva De Lucros', 'Resultado Do Exercicio',
 ];
 
+const VALID_DRE_CATEGORIES_NORMALIZED = new Set(VALID_DRE_CATEGORIES.map(stripAccents));
+
+const isValidCategory = (category: string) => VALID_DRE_CATEGORIES_NORMALIZED.has(stripAccents(category));
+
+const verifyClientOwnership = async (clientId: string, accountingId: string) => {
+    const client = await prisma.client.findFirst({
+        where: { id: clientId, accounting_id: accountingId },
+        select: { id: true },
+    });
+    return client !== null;
+};
+
 type MappingSyncClient = Pick<typeof prisma, 'chartOfAccounts' | 'monthlyMovement' | 'dREMapping'>;
 
 const syncMappingState = async (
     tx: MappingSyncClient,
     accountingId: string,
+    clientId: string,
     accountCode: string,
     category: string | null
 ) => {
     await tx.chartOfAccounts.updateMany({
         where: {
             accounting_id: accountingId,
+            client_id: clientId,
             code: accountCode,
         },
         data: {
@@ -61,6 +70,7 @@ const syncMappingState = async (
     await tx.monthlyMovement.updateMany({
         where: {
             accounting_id: accountingId,
+            client_id: clientId,
             code: accountCode,
         },
         data: {
@@ -70,20 +80,16 @@ const syncMappingState = async (
     });
 };
 
-const getSharedMappings = async (accountingId: string) => {
+const getClientMappings = async (accountingId: string, clientId: string) => {
     const mappings = await prisma.dREMapping.findMany({
-        where: { accounting_id: accountingId },
+        where: { 
+            accounting_id: accountingId,
+            client_id: clientId
+        },
         orderBy: [{ account_code: 'asc' }, { updated_at: 'desc' }],
     });
 
-    const uniqueByCode = new Map<string, typeof mappings[number]>();
-    for (const mapping of mappings) {
-        if (!uniqueByCode.has(mapping.account_code)) {
-            uniqueByCode.set(mapping.account_code, mapping);
-        }
-    }
-
-    return Array.from(uniqueByCode.values()).sort((a, b) => a.account_code.localeCompare(b.account_code));
+    return mappings;
 };
 
 export const getDREMappings = async (req: AuthRequest, res: Response) => {
@@ -95,7 +101,7 @@ export const getDREMappings = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente nao encontrado' });
         }
 
-        const mappings = await getSharedMappings(req.accountingId);
+        const mappings = await getClientMappings(req.accountingId, clientId);
         res.json(mappings);
     } catch (error: any) {
         console.error('Erro ao buscar mapeamentos DRE compartilhados:', error);
@@ -124,7 +130,7 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
         const accountName = String(account_name).trim();
         const normalizedCategory = String(category).trim();
 
-        if (!VALID_DRE_CATEGORIES.includes(normalizedCategory)) {
+        if (!isValidCategory(normalizedCategory)) {
             return res.status(400).json({
                 message: `Categoria invalida: ${normalizedCategory}. Categorias validas: ${VALID_DRE_CATEGORIES.join(', ')}`,
             });
@@ -152,7 +158,7 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
                 },
             });
 
-            await syncMappingState(tx, req.accountingId!, accountCode, normalizedCategory);
+            await syncMappingState(tx, req.accountingId!, clientId, accountCode, normalizedCategory);
             return upserted;
         });
 
@@ -189,12 +195,13 @@ export const deleteDREMapping = async (req: AuthRequest, res: Response) => {
             const fallback = await tx.dREMapping.findFirst({
                 where: {
                     accounting_id: req.accountingId!,
+                    client_id: clientId,
                     account_code: accountCode,
                 },
                 orderBy: { updated_at: 'desc' },
             });
 
-            await syncMappingState(tx, req.accountingId!, accountCode, fallback?.category || null);
+            await syncMappingState(tx, req.accountingId!, clientId, accountCode, fallback?.category || null);
         });
 
         res.json({ message: 'Mapeamento DRE removido com sucesso' });
@@ -275,7 +282,7 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
                     message: 'Cada mapeamento deve ter account_code, account_name e category',
                 });
             }
-            if (!VALID_DRE_CATEGORIES.includes(mapping.category)) {
+            if (!isValidCategory(mapping.category)) {
                 invalidMappings.push(mapping.category);
             }
         }
@@ -336,6 +343,7 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
                  SET report_category = dm.category, is_mapped = true
                  FROM "DREMapping" dm
                  WHERE ca.accounting_id = $1
+                   AND ca.client_id = $2
                    AND dm.accounting_id = $1
                    AND dm.client_id = $2
                    AND ca.code = dm.account_code`,
@@ -346,6 +354,7 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
                  SET category = dm.category, is_mapped = true
                  FROM "DREMapping" dm
                  WHERE mm.accounting_id = $1
+                   AND mm.client_id = $2
                    AND dm.accounting_id = $1
                    AND dm.client_id = $2
                    AND mm.code = dm.account_code`,
