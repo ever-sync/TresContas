@@ -339,7 +339,7 @@ export const DFC_LINE_DEFINITIONS: DFCLineDefinition[] = [
         displayType: 'item',
         configurable: true,
         visibleInReport: true,
-        sourceType: 'liability',
+        sourceType: 'equity',
         defaultMultiplier: -1,
         includeChildrenByDefault: true,
     },

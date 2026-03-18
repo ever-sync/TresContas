@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     AlertTriangle,
+    ChevronDown,
     Download,
     Loader2,
     Plus,
@@ -93,6 +94,7 @@ export const ClientDfcSection = ({
     const [loadingReport, setLoadingReport] = useState(false);
     const [loadingConfig, setLoadingConfig] = useState(false);
     const [savingConfig, setSavingConfig] = useState(false);
+    const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         const loadReport = async () => {
@@ -215,6 +217,16 @@ export const ClientDfcSection = ({
     const removeMapping = (localId: string) => {
         setDraftMappings((prev) => prev.filter((mapping) => mapping.localId !== localId));
     };
+
+    const toggleSection = (sectionKey: string) => {
+        setExpandedSections((prev) => ({
+            ...prev,
+            [sectionKey]: !(prev[sectionKey] ?? true),
+        }));
+    };
+
+    let activeSectionKey: string | null = null;
+    let activeSectionExpanded = true;
 
     const handleSaveConfig = async () => {
         if (!clientId) return;
@@ -363,6 +375,9 @@ export const ClientDfcSection = ({
                                 <tbody>
                                     {(report?.rows || []).map((row, index) => {
                                         if (row.type === 'separator') {
+                                            if (activeSectionKey && !activeSectionExpanded) {
+                                                return null;
+                                            }
                                             return (
                                                 <tr key={`separator-${index}`}>
                                                     <td colSpan={13} className="h-4 bg-transparent" />
@@ -371,10 +386,25 @@ export const ClientDfcSection = ({
                                         }
 
                                         if (row.type === 'section') {
+                                            const sectionKey = row.key || row.label || `section-${index}`;
+                                            activeSectionKey = sectionKey;
+                                            activeSectionExpanded = expandedSections[sectionKey] ?? true;
                                             return (
-                                                <tr key={`section-${index}`} className="border-t-2 border-white/10">
+                                                <tr
+                                                    key={`section-${index}`}
+                                                    className="border-t-2 border-white/10 hover:bg-white/5 transition-colors"
+                                                >
                                                     <td className="p-4 px-6 text-[11px] font-black text-white/60 uppercase tracking-[0.15em] sticky left-0 z-10 bg-[#0d1829]">
-                                                        {row.label}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleSection(sectionKey)}
+                                                            className="flex w-full items-center gap-2 text-left"
+                                                            aria-expanded={activeSectionExpanded}
+                                                            title={activeSectionExpanded ? 'Recolher seção' : 'Abrir seção'}
+                                                        >
+                                                            <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${activeSectionExpanded ? 'rotate-0' : '-rotate-90'}`} />
+                                                            <span>{row.label}</span>
+                                                        </button>
                                                     </td>
                                                     {months.map((_, monthIdx) => (
                                                         <td
@@ -386,6 +416,10 @@ export const ClientDfcSection = ({
                                                     ))}
                                                 </tr>
                                             );
+                                        }
+
+                                        if (activeSectionKey && !activeSectionExpanded) {
+                                            return null;
                                         }
 
                                         const displayType = row.displayType || 'item';
