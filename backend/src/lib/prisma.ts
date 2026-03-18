@@ -7,15 +7,29 @@ if (!connectionString) {
     throw new Error('DATABASE_URL is required');
 }
 
-// Opt-in only. Use DATABASE_SSL_INSECURE=true for local/self-signed certificates.
-const insecureTls = process.env.DATABASE_SSL_INSECURE === 'true';
-if (insecureTls) {
+const runningOnVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
+const forceInsecureTls = process.env.DATABASE_SSL_INSECURE === 'true';
+const forceStrictTls = process.env.DATABASE_SSL_STRICT === 'true';
+const explicitRejectUnauthorized = process.env.PG_SSL_REJECT_UNAUTHORIZED;
+const urlRequestsSsl = /(?:\?|&)(sslmode|ssl)=/i.test(connectionString);
+
+// In Vercel/serverless, managed Postgres providers often require explicit SSL handling.
+const shouldUseSsl = forceInsecureTls || forceStrictTls || runningOnVercel || urlRequestsSsl;
+const rejectUnauthorized = forceStrictTls
+    ? true
+    : explicitRejectUnauthorized === 'false'
+        ? false
+        : explicitRejectUnauthorized === 'true'
+            ? true
+            : !(forceInsecureTls || runningOnVercel);
+
+if (shouldUseSsl && !rejectUnauthorized) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
 
 const pool = new Pool({
     connectionString,
-    ssl: insecureTls ? { rejectUnauthorized: false } : undefined,
+    ssl: shouldUseSsl ? { rejectUnauthorized } : undefined,
     max: 10,
 });
 const adapter = new PrismaPg(pool);
