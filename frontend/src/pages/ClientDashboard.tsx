@@ -61,6 +61,10 @@ const formatLocaleNumber = (number: number) => {
     return Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 };
 
+const formatSignedLocaleNumber = (number: number) => {
+    return number.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+};
+
 interface Account {
     classification: string;
     reduced_code?: string;
@@ -451,6 +455,34 @@ const ClientDashboard = () => {
     // Remove acentos e normaliza string para comparação à prova de encoding
     const stripAccents = (s: string): string =>
         s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+
+    const detectDreValueMode = (movements: Array<{ values: Array<number | string> }>): 'raw' | 'cumulative' => {
+        let cumulativeSignals = 0;
+        let rawSignals = 0;
+
+        for (const movement of movements) {
+            const numericValues = movement.values
+                .map((value) => typeof value === 'number' ? value : Number(String(value).replace(/\./g, '').replace(',', '.')))
+                .filter((value) => Number.isFinite(value));
+            const nonZeroValues = numericValues.filter((value) => Math.abs(value) > 0.0001);
+
+            if (nonZeroValues.length < 2) continue;
+
+            const firstSign = Math.sign(nonZeroValues[0]);
+            const sameSign = nonZeroValues.every((value) => Math.sign(value) === firstSign);
+            const absNonDecreasing = nonZeroValues
+                .slice(1)
+                .every((value, index) => Math.abs(value) + 0.0001 >= Math.abs(nonZeroValues[index]));
+            const hasRelevantDecrease = nonZeroValues
+                .slice(1)
+                .some((value, index) => Math.abs(value) < Math.abs(nonZeroValues[index]) * 0.8);
+
+            if (sameSign && absNonDecreasing) cumulativeSignals += 1;
+            if (hasRelevantDecrease) rawSignals += 1;
+        }
+
+        return cumulativeSignals > rawSignals ? 'cumulative' : 'raw';
+    };
 
     // Mapeamento de aliases usando chave SEM acento para matching robusto
     const CATEGORY_ALIASES: Record<string, string[]> = {
@@ -860,7 +892,9 @@ const ClientDashboard = () => {
                     const targetClientId = clientId || client?.id;
                     if (isAccountingView && targetClientId) {
                         toast.loading(`Salvando ${parsedMovements.length} linhas (${label})...`, { id: toastId });
-                        const dreValueMode = movType === 'dre' && isComparativo ? 'cumulative' : 'raw';
+                        const dreValueMode = movType === 'dre' && isComparativo
+                            ? detectDreValueMode(parsedMovements)
+                            : 'raw';
                         const result = await movementService.bulkImport(targetClientId, importYear, parsedMovements, movType, dreValueMode);
                         toast.success(`${result.count} linhas importadas para ${importYear} (${label})!`, { id: toastId });
 
@@ -2169,20 +2203,21 @@ const ClientDashboard = () => {
                                                                 </td>
                                                                 {months.map((_, mi) => {
                                                                     const monthVal = allMonthsDre[mi]?.[item.key as keyof typeof allMonthsDre[0]] as number || 0;
+                                                                    const displayMonthVal = item.type === 'negative' ? Math.abs(monthVal) : monthVal;
                                                                     return (
                                                                         <td key={mi} className={`p-4 px-3 text-xs text-right font-mono font-bold ${
                                                                             mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''
                                                                         } ${item.type === 'negative' ? 'text-rose-400' :
                                                                             item.type === 'positive' ? 'text-emerald-400' : 'text-white/80'
                                                                         }`}>
-                                                                            {formatLocaleNumber(monthVal)}
+                                                                            {formatSignedLocaleNumber(displayMonthVal)}
                                                                         </td>
                                                                     );
                                                                 })}
                                                                 <td className={`p-4 px-3 text-xs text-right font-mono font-bold bg-white/5 sticky right-[100px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)] ${
                                                                     item.type === 'highlight' ? 'text-cyan-400' : 'text-white'
                                                                 }`}>
-                                                                    {formatLocaleNumber(acumulado)}
+                                                                    {formatSignedLocaleNumber(item.type === 'negative' ? Math.abs(acumulado) : acumulado)}
                                                                 </td>
                                                                 <td className={`p-4 px-3 text-xs text-right font-black sticky right-0 z-10 bg-[#0a1628] shadow-[-4px_0_10px_rgba(0,0,0,0.3)] ${item.pct.startsWith('-') ? 'text-rose-400' : 'text-cyan-400'}`}>
                                                                     {item.pct}
