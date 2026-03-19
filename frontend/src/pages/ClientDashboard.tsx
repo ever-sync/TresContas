@@ -37,6 +37,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import axios from 'axios';
+import api from '../services/api';
 import { clientService } from '../services/clientService';
 import type { Client } from '../services/clientService';
 import { clientPortalService } from '../services/clientPortalService';
@@ -160,6 +161,8 @@ const ClientDashboard = () => {
     const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
     const [dreConfigMode, setDreConfigMode] = useState(false);
+    const [chartAccountsReloadToken, setChartAccountsReloadToken] = useState(0);
+    const [dreMappings, setDreMappings] = useState<Array<{ account_code: string; category: string }>>([]);
     const [patViewMode, setPatViewMode] = useState<ReportViewMode>('lista');
     const [patConfigMode, setPatConfigMode] = useState(false);
     const [expandedPatGroups, setExpandedPatGroups] = useState<Set<string>>(
@@ -339,7 +342,25 @@ const ClientDashboard = () => {
         if ((isAccountingView && clientId) || isClientView) {
             loadChartOfAccounts();
         }
-    }, [clientId, isAccountingView, isClientView]);
+    }, [clientId, isAccountingView, isClientView, chartAccountsReloadToken]);
+
+    useEffect(() => {
+        const loadDreMappings = async () => {
+            if (!isAccountingView || !clientId) {
+                setDreMappings([]);
+                return;
+            }
+            try {
+                const { data } = await api.get(`/clients/${clientId}/dre-mappings`);
+                setDreMappings(Array.isArray(data) ? data : []);
+            } catch (error) {
+                console.error('Erro ao carregar mapeamentos DRE:', error);
+                setDreMappings([]);
+            }
+        };
+
+        loadDreMappings();
+    }, [clientId, isAccountingView, chartAccountsReloadToken]);
 
     // Carregar movimentações DRE do banco de dados
     useEffect(() => {
@@ -449,44 +470,98 @@ const ClientDashboard = () => {
         'resultado participacoes societarias':     ['resultado participacoes societarias', 'participacoes societarias', 'resultado de participacoes societarias'],
     };
 
+    const getLeafMovements = (rows: MovementRow[]) => {
+        const allCodes = rows.map((row) => row.code);
+        return rows.filter((row) =>
+            !allCodes.some((code) => code !== row.code && code.startsWith(`${row.code}.`))
+        );
+    };
+
+    const sortMovementsByCode = (rows: MovementRow[]) =>
+        rows.slice().sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true }));
+
+    const getConfiguredCodesForReportCategory = (reportCategory: string) => {
+        const normalize = (s: string) => stripAccents(s);
+        const cat = normalize(reportCategory);
+        const aliases = CATEGORY_ALIASES[cat] ?? [cat];
+        return dreMappings
+            .filter((mapping) => mapping.category && aliases.includes(normalize(mapping.category)))
+            .map((mapping) => String(mapping.account_code).trim());
+    };
+
+    const getConfiguredRowsForReportCategory = (
+        reportCategory: string,
+        movementsData: MovementRow[],
+        mode: 'exact' | 'withDescendants' = 'withDescendants'
+    ) => {
+        const configuredCodes = getConfiguredCodesForReportCategory(reportCategory);
+
+        if (configuredCodes.length === 0) return [];
+
+        const exactRows = sortMovementsByCode(
+            movementsData.filter((movement) => configuredCodes.includes(movement.code))
+        );
+        if (mode === 'exact') return exactRows;
+
+        const descendantRows = sortMovementsByCode(
+            movementsData.filter((movement) =>
+                configuredCodes.some((code) => movement.code.startsWith(`${code}.`))
+            )
+        );
+
+        if (exactRows.length === 0) return descendantRows;
+
+        const exactCodes = new Set(exactRows.map((movement) => movement.code));
+        return [...exactRows, ...descendantRows.filter((movement) => !exactCodes.has(movement.code))];
+    };
+
+    const splitPrimaryAndChildRows = (rows: MovementRow[]) => {
+        if (rows.length === 0) {
+            return { primaryRows: [] as MovementRow[], childRows: [] as MovementRow[] };
+        }
+
+        const getDepth = (code: string) => code.trim().split('.').filter(Boolean).length;
+        const primaryDepth = Math.min(...rows.map((row) => getDepth(row.code)));
+        return {
+            primaryRows: rows.filter((row) => getDepth(row.code) === primaryDepth),
+            childRows: rows.filter((row) => getDepth(row.code) !== primaryDepth),
+        };
+    };
+
     // Função DE-PARA: soma movimentações pela coluna category (DE-PARA do balancete)
     // Com fallback para cruzar com Plano de Contas se o balancete não tiver DE-PARA
     const getSumByReportCategory = (categoryName: string, monthIdx: number, movementsData: MovementRow[]): number => {
         const normalize = (s: string) => stripAccents(s);
         const cat = normalize(categoryName);
-
-        // Resolve aliases: se a categoria tem aliases, aceita qualquer um deles
         const aliases = CATEGORY_ALIASES[cat] ?? [cat];
 
-        // 1. Tenta pelo DE-PARA dos próprios movements (coluna category do balancete)
-        const matched = movementsData.filter(m =>
-            m.category && aliases.includes(normalize(m.category))
-        );
+        const configuredCodes = getConfiguredCodesForReportCategory(categoryName);
+        if (configuredCodes.length > 0) {
+            const exactConfiguredRows = getConfiguredRowsForReportCategory(categoryName, movementsData, 'exact');
+            if (exactConfiguredRows.length > 0) {
+                return getLeafMovements(exactConfiguredRows).reduce((sum, movement) => sum + (movement.values[monthIdx] || 0), 0);
+            }
 
-        if (matched.length > 0) {
-            // Soma apenas contas-folha: contas que NÃO são prefixo de nenhuma outra
-            // Isso evita dupla contagem quando pai e filhas têm a mesma categoria DE-PARA
-            const allCodes = matched.map(m => m.code);
-            const leaves = matched.filter(m =>
-                !allCodes.some(c => c !== m.code && c.startsWith(m.code + '.'))
-            );
-            return leaves.reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
+            const descendantConfiguredRows = getConfiguredRowsForReportCategory(categoryName, movementsData, 'withDescendants');
+            return getLeafMovements(descendantConfiguredRows).reduce((sum, movement) => sum + (movement.values[monthIdx] || 0), 0);
         }
 
-        // 2. Fallback: cruzar com Plano de Contas pelo report_category (também usa aliases)
+        const matched = movementsData.filter((movement) =>
+            movement.category && aliases.includes(normalize(movement.category))
+        );
+        if (matched.length > 0) {
+            return getLeafMovements(matched).reduce((sum, movement) => sum + (movement.values[monthIdx] || 0), 0);
+        }
+
         const codesInCategory = new Set(
             accounts
-                .filter(a => a.report_category && aliases.includes(normalize(a.report_category)))
-                .map(a => a.classification)
+                .filter((account) => account.report_category && aliases.includes(normalize(account.report_category)))
+                .map((account) => account.classification)
         );
         if (codesInCategory.size === 0) return 0;
-        // Filtrar por contas-folha no fallback também
-        const matchedByCode = movementsData.filter(m => codesInCategory.has(m.code));
-        const allFallbackCodes = matchedByCode.map(m => m.code);
-        const fallbackLeaves = matchedByCode.filter(m =>
-            !allFallbackCodes.some(c => c !== m.code && c.startsWith(m.code + '.'))
-        );
-        return fallbackLeaves.reduce((sum, m) => sum + (m.values[monthIdx] || 0), 0);
+
+        const matchedByCode = movementsData.filter((movement) => codesInCategory.has(movement.code));
+        return getLeafMovements(matchedByCode).reduce((sum, movement) => sum + (movement.values[monthIdx] || 0), 0);
     };
 
     // Busca contas-filhas de um report_category para drill-down
@@ -495,23 +570,25 @@ const ClientDashboard = () => {
         const cat = normalize(reportCategory);
         const aliases = CATEGORY_ALIASES[cat] ?? [cat];
 
-        // Tenta primeiro pelo DE-PARA direto dos movements
-        const byCategory = movementsData.filter(m =>
-            m.category && aliases.includes(normalize(m.category))
-        );
-        if (byCategory.length > 0) return byCategory;
+        const configuredRows = getConfiguredRowsForReportCategory(reportCategory, movementsData, 'withDescendants');
+        if (configuredRows.length > 0) return configuredRows;
 
-        // Fallback: cruza com plano de contas
+        const byCategory = movementsData.filter((movement) =>
+            movement.category && aliases.includes(normalize(movement.category))
+        );
+        if (byCategory.length > 0) return sortMovementsByCode(byCategory);
+
         const codesInCategory = new Set(
             accounts
-                .filter(a => a.report_category && aliases.includes(normalize(a.report_category)))
-                .map(a => a.classification)
+                .filter((account) => account.report_category && aliases.includes(normalize(account.report_category)))
+                .map((account) => account.classification)
         );
-        return movementsData.filter(m => codesInCategory.has(m.code));
+        return sortMovementsByCode(movementsData.filter((movement) => codesInCategory.has(movement.code)));
     };
 
     // Estado para drill-down no DRE
     const [expandedDreRow, setExpandedDreRow] = useState<string | null>(null);
+    const [expandedDreChildrenRows, setExpandedDreChildrenRows] = useState<Record<string, boolean>>({});
 
     // Comentários do DRE
     const [dreComments, setDreComments] = useState<Record<string, string>>({});
@@ -783,7 +860,8 @@ const ClientDashboard = () => {
                     const targetClientId = clientId || client?.id;
                     if (isAccountingView && targetClientId) {
                         toast.loading(`Salvando ${parsedMovements.length} linhas (${label})...`, { id: toastId });
-                        const result = await movementService.bulkImport(targetClientId, importYear, parsedMovements, movType);
+                        const dreValueMode = movType === 'dre' && isComparativo ? 'cumulative' : 'raw';
+                        const result = await movementService.bulkImport(targetClientId, importYear, parsedMovements, movType, dreValueMode);
                         toast.success(`${result.count} linhas importadas para ${importYear} (${label})!`, { id: toastId });
 
                         // Re-fetch do banco para obter categorias resolvidas pelo backend (plano de contas)
@@ -793,7 +871,7 @@ const ClientDashboard = () => {
                         let savedPatData: MovementRow[] | null = null;
                         if (patrimonialFromComparativo.length > 0) {
                             toast.loading(`Salvando ${patrimonialFromComparativo.length} contas patrimoniais...`, { id: 'import-pat-auto' });
-                            const patResult = await movementService.bulkImport(targetClientId, importYear, patrimonialFromComparativo, 'patrimonial');
+                            const patResult = await movementService.bulkImport(targetClientId, importYear, patrimonialFromComparativo, 'patrimonial', 'raw');
                             toast.success(`${patResult.count} contas patrimoniais importadas automaticamente!`, { id: 'import-pat-auto' });
                             // Re-fetch patrimonial com dados resolvidos
                             savedPatData = await movementService.getAll(targetClientId, importYear, 'patrimonial') as MovementRow[];
@@ -918,7 +996,7 @@ const ClientDashboard = () => {
                 const targetClientId = clientId || client?.id;
                 if (isAccountingView && targetClientId) {
                     toast.loading(`Salvando ${movements.length} contas (Patrimonial)...`, { id: toastId });
-                    const result = await movementService.bulkImport(targetClientId, patImportYear, movements, 'patrimonial');
+                    const result = await movementService.bulkImport(targetClientId, patImportYear, movements, 'patrimonial', 'raw');
                     toast.success(`${result.count} contas importadas (Patrimonial ${patImportYear})!`, { id: toastId });
                 } else {
                     toast.success(`${movements.length} contas patrimoniais carregadas!`);
@@ -2007,7 +2085,11 @@ const ClientDashboard = () => {
                                 </div>
 
                                 {dreConfigMode ? (
-                                    <ClientDreConfigPanel clientId={clientId!} selectedYear={selectedYear} />
+                                    <ClientDreConfigPanel
+                                        clientId={clientId!}
+                                        selectedYear={selectedYear}
+                                        onSaved={() => setChartAccountsReloadToken((prev) => prev + 1)}
+                                    />
                                 ) : dreViewMode === 'lista' ? (
                                     <div className="overflow-x-auto" ref={tableContainerRef}>
                                         <table className="w-full text-left border-collapse">
@@ -2028,6 +2110,10 @@ const ClientDashboard = () => {
                                                     const hasChildren = !isSub && Boolean(item.category);
                                                     const isExpanded = expandedDreRow === item.id;
                                                     const childAccounts = hasChildren ? getChildAccounts(item.category, dreMovements) : [];
+                                                    const { primaryRows, childRows } = hasChildren
+                                                        ? splitPrimaryAndChildRows(childAccounts)
+                                                        : { primaryRows: [], childRows: [] };
+                                                    const showChildRows = Boolean(expandedDreChildrenRows[item.id]);
                                                     const acumulado = allMonthsDre.reduce((sum, d) => sum + (d[item.key as keyof typeof d] as number), 0);
 
                                                     // Linhas auxiliares sub (base EBITDA) — sem interação, visual diferenciado
@@ -2057,7 +2143,19 @@ const ClientDashboard = () => {
                                                                     ${item.type === 'main' ? 'bg-white/5 font-bold text-white' : 'text-white/60'}
                                                                     ${item.type === 'highlight' ? 'bg-cyan-500/10 font-black text-white' : ''}
                                                                 `}
-                                                                onClick={() => hasChildren && setExpandedDreRow(isExpanded ? null : item.id)}
+                                                                onClick={() => {
+                                                                    if (!hasChildren) return;
+                                                                    if (isExpanded) {
+                                                                        setExpandedDreRow(null);
+                                                                        setExpandedDreChildrenRows((prev) => {
+                                                                            const next = { ...prev };
+                                                                            delete next[item.id];
+                                                                            return next;
+                                                                        });
+                                                                        return;
+                                                                    }
+                                                                    setExpandedDreRow(item.id);
+                                                                }}
                                                             >
                                                                 <td className="p-4 px-6 text-sm flex items-center gap-2 sticky left-0 z-10 bg-[#0a1628]">
                                                                     {hasChildren && (
@@ -2103,26 +2201,74 @@ const ClientDashboard = () => {
                                                                     )}
                                                                 </td>
                                                             </tr>
-                                                            {/* Drill-down: contas da movimentação mapeadas para essa linha do DRE */}
-                                                            {isExpanded && childAccounts.map((child, ci) => {
+                                                            {/* Drill-down: contas da movimentacao mapeadas para essa linha do DRE */}
+                                                            {/* Drill-down: contas da movimentacao mapeadas para essa linha do DRE */}
+                                                            {isExpanded && primaryRows.map((child, ci) => {
                                                                 const childTotal = child.values.reduce((s, v) => s + v, 0);
                                                                 return (
-                                                                <tr key={`${idx}-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
+                                                                    <tr key={`${idx}-primary-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
+                                                                        <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
+                                                                            <div className="flex items-center gap-2" style={{ paddingLeft: `${(child.level - 1) * 12}px` }}>
+                                                                                <span className="text-cyan-400/60 font-mono text-[10px]">{child.code}</span>
+                                                                                <span className="truncate">{child.name}</span>
+                                                                            </div>
+                                                                        </td>
+                                                                        {months.map((_, mi) => (
+                                                                            <td key={mi} className={`p-3 px-3 text-right font-mono ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
+                                                                                {formatLocaleNumber(child.values[mi] || 0)}
+                                                                            </td>
+                                                                        ))}
+                                                                        <td className="p-3 px-3 text-right font-mono bg-white/5 sticky right-[100px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">{formatLocaleNumber(childTotal)}</td>
+                                                                        <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">-</td>
+                                                                        <td className="p-3 px-3" />
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                            {isExpanded && childRows.length > 0 && (
+                                                                <tr className="bg-white/[0.02] text-white/50 text-xs">
                                                                     <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
-                                                                        <div className="flex items-center gap-2" style={{ paddingLeft: `${(child.level - 1) * 12}px` }}>
-                                                                            <span className="text-cyan-400/60 font-mono text-[10px]">{child.code}</span>
-                                                                            <span className="truncate">{child.name}</span>
-                                                                        </div>
+                                                                        <button
+                                                                            type="button"
+                                                                            className="text-cyan-300 hover:text-cyan-200 transition-colors font-semibold"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setExpandedDreChildrenRows((prev) => ({
+                                                                                    ...prev,
+                                                                                    [item.id]: !prev[item.id],
+                                                                                }));
+                                                                            }}
+                                                                        >
+                                                                            {showChildRows ? `Ocultar filhas (${childRows.length})` : `Mostrar filhas (${childRows.length})`}
+                                                                        </button>
                                                                     </td>
                                                                     {months.map((_, mi) => (
-                                                                        <td key={mi} className={`p-3 px-3 text-right font-mono ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
-                                                                            {formatLocaleNumber(child.values[mi] || 0)}
-                                                                        </td>
+                                                                        <td key={mi} className={`p-3 px-3 ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`} />
                                                                     ))}
-                                                                    <td className="p-3 px-3 text-right font-mono bg-white/5 sticky right-[100px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">{formatLocaleNumber(childTotal)}</td>
-                                                                    <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">-</td>
+                                                                    <td className="p-3 px-3 bg-white/5 sticky right-[100px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]" />
+                                                                    <td className="p-3 px-3 sticky right-0 z-10 bg-[#0b1520] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]" />
                                                                     <td className="p-3 px-3" />
-                                                                </tr>);
+                                                                </tr>
+                                                            )}
+                                                            {isExpanded && showChildRows && childRows.map((child, ci) => {
+                                                                const childTotal = child.values.reduce((s, v) => s + v, 0);
+                                                                return (
+                                                                    <tr key={`${idx}-child-${ci}`} className="bg-white/[0.02] text-white/40 text-xs">
+                                                                        <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
+                                                                            <div className="flex items-center gap-2" style={{ paddingLeft: `${(child.level - 1) * 12}px` }}>
+                                                                                <span className="text-cyan-400/60 font-mono text-[10px]">{child.code}</span>
+                                                                                <span className="truncate">{child.name}</span>
+                                                                            </div>
+                                                                        </td>
+                                                                        {months.map((_, mi) => (
+                                                                            <td key={mi} className={`p-3 px-3 text-right font-mono ${mi === selectedMonthIndex ? 'bg-cyan-500/5' : ''}`}>
+                                                                                {formatLocaleNumber(child.values[mi] || 0)}
+                                                                            </td>
+                                                                        ))}
+                                                                        <td className="p-3 px-3 text-right font-mono bg-white/5 sticky right-[100px] z-10 shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">{formatLocaleNumber(childTotal)}</td>
+                                                                        <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520] shadow-[-4px_0_10px_rgba(0,0,0,0.3)]">-</td>
+                                                                        <td className="p-3 px-3" />
+                                                                    </tr>
+                                                                );
                                                             })}
                                                         </React.Fragment>
                                                     );
@@ -3042,3 +3188,5 @@ const ClientDashboard = () => {
 };
 
 export default ClientDashboard;
+
+

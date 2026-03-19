@@ -28,6 +28,12 @@ type ImportMovementPayload = {
     values: unknown[];
 };
 
+const toMonthlyDeltaValues = (values: number[]) =>
+    values.map((value, index) => {
+        if (index === 0) return value;
+        return value - values[index - 1];
+    });
+
 export const getMovements = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
@@ -79,7 +85,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente nao encontrado' });
         }
 
-        const { year, movements, type } = req.body;
+        const { year, movements, type, valueMode } = req.body;
         if (!year || !Array.isArray(movements) || movements.length === 0) {
             return res.status(400).json({ message: 'Ano e lista de movimentacoes sao obrigatorios' });
         }
@@ -90,6 +96,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
         }
 
         const movementType = type === 'patrimonial' ? 'patrimonial' : 'dre';
+        const shouldConvertAccumulatedToMonthly = movementType === 'dre' && valueMode === 'cumulative';
         const incomingMovements = movements as ImportMovementPayload[];
 
         for (const movement of incomingMovements) {
@@ -109,20 +116,28 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
         const chartAccounts = await prisma.chartOfAccounts.findMany({
             where: { accounting_id: req.accountingId },
             select: {
+                client_id: true,
                 code: true,
                 reduced_code: true,
                 report_category: true,
             },
         });
-        const chartAccountByCode = new Map(
-            chartAccounts.map((account) => [
-                account.code.trim(),
-                {
+        const chartAccountByCode = new Map<string, {
+            client_id: string | null;
+            reduced_code: string | null;
+            report_category: string | null;
+        }>();
+        for (const account of chartAccounts) {
+            const normalizedCode = account.code.trim();
+            const existing = chartAccountByCode.get(normalizedCode);
+            if (!existing || (account.client_id === clientId && existing.client_id !== clientId)) {
+                chartAccountByCode.set(normalizedCode, {
+                    client_id: account.client_id,
                     reduced_code: account.reduced_code,
                     report_category: account.report_category,
-                },
-            ])
-        );
+                });
+            }
+        }
 
         // Buscar mapeamentos DRE configurados na tela de parametrização (prioridade máxima)
         const dreMappings = await prisma.dREMapping.findMany({
@@ -171,9 +186,16 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             // 3. report_category do plano de contas compartilhado
             // 4. Inferência automática pelo prefixo do código
             const configuredCategory = dreMappingByCode.get(code) || null;
-            const sharedCategory = sharedAccount?.report_category ? removeDiacritics(sharedAccount.report_category) : null;
+            const sharedCategory = sharedAccount?.client_id === clientId && sharedAccount.report_category
+                ? removeDiacritics(sharedAccount.report_category)
+                : null;
             const inferredCategory = movementType === 'dre' ? inferDreCategoryFromCode(code) : null;
             const resolvedCategory = configuredCategory || normalizedCategory || sharedCategory || inferredCategory;
+
+            const parsedValues = movement.values.map((value) => parseFloat(String(value)) || 0);
+            const values = shouldConvertAccumulatedToMonthly
+                ? toMonthlyDeltaValues(parsedValues)
+                : parsedValues;
 
             return {
                 accounting_id: req.accountingId!,
@@ -185,7 +207,7 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
                 level: parseInt(String(movement.level || '1'), 10) || 1,
                 type: movementType,
                 category: resolvedCategory,
-                values: movement.values.map((value) => parseFloat(String(value)) || 0),
+                values,
                 is_mapped: !!(resolvedCategory && resolvedCategory !== '#ref' && resolvedCategory !== ''),
             };
         });

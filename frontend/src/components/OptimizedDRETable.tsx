@@ -48,6 +48,7 @@ export const OptimizedDRETable: React.FC<OptimizedDRETableProps> = ({
     onCommentChange,
 }) => {
     const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+    const [expandedChildrenRows, setExpandedChildrenRows] = useState<Set<string>>(new Set());
 
     // Calcular DRE para todos os meses
     const allMonthsDre = useMemo(() => {
@@ -72,15 +73,46 @@ export const OptimizedDRETable: React.FC<OptimizedDRETableProps> = ({
         const newExpanded = new Set(expandedRows);
         if (newExpanded.has(itemId)) {
             newExpanded.delete(itemId);
+            const nextChildren = new Set(expandedChildrenRows);
+            nextChildren.delete(itemId);
+            setExpandedChildrenRows(nextChildren);
         } else {
             newExpanded.add(itemId);
         }
         setExpandedRows(newExpanded);
     };
 
+    const toggleChildren = (itemId: string) => {
+        const nextChildren = new Set(expandedChildrenRows);
+        if (nextChildren.has(itemId)) {
+            nextChildren.delete(itemId);
+        } else {
+            nextChildren.add(itemId);
+        }
+        setExpandedChildrenRows(nextChildren);
+    };
+
     const getChildAccounts = (category: string | undefined) => {
         if (!category) return [];
         return DRECalculationService.getChildAccountsByCategory(category, movements);
+    };
+
+    const splitPrimaryAndChildAccounts = (category: string | undefined) => {
+        const accounts = getChildAccounts(category);
+        if (accounts.length === 0) {
+            return { primaryAccounts: [], childAccounts: [] as MovementRow[] };
+        }
+
+        const getDepth = (code: string) => code.trim().split('.').filter(Boolean).length;
+        const primaryDepth = Math.min(...accounts.map((account) => getDepth(account.code)));
+        const primaryAccounts = accounts
+            .filter((account) => getDepth(account.code) === primaryDepth)
+            .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true }));
+        const childAccounts = accounts
+            .filter((account) => getDepth(account.code) !== primaryDepth)
+            .sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true }));
+
+        return { primaryAccounts, childAccounts };
     };
 
     return (
@@ -118,7 +150,10 @@ export const OptimizedDRETable: React.FC<OptimizedDRETableProps> = ({
                     {reportItems.map((item) => {
                         const hasChildren = Boolean(item.category);
                         const isExpanded = expandedRows.has(item.id);
-                        const childAccounts = hasChildren ? getChildAccounts(item.category) : [];
+                        const { primaryAccounts, childAccounts } = hasChildren
+                            ? splitPrimaryAndChildAccounts(item.category)
+                            : { primaryAccounts: [], childAccounts: [] as MovementRow[] };
+                        const showChildren = expandedChildrenRows.has(item.id);
 
                         return (
                             <React.Fragment key={item.id}>
@@ -203,29 +238,84 @@ export const OptimizedDRETable: React.FC<OptimizedDRETableProps> = ({
 
                                 {/* Linhas de drill-down */}
                                 {isExpanded &&
-                                    childAccounts.map((child) => {
-                                        const childTotal = child.values.reduce((s, v) => s + v, 0);
-                                        return (
-                                            <tr key={`${item.id}-${child.code}`} className="bg-white/[0.02] text-white/40 text-xs">
-                                                <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-cyan-400/60 font-mono text-[10px]">{child.code}</span>
-                                                        <span className="truncate">{child.name}</span>
-                                                    </div>
-                                                </td>
-                                                {months.map((_, mi) => (
-                                                    <td key={mi} className="p-3 px-3 text-right font-mono">
-                                                        {DRECalculationService.formatNumber(child.values[mi] || 0)}
+                                    <>
+                                        {primaryAccounts.map((child, index) => {
+                                            const childTotal = child.values.reduce((s, v) => s + v, 0);
+                                            const isPrimaryRow = index === 0;
+                                            return (
+                                                <tr
+                                                    key={`${item.id}-${child.code}`}
+                                                    className={`bg-white/[0.02] text-white/40 text-xs ${isPrimaryRow ? 'border-t border-cyan-500/10' : ''}`}
+                                                >
+                                                    <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-cyan-400/60 font-mono text-[10px]">{child.code}</span>
+                                                            <span className="truncate">{child.name}</span>
+                                                            {isPrimaryRow && (
+                                                                <span className="text-[9px] font-black uppercase tracking-[0.2em] text-cyan-300/60">
+                                                                    Principal
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </td>
-                                                ))}
-                                                <td className="p-3 px-3 text-right font-mono bg-white/[0.02] sticky right-[100px] z-10">
-                                                    {DRECalculationService.formatNumber(childTotal)}
+                                                    {months.map((_, mi) => (
+                                                        <td key={mi} className="p-3 px-3 text-right font-mono">
+                                                            {DRECalculationService.formatNumber(child.values[mi] || 0)}
+                                                        </td>
+                                                    ))}
+                                                    <td className="p-3 px-3 text-right font-mono bg-white/[0.02] sticky right-[100px] z-10">
+                                                        {DRECalculationService.formatNumber(childTotal)}
+                                                    </td>
+                                                    <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520]" />
+                                                    {!isReadOnly && <td className="p-3 px-3" />}
+                                                </tr>
+                                            );
+                                        })}
+
+                                        {childAccounts.length > 0 && (
+                                            <tr className="bg-white/[0.01]">
+                                                <td
+                                                    colSpan={months.length + 3 + (isReadOnly ? 0 : 1)}
+                                                    className="px-6 py-2"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => toggleChildren(item.id)}
+                                                        className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70 hover:text-cyan-300 transition-colors"
+                                                    >
+                                                        {showChildren
+                                                            ? `Ocultar filhas (${childAccounts.length})`
+                                                            : `Mostrar filhas (${childAccounts.length})`}
+                                                    </button>
                                                 </td>
-                                                <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520]" />
-                                                {!isReadOnly && <td className="p-3 px-3" />}
                                             </tr>
-                                        );
-                                    })}
+                                        )}
+
+                                        {showChildren &&
+                                            childAccounts.map((child) => {
+                                                const childTotal = child.values.reduce((s, v) => s + v, 0);
+                                                return (
+                                                    <tr key={`${item.id}-child-${child.code}`} className="bg-white/[0.02] text-white/35 text-xs">
+                                                        <td className="p-3 px-6 sticky left-0 z-10 bg-[#0b1520]">
+                                                            <div className="flex items-center gap-2 pl-4">
+                                                                <span className="text-cyan-400/45 font-mono text-[10px]">{child.code}</span>
+                                                                <span className="truncate">{child.name}</span>
+                                                            </div>
+                                                        </td>
+                                                        {months.map((_, mi) => (
+                                                            <td key={mi} className="p-3 px-3 text-right font-mono">
+                                                                {DRECalculationService.formatNumber(child.values[mi] || 0)}
+                                                            </td>
+                                                        ))}
+                                                        <td className="p-3 px-3 text-right font-mono bg-white/[0.02] sticky right-[100px] z-10">
+                                                            {DRECalculationService.formatNumber(childTotal)}
+                                                        </td>
+                                                        <td className="p-3 px-3 text-right sticky right-0 z-10 bg-[#0b1520]" />
+                                                        {!isReadOnly && <td className="p-3 px-3" />}
+                                                    </tr>
+                                                );
+                                            })}
+                                    </>}
                             </React.Fragment>
                         );
                     })}

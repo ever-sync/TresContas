@@ -17,6 +17,7 @@ export interface ImportMovementPayload {
     year: number;
     movements: Omit<MovementRow, 'id'>[];
     type: MovementType;
+    valueMode?: 'raw' | 'cumulative';
 }
 
 export const movementService = {
@@ -37,12 +38,14 @@ export const movementService = {
         clientId: string,
         year: number,
         movements: Omit<MovementRow, 'id'>[],
-        type: MovementType = 'dre'
+        type: MovementType = 'dre',
+        valueMode: 'raw' | 'cumulative' = 'raw'
     ): Promise<{ message: string; count: number; year: number }> => {
         const response = await api.post(`/clients/${clientId}/movements/import`, {
             year,
             movements,
             type,
+            valueMode,
         });
         return response.data;
     },

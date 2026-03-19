@@ -32,6 +32,7 @@ interface DreAccount {
 interface Props {
     clientId: string;
     selectedYear: number;
+    onSaved?: () => void | Promise<void>;
 }
 
 // ─── DRE Categories (same order as DRE report) ─────────────────────────────
@@ -91,7 +92,7 @@ const toBackendCategory = (key: string) =>
     key.replace(/\b\w/g, (c) => c.toUpperCase());
 
 // ─── Component ──────────────────────────────────────────────────────────────
-export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }) => {
+export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, onSaved }) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [dreAccounts, setDreAccounts] = useState<DreAccount[]>([]);
@@ -214,6 +215,7 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
             }
 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
+            await onSaved?.();
             toast.success('Configuração DRE salva!');
         } catch (error: any) {
             console.error('Erro ao salvar config DRE:', error);
@@ -427,3 +429,4 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
 };
 
 export default ClientDreConfigPanel;
+
