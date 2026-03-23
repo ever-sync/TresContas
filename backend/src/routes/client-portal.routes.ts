@@ -16,6 +16,7 @@ import {
     downloadClientPortalDocument,
     getClientPortalDocuments,
 } from '../controllers/clientDocument.controller';
+import { aiAnalysisRateLimiter } from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.get('/movements', authClientMiddleware, getClientMovements);
 router.get('/dfc', authClientMiddleware, getPortalDfcReport);
 
 // AI financial analysis (streaming SSE) — accessible by client OR accounting staff
-router.post('/ai-analysis', requireRole('admin', 'collaborator', 'client'), analyzeFinancials);
+router.post('/ai-analysis', aiAnalysisRateLimiter, requireRole('admin', 'collaborator', 'client'), analyzeFinancials);
 
 // Client support tickets (read own + create)
 router.get('/support', authClientMiddleware, getClientSupportTickets);

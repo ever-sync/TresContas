@@ -30,7 +30,8 @@ const ClientLogin = () => {
                     cnpj: result.client.cnpj,
                     email: result.client.email,
                 },
-                result.token
+                result.token,
+                result.expires_at
             );
             navigate('/portal');
         } catch (error) {

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import cors from 'cors';
+import helmet from 'helmet';
 
 import authRoutes from './routes/auth.routes';
 import clientRoutes from './routes/client.routes';
@@ -12,6 +12,7 @@ import clientDocumentRoutes from './routes/client-document.routes';
 import movementRoutes from './routes/movement.routes';
 import dreMappingRoutes from './routes/dreMapping.routes';
 import dfcRoutes from './routes/dfc.routes';
+import { isOriginAllowed, securityConfig } from './config/security';
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -23,32 +24,36 @@ if (missingEnv.length > 0) {
     process.exit(1);
 }
 
-// CORS configuration — lê ALLOWED_ORIGINS ou CORS_ORIGIN (Railway usa CORS_ORIGIN)
-const rawOrigins = process.env.ALLOWED_ORIGINS || process.env.CORS_ORIGIN || 'https://tres-contas.vercel.app';
-const allowedOrigins = rawOrigins
-    .split(',')
-    .map(o => o.trim())
-    .concat(['http://localhost:5173', 'http://localhost:3000']);
-
-const isOriginAllowed = (origin: string) =>
-    allowedOrigins.includes(origin) ||
-    /^https:\/\/[^.]+\.vercel\.app$/.test(origin);
+app.use(helmet());
 
 app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    console.log(`[CORS] origin=${origin} allowed=${!origin || isOriginAllowed(origin)}`);
-    if (!origin || isOriginAllowed(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : null;
+
+    if (!origin) {
+        return next();
     }
+
+    if (!isOriginAllowed(origin, securityConfig)) {
+        if (req.method === 'OPTIONS') {
+            return res.status(403).end();
+        }
+
+        return res.status(403).json({ message: 'Origin nao permitida' });
+    }
+
+    res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+    res.setHeader('Vary', 'Origin');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(204).end();
+    }
+
     next();
 });
-app.use(cors({ origin: false })); // desativa cors() para não conflitar
 
-// Simple request logger
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
@@ -68,14 +73,12 @@ app.use('/api/support', supportRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
 app.use('/api/users', userRoutes);
 
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
     res.json({ status: 'ok' });
 });
 
-// Exporta o app para Vercel serverless
 export default app;
 
-// Listen apenas fora do Vercel (Railway / local)
 if (!process.env.VERCEL) {
     app.listen(port, () => {
         console.log(`Server running on port ${port}`);

@@ -1,4 +1,5 @@
 import clientApi from './clientApi';
+import type { ClientAuthResponse } from './authTypes';
 
 export interface ClientPortalUser {
   id: string;
@@ -46,7 +47,7 @@ export const clientPortalService = {
     client_id?: string;
     identifier: string;
     password: string;
-  }): Promise<{ token: string; client: ClientPortalUser }> => {
+  }): Promise<ClientAuthResponse> => {
     const payload: { client_id?: string; email?: string; cnpj?: string; password: string } = {
       password: data.password,
     };

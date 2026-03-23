@@ -9,6 +9,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { formatCNPJ, formatPhone, isValidCNPJ } from '../lib/utils';
 import axios from 'axios';
 import api from '../services/api';
+import type { StaffAuthResponse } from '../services/authTypes';
 
 const registerSchema = z.object({
     name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
@@ -50,8 +51,8 @@ const Register = () => {
         try {
             setIsLoading(true);
             setErrorMessage(null);
-            const response = await api.post('/auth/register', data);
-            setAuth(response.data.user, response.data.token);
+            const response = await api.post<StaffAuthResponse>('/auth/register', data);
+            setAuth(response.data.user, response.data.token, response.data.expires_at);
             navigate('/dashboard');
         } catch (error: unknown) {
             const message = axios.isAxiosError(error)

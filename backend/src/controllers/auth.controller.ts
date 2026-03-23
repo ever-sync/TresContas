@@ -2,17 +2,31 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
+import { securityConfig } from '../config/security';
 
 if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET is required');
 }
 const JWT_SECRET = process.env.JWT_SECRET!;
-const JWT_EXPIRES_IN = '1d';
+const JWT_EXPIRES_IN = securityConfig.jwtExpiresIn as jwt.SignOptions['expiresIn'];
 
 const isNonEmptyString = (value: unknown) =>
     typeof value === 'string' && value.trim().length > 0;
 
 const isValidEmail = (value: string) => value.includes('@') && value.includes('.');
+
+const signAccessToken = (payload: object) =>
+    jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+
+const getTokenExpiryIsoString = (token: string) => {
+    const decoded = jwt.decode(token);
+
+    if (!decoded || typeof decoded === 'string' || typeof decoded.exp !== 'number') {
+        throw new Error('Unable to determine JWT expiration.');
+    }
+
+    return new Date(decoded.exp * 1000).toISOString();
+};
 
 export const register = async (req: Request, res: Response) => {
     try {
@@ -87,18 +101,17 @@ export const register = async (req: Request, res: Response) => {
             return { accounting, user };
         });
 
-        const token = jwt.sign(
+        const token = signAccessToken(
             {
                 userId: result.user.id,
                 accountingId: result.accounting.id,
                 role: result.user.role,
-            },
-            JWT_SECRET,
-            { expiresIn: JWT_EXPIRES_IN }
+            }
         );
 
         res.status(201).json({
             token,
+            expires_at: getTokenExpiryIsoString(token),
             user: {
                 id: result.user.id,
                 name: result.user.name,
@@ -110,7 +123,7 @@ export const register = async (req: Request, res: Response) => {
             },
         });
     } catch (error: any) {
-        console.error('Detailed Registration Error:', error);
+        console.error('Registration Error:', error);
         if (error.code === 'P2002') {
             return res.status(400).json({ message: 'Email ou CNPJ ja cadastrado no banco' });
         }
@@ -151,18 +164,17 @@ export const login = async (req: Request, res: Response) => {
             return res.status(401).json({ message: 'Credenciais invalidas' });
         }
 
-        const token = jwt.sign(
+        const token = signAccessToken(
             {
                 userId: user.id,
                 accountingId: user.accounting_id,
                 role: user.role,
-            },
-            JWT_SECRET,
-            { expiresIn: JWT_EXPIRES_IN }
+            }
         );
 
         res.json({
             token,
+            expires_at: getTokenExpiryIsoString(token),
             user: {
                 id: user.id,
                 name: user.name,
@@ -174,7 +186,7 @@ export const login = async (req: Request, res: Response) => {
             },
         });
     } catch (error) {
-        console.error('Detailed Login Error:', error);
+        console.error('Login Error:', error);
         res.status(500).json({ message: 'Erro ao realizar login no servidor' });
     }
 };
@@ -237,12 +249,10 @@ export const clientLogin = async (req: Request, res: Response) => {
         }
 
         if (!client) {
-            console.warn('Client login: nenhum cliente encontrado para', { email, cnpj: cnpj ? '***' : '', client_id });
             return res.status(401).json({ message: 'Credenciais invalidas' });
         }
 
         if (!client.password_hash) {
-            console.warn('Client login: cliente sem senha definida:', client.id);
             return res.status(401).json({ message: 'Senha nao configurada. Solicite a sua contabilidade.' });
         }
 
@@ -255,18 +265,17 @@ export const clientLogin = async (req: Request, res: Response) => {
             return res.status(401).json({ message: 'Credenciais invalidas' });
         }
 
-        const token = jwt.sign(
+        const token = signAccessToken(
             {
                 role: 'client',
                 clientId: client.id,
                 accountingId: client.accounting_id,
-            },
-            JWT_SECRET,
-            { expiresIn: JWT_EXPIRES_IN }
+            }
         );
 
         res.json({
             token,
+            expires_at: getTokenExpiryIsoString(token),
             client: {
                 id: client.id,
                 name: client.name,

@@ -7,6 +7,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../stores/useAuthStore';
 import api from '../services/api';
+import type { StaffAuthResponse } from '../services/authTypes';
 
 const loginSchema = z.object({
     email: z.string().email('Email inválido'),
@@ -28,8 +29,8 @@ const Login = () => {
     const onSubmit = async (data: LoginFormData) => {
         try {
             setErrorMessage(null);
-            const response = await api.post('/auth/login', data);
-            setAuth(response.data.user, response.data.token);
+            const response = await api.post<StaffAuthResponse>('/auth/login', data);
+            setAuth(response.data.user, response.data.token, response.data.expires_at);
             navigate('/dashboard');
         } catch (error) {
             const message = axios.isAxiosError(error)

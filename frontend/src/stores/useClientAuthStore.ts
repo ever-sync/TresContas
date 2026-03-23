@@ -1,17 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { ClientAuthUser } from '../services/authTypes';
 
-interface ClientUser {
-  id: string;
-  name: string;
-  cnpj: string;
-  email: string | null;
-}
+export type ClientUser = ClientAuthUser;
 
 interface ClientAuthState {
   client: ClientUser | null;
   token: string | null;
-  setAuth: (client: ClientUser, token: string) => void;
+  expiresAt: string | null;
+  setAuth: (client: ClientUser, token: string, expiresAt: string) => void;
   logout: () => void;
 }
 
@@ -20,8 +17,9 @@ export const useClientAuthStore = create<ClientAuthState>()(
     (set) => ({
       client: null,
       token: null,
-      setAuth: (client, token) => set({ client, token }),
-      logout: () => set({ client: null, token: null }),
+      expiresAt: null,
+      setAuth: (client, token, expiresAt) => set({ client, token, expiresAt }),
+      logout: () => set({ client: null, token: null, expiresAt: null }),
     }),
     {
       name: 'trescontas-client-auth',

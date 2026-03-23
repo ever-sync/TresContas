@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import axios from 'axios';
 import toast from 'react-hot-toast';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 import api from '../services/api';
@@ -217,12 +218,16 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
             await onSaved?.();
             toast.success('Configuração DRE salva!');
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Erro ao salvar config DRE:', error);
-            console.error('Response data:', JSON.stringify(error?.response?.data));
-            console.error('Response status:', error?.response?.status);
-            const detail = error?.response?.data?.detail || '';
-            const msg = error?.response?.data?.message || 'Erro ao salvar configuração DRE';
+            if (axios.isAxiosError(error)) {
+                console.error('Response data:', JSON.stringify(error.response?.data));
+                console.error('Response status:', error.response?.status);
+            }
+            const detail = axios.isAxiosError(error) ? error.response?.data?.detail || '' : '';
+            const msg = axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Erro ao salvar configuração DRE'
+                : 'Erro ao salvar configuração DRE';
             toast.error(detail ? `${msg}: ${detail}` : msg);
         } finally {
             setSaving(false);

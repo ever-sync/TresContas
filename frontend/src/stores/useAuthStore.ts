@@ -1,20 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { StaffAuthUser } from '../services/authTypes';
 
-interface User {
-    id: string;
-    name: string;
-    email: string;
-    role: 'admin' | 'collaborator';
-    accountingId: string;
-    accountingName: string;
-    cnpj: string;
-}
+export type User = StaffAuthUser;
 
 interface AuthState {
     user: User | null;
     token: string | null;
-    setAuth: (user: User, token: string) => void;
+    expiresAt: string | null;
+    setAuth: (user: User, token: string, expiresAt: string) => void;
     logout: () => void;
 }
 
@@ -23,8 +17,9 @@ export const useAuthStore = create<AuthState>()(
         (set) => ({
             user: null,
             token: null,
-            setAuth: (user, token) => set({ user, token }),
-            logout: () => set({ user: null, token: null }),
+            expiresAt: null,
+            setAuth: (user, token, expiresAt) => set({ user, token, expiresAt }),
+            logout: () => set({ user: null, token: null, expiresAt: null }),
         }),
         {
             name: 'trescontas-auth',

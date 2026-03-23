@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Download, FileText, Loader2, Upload } from 'lucide-react';
+import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
     clientDocumentService,
@@ -72,9 +73,12 @@ export const ClientDocumentUploadPanel = () => {
             setDisplayName('');
             setCategory('');
             await loadDocuments();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Erro ao enviar arquivo:', error);
-            toast.error(error?.response?.data?.message || 'Erro ao enviar arquivo');
+            const message = axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Erro ao enviar arquivo'
+                : 'Erro ao enviar arquivo';
+            toast.error(message);
         } finally {
             setSubmitting(false);
         }

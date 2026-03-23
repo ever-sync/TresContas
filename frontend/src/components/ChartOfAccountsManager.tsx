@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
     chartOfAccountsService,
@@ -201,9 +202,11 @@ export const ChartOfAccountsManager = ({
                 const result = await chartOfAccountsService.bulkImportShared(importAccounts);
                 toast.success(`${result.count} contas importadas com sucesso!`, { id: 'import-shared-coa' });
                 await loadAccounts();
-            } catch (error: any) {
+            } catch (error: unknown) {
                 console.error('Erro ao importar plano de contas:', error);
-                const msg = error?.response?.data?.message || error?.response?.data?.detail || 'Erro ao importar plano de contas';
+                const msg = axios.isAxiosError(error)
+                    ? error.response?.data?.message || error.response?.data?.detail || 'Erro ao importar plano de contas'
+                    : 'Erro ao importar plano de contas';
                 toast.error(msg, { id: 'import-shared-coa' });
             }
         };

@@ -1,18 +1,32 @@
-import React from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import ClientDashboard from './pages/ClientDashboard';
-import ClientLogin from './pages/ClientLogin';
-import HeroPage from './pages/HeroPage';
 import { useAuthStore } from './stores/useAuthStore';
 import { useClientAuthStore } from './stores/useClientAuthStore';
+import { clearExpiredSessions, isSessionExpired } from './lib/authSession';
 
 const queryClient = new QueryClient();
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const ClientDashboard = lazy(() => import('./pages/ClientDashboard'));
+const ClientLogin = lazy(() => import('./pages/ClientLogin'));
+const HeroPage = lazy(() => import('./pages/HeroPage'));
+
+const AuthSessionBootstrap = () => {
+  useEffect(() => {
+    clearExpiredSessions();
+    const intervalId = window.setInterval(() => {
+      clearExpiredSessions();
+    }, 30_000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  return null;
+};
 
 /**
  * Requires admin or collaborator authentication.
@@ -21,7 +35,9 @@ const queryClient = new QueryClient();
 const RequireStaff = ({ children }: { children: React.ReactNode }) => {
   const token = useAuthStore((state) => state.token);
   const user = useAuthStore((state) => state.user);
-  if (!token || !user) {
+  const expiresAt = useAuthStore((state) => state.expiresAt);
+
+  if (!token || !user || isSessionExpired(expiresAt)) {
     return <Navigate to="/login" replace />;
   }
   return children;
@@ -33,7 +49,10 @@ const RequireStaff = ({ children }: { children: React.ReactNode }) => {
  */
 const RequireClient = ({ children }: { children: React.ReactNode }) => {
   const token = useClientAuthStore((state) => state.token);
-  if (!token) {
+  const client = useClientAuthStore((state) => state.client);
+  const expiresAt = useClientAuthStore((state) => state.expiresAt);
+
+  if (!token || !client || isSessionExpired(expiresAt)) {
     return <Navigate to="/client-login" replace />;
   }
   return children;
@@ -44,11 +63,22 @@ const RequireClient = ({ children }: { children: React.ReactNode }) => {
  */
 const PublicOnly = ({ children }: { children: React.ReactNode }) => {
   const token = useAuthStore((state) => state.token);
-  if (token) {
+  const expiresAt = useAuthStore((state) => state.expiresAt);
+
+  if (token && !isSessionExpired(expiresAt)) {
     return <Navigate to="/dashboard" replace />;
   }
   return children;
 };
+
+const RouteLoadingScreen = () => (
+  <div className="min-h-screen bg-[#08111f] text-slate-200 flex items-center justify-center">
+    <div className="flex flex-col items-center gap-4">
+      <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-500/20 border-t-cyan-400" />
+      <p className="text-sm tracking-[0.18em] uppercase text-slate-400">Carregando modulo</p>
+    </div>
+  </div>
+);
 
 function App() {
   return (
@@ -72,24 +102,27 @@ function App() {
         }}
       />
       <Router>
-        <Routes>
-          {/* Public routes */}
-          <Route path="/hero" element={<HeroPage />} />
-          <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-          <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
-          <Route path="/client-login" element={<ClientLogin />} />
+        <AuthSessionBootstrap />
+        <Suspense fallback={<RouteLoadingScreen />}>
+          <Routes>
+            {/* Public routes */}
+            <Route path="/hero" element={<HeroPage />} />
+            <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+            <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
+            <Route path="/client-login" element={<ClientLogin />} />
 
-          {/* Staff routes (admin + collaborator see same dashboard) */}
-          <Route path="/dashboard" element={<RequireStaff><Dashboard /></RequireStaff>} />
+            {/* Staff routes (admin + collaborator see same dashboard) */}
+            <Route path="/dashboard" element={<RequireStaff><Dashboard /></RequireStaff>} />
 
-          {/* Client portal (read-only) */}
-          <Route path="/portal" element={<RequireClient><ClientDashboard /></RequireClient>} />
+            {/* Client portal (read-only) */}
+            <Route path="/portal" element={<RequireClient><ClientDashboard /></RequireClient>} />
 
-          {/* Staff viewing specific client */}
-          <Route path="/client/:id" element={<RequireStaff><ClientDashboard /></RequireStaff>} />
+            {/* Staff viewing specific client */}
+            <Route path="/client/:id" element={<RequireStaff><ClientDashboard /></RequireStaff>} />
 
-          <Route path="/" element={<Navigate to="/login" replace />} />
-        </Routes>
+            <Route path="/" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </Suspense>
       </Router>
     </QueryClientProvider>
   );

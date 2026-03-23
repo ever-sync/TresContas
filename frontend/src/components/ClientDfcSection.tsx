@@ -9,6 +9,7 @@ import {
     Settings2,
     Trash2,
 } from 'lucide-react';
+import axios from 'axios';
 import toast from 'react-hot-toast';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 import {
@@ -250,9 +251,11 @@ export const ClientDfcSection = ({
             const freshReport = await dfcService.getReport(clientId, selectedYear);
             setReport(freshReport);
             setMode('view');
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Erro ao salvar configuração DFC:', error);
-            const msg = error?.response?.data?.message || 'Erro ao salvar configuração DFC';
+            const msg = axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Erro ao salvar configuração DFC'
+                : 'Erro ao salvar configuração DFC';
             toast.error(msg);
         } finally {
             setSavingConfig(false);

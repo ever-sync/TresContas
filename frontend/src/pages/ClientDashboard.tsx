@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useMemo, useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
     Download,
@@ -33,9 +33,6 @@ import {
     LineChart, Line,
     BarChart, Bar,
 } from 'recharts';
-import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import axios from 'axios';
 import api from '../services/api';
 import { clientService } from '../services/clientService';
@@ -49,11 +46,6 @@ import type { MovementRow } from '../services/movementService';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
-import ClientDfcSection from '../components/ClientDfcSection';
-import ClientDreConfigPanel from '../components/ClientDreConfigPanel';
-import ClientPatConfigPanel from '../components/ClientPatConfigPanel';
-import ClientDocumentUploadPanel from '../components/ClientDocumentUploadPanel';
-import SupportTicketDetailPanel from '../components/support/SupportTicketDetailPanel';
 import { TooltipCurrency, TooltipPercent } from '../components/client-dashboard/ChartTooltips';
 import type { DreMonthData } from '../components/client-dashboard/constants';
 
@@ -77,6 +69,53 @@ interface Account {
     report_category?: string;
     id?: number;
 }
+
+const EMPTY_DRE_MONTH_DATA: DreMonthData = {
+    recBruta: 0,
+    deducoes: 0,
+    recLiquida: 0,
+    custos: 0,
+    custosServicos: 0,
+    lucroBruto: 0,
+    despAdm: 0,
+    despCom: 0,
+    despTrib: 0,
+    partSocietarias: 0,
+    outrasReceitas: 0,
+    recFin: 0,
+    despFin: 0,
+    lair: 0,
+    irpjCsll: 0,
+    lucroLiq: 0,
+    depreciacao: 0,
+    resultFin: 0,
+    ebtida: 0,
+};
+
+let spreadsheetModulePromise: Promise<typeof import('xlsx')> | null = null;
+let pdfModulePromise: Promise<[typeof import('html2canvas'), typeof import('jspdf')]> | null = null;
+
+const loadSpreadsheetModule = () => {
+    if (!spreadsheetModulePromise) {
+        spreadsheetModulePromise = import('xlsx');
+    }
+
+    return spreadsheetModulePromise;
+};
+
+const loadPdfModules = () => {
+    if (!pdfModulePromise) {
+        pdfModulePromise = Promise.all([import('html2canvas'), import('jspdf')]);
+    }
+
+    return pdfModulePromise;
+};
+
+const ClientDfcSection = lazy(() => import('../components/ClientDfcSection'));
+const ClientDreConfigPanel = lazy(() => import('../components/ClientDreConfigPanel'));
+const ClientPatConfigPanel = lazy(() => import('../components/ClientPatConfigPanel'));
+const ClientDocumentUploadPanel = lazy(() => import('../components/ClientDocumentUploadPanel'));
+const SupportTicketDetailPanel = lazy(() => import('../components/support/SupportTicketDetailPanel'));
 
 // Estrutura fixa do Balanço Patrimonial — grupos e seus itens filhos
 const PAT_STRUCTURE = [
@@ -156,6 +195,18 @@ const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
     { id: 'dfc', label: 'DFC', show: true },
 ];
 
+const LazySectionFallback = ({ label }: { label: string }) => (
+    <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-10 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-cyan-400" />
+            <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400/70">{label}</p>
+                <p className="text-sm text-white/30 mt-1">Carregando modulo sob demanda.</p>
+            </div>
+        </div>
+    </div>
+);
+
 const ClientDashboard = () => {
     const { id: clientId } = useParams();
     const navigate = useNavigate();
@@ -198,6 +249,7 @@ const ClientDashboard = () => {
         const el = reportRef.current;
         if (!el) return;
         try {
+            const [{ default: html2canvas }, { default: jsPDF }] = await loadPdfModules();
             const canvas = await html2canvas(el, {
                 backgroundColor: '#0a1628',
                 scale: 2,
@@ -754,6 +806,7 @@ const ClientDashboard = () => {
             const reader = new FileReader();
             reader.onload = async (evt) => {
                 try {
+                    const XLSX = await loadSpreadsheetModule();
                     const fileContent = evt.target?.result;
                     let wb;
                     if (isCSV) {
@@ -966,6 +1019,7 @@ const ClientDashboard = () => {
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
+                const XLSX = await loadSpreadsheetModule();
                 const fileContent = evt.target?.result;
                 let wb;
                 if (isCSV) {
@@ -1162,6 +1216,88 @@ const ClientDashboard = () => {
         };
     })();
 
+    const selectedDashboardDre = allMonthsDre[selectedMonthIndex] ?? EMPTY_DRE_MONTH_DATA;
+    const pendingDocumentAlertsCount = documentAlerts.filter((alert) => alert.status === 'Pendente').length;
+
+    const revenueCompositionData = useMemo(() => ([
+        { name: 'Custo de Venda', value: Math.abs(selectedDashboardDre.custos) },
+        { name: 'Impostos', value: Math.abs(selectedDashboardDre.deducoes + selectedDashboardDre.irpjCsll) },
+        {
+            name: 'Desp. Operac.',
+            value: Math.abs(
+                selectedDashboardDre.despAdm +
+                selectedDashboardDre.despCom +
+                selectedDashboardDre.despTrib +
+                selectedDashboardDre.despFin
+            ),
+        },
+        { name: 'Lucro', value: Math.max(selectedDashboardDre.lucroLiq, 0) },
+    ].filter((point) => point.value > 0)), [selectedDashboardDre]);
+
+    const revenueExpenseData = useMemo(() => months.map((month, index) => {
+        const dreMonth = allMonthsDre[index] ?? EMPTY_DRE_MONTH_DATA;
+
+        return {
+            name: month.substring(0, 3),
+            receita: dreMonth.recBruta || 0,
+            despesa:
+                (dreMonth.custos || 0) +
+                (dreMonth.despAdm || 0) +
+                (dreMonth.despCom || 0) +
+                (dreMonth.despTrib || 0) +
+                (dreMonth.despFin || 0),
+        };
+    }), [allMonthsDre, months]);
+
+    const marginEvolutionData = useMemo(() => allMonthsDre.map((dreMonth, index) => ({
+        name: months[index].substring(0, 3),
+        margemBruta: dreMonth.recLiquida !== 0 ? parseFloat(((dreMonth.lucroBruto / dreMonth.recLiquida) * 100).toFixed(2)) : 0,
+        margemLiq: dreMonth.recBruta !== 0 ? parseFloat(((dreMonth.lucroLiq / dreMonth.recBruta) * 100).toFixed(2)) : 0,
+        margemEbtida: dreMonth.recLiquida !== 0 ? parseFloat(((dreMonth.ebtida / dreMonth.recLiquida) * 100).toFixed(2)) : 0,
+    })), [allMonthsDre, months]);
+
+    const allocationData = useMemo(() => allMonthsDre.map((dreMonth, index) => ({
+        name: months[index].substring(0, 3),
+        deducoes: Math.abs(dreMonth.deducoes),
+        custos: Math.abs(dreMonth.custos) + Math.abs(dreMonth.custosServicos),
+        despOper: Math.abs(dreMonth.despAdm) + Math.abs(dreMonth.despCom) + Math.abs(dreMonth.despTrib),
+        irpj: Math.abs(dreMonth.irpjCsll),
+        lucro: Math.max(dreMonth.lucroLiq, 0),
+    })), [allMonthsDre, months]);
+
+    const dreChartIndicators = useMemo(() => ([
+        { title: 'Receita Bruta', data: monthlyReportData.recBruta, color: '#0ea5e9' },
+        { title: 'DeduÃ§Ãµes', data: monthlyReportData.deducoes, color: '#f43f5e' },
+        { title: 'Receita LÃ­quida', data: monthlyReportData.recLiquida, color: '#2563eb' },
+        { title: 'Custos Das Vendas', data: monthlyReportData.custos, color: '#f59e0b' },
+        { title: 'Custos Dos ServiÃ§os', data: monthlyReportData.custosServicos, color: '#f97316' },
+        { title: 'Lucro Operacional', data: monthlyReportData.lucroBruto, color: '#3b82f6' },
+        { title: 'Despesas Adm.', data: monthlyReportData.despAdm, color: '#ec4899' },
+        { title: 'Despesas Com.', data: monthlyReportData.despCom, color: '#d946ef' },
+        { title: 'Despesas Trib.', data: monthlyReportData.despTrib, color: '#a855f7' },
+        { title: 'Result. ParticipaÃ§Ãµes Soc.', data: monthlyReportData.partSocietarias, color: '#14b8a6' },
+        { title: 'Outras Receitas', data: monthlyReportData.outrasReceitas, color: '#22c55e' },
+        { title: 'Receitas Fin.', data: monthlyReportData.recFin, color: '#10b981' },
+        { title: 'Despesas Fin.', data: monthlyReportData.despFin, color: '#fb7185' },
+        { title: 'LAIR', data: monthlyReportData.lair, color: '#6366f1' },
+        { title: 'IRPJ/CSLL', data: monthlyReportData.irpjCsll, color: '#ef4444' },
+        { title: 'Lucro LÃ­quido', data: monthlyReportData.lucroLiquido, color: '#059669' },
+        { title: 'EBTIDA', data: monthlyReportData.ebtida, color: '#8b5cf6' },
+    ]), [monthlyReportData]);
+
+    const patChartIndicators = useMemo(() => ([
+        { title: 'Ativo Circulante', data: patMonthlyDataByGroup.ativoCirc, color: '#0ea5e9' },
+        { title: 'Ativo NÃ£o Circulante', data: patMonthlyDataByGroup.ativoNaoCirc, color: '#2563eb' },
+        { title: 'Total do Ativo', data: patMonthlyDataByGroup.totalAtivo, color: '#06b6d4' },
+        { title: 'Passivo Circulante', data: patMonthlyDataByGroup.passivoCirc, color: '#f43f5e' },
+        { title: 'Passivo NÃ£o Circulante', data: patMonthlyDataByGroup.passivoNaoCirc, color: '#f59e0b' },
+        { title: 'PatrimÃ´nio LÃ­quido', data: patMonthlyDataByGroup.patrimonioLiq, color: '#10b981' },
+        { title: 'Total do Passivo', data: patMonthlyDataByGroup.totalPassivo, color: '#8b5cf6' },
+    ]), [patMonthlyDataByGroup]);
+
+    void dreChartIndicators;
+    void patChartIndicators;
+
     const normalizeSpreadsheetHeader = (value: unknown) =>
         String(value || '')
             .normalize('NFD')
@@ -1205,6 +1341,7 @@ const ClientDashboard = () => {
         const reader = new FileReader();
         reader.onload = async (evt) => {
             try {
+                const XLSX = await loadSpreadsheetModule();
                 const bstr = evt.target?.result;
                 const wb = XLSX.read(bstr, { type: 'binary' });
                 const wsname = wb.SheetNames[0];
@@ -1660,14 +1797,8 @@ const ClientDashboard = () => {
                                     <h4 className="text-white font-bold mb-1">Composição - {months[selectedMonthIndex]}</h4>
                                     <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Distribuição do faturamento</p>
                                     {(() => {
-                                        const d = calcDreForMonth(selectedMonthIndex);
                                         const PIE_COLORS = ['#f59e0b', '#ef4444', '#a855f7', '#10b981'];
-                                        const pieData = [
-                                            { name: 'Custo de Venda', value: Math.abs(d.custos) },
-                                            { name: 'Impostos', value: Math.abs(d.deducoes + d.irpjCsll) },
-                                            { name: 'Desp. Operac.', value: Math.abs(d.despAdm + d.despCom + d.despTrib + d.despFin) },
-                                            { name: 'Lucro', value: Math.max(d.lucroLiq, 0) },
-                                        ].filter(p => p.value > 0);
+                                        const pieData = revenueCompositionData;
                                         return (
                                             <div className="flex-1 min-h-[220px]">
                                                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
@@ -1696,10 +1827,7 @@ const ClientDashboard = () => {
                                     </div>
                                     <div className="flex-1 min-h-[220px]">
                                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                            <AreaChart data={months.map((m, i) => {
-                                                const d = allMonthsDre[i];
-                                                return { name: m.substring(0, 3), receita: d?.recBruta || 0, despesa: (d?.custos || 0) + (d?.despAdm || 0) + (d?.despCom || 0) + (d?.despTrib || 0) + (d?.despFin || 0) };
-                                            })}>
+                                            <AreaChart data={revenueExpenseData}>
                                                 <defs>
                                                     <linearGradient id="colorRec" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/><stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient>
                                                     <linearGradient id="colorDesp" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/><stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/></linearGradient>
@@ -1744,7 +1872,7 @@ const ClientDashboard = () => {
                                             <Upload className="w-5 h-5 text-amber-500" />
                                             <div>
                                                 <p className="text-white font-bold text-xs">Pendências</p>
-                                                <p className="text-white/40 text-[10px]">{documentAlerts.filter(a => a.status === 'Pendente').length} documentos pendentes</p>
+                                                <p className="text-white/40 text-[10px]">{pendingDocumentAlertsCount} documentos pendentes</p>
                                             </div>
                                         </div>
                                     </div>
@@ -1801,12 +1929,7 @@ const ClientDashboard = () => {
                             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Margem bruta, líquida e EBITDA ao longo do ano (%)</p>
                             <div className="h-[260px]">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                    <LineChart data={allMonthsDre.map((d, i) => ({
-                                        name: months[i].substring(0, 3),
-                                        margemBruta:  d.recLiquida !== 0 ? parseFloat(((d.lucroBruto / d.recLiquida) * 100).toFixed(2)) : 0,
-                                        margemLiq:    d.recBruta   !== 0 ? parseFloat(((d.lucroLiq  / d.recBruta)   * 100).toFixed(2)) : 0,
-                                        margemEbtida: d.recLiquida !== 0 ? parseFloat(((d.ebtida    / d.recLiquida) * 100).toFixed(2)) : 0,
-                                    }))}>
+                                    <LineChart data={marginEvolutionData}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
@@ -1830,14 +1953,7 @@ const ClientDashboard = () => {
                             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Distribuição da receita bruta por mês</p>
                             <div className="h-[280px]">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                    <BarChart data={allMonthsDre.map((d, i) => ({
-                                        name: months[i].substring(0, 3),
-                                        deducoes:  Math.abs(d.deducoes),
-                                        custos:    Math.abs(d.custos) + Math.abs(d.custosServicos),
-                                        despOper:  Math.abs(d.despAdm) + Math.abs(d.despCom) + Math.abs(d.despTrib),
-                                        irpj:      Math.abs(d.irpjCsll),
-                                        lucro:     Math.max(d.lucroLiq, 0),
-                                    }))} barSize={22}>
+                                    <BarChart data={allocationData} barSize={22}>
                                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
                                         <YAxis hide />
@@ -2119,11 +2235,13 @@ const ClientDashboard = () => {
                                 </div>
 
                                 {dreConfigMode ? (
-                                    <ClientDreConfigPanel
-                                        clientId={clientId!}
-                                        selectedYear={selectedYear}
-                                        onSaved={() => setChartAccountsReloadToken((prev) => prev + 1)}
-                                    />
+                                    <Suspense fallback={<LazySectionFallback label="Configuracao DRE" />}>
+                                        <ClientDreConfigPanel
+                                            clientId={clientId!}
+                                            selectedYear={selectedYear}
+                                            onSaved={() => setChartAccountsReloadToken((prev) => prev + 1)}
+                                        />
+                                    </Suspense>
                                 ) : dreViewMode === 'lista' ? (
                                     <div className="overflow-x-auto" ref={tableContainerRef}>
                                         <table className="w-full text-left border-collapse">
@@ -2496,7 +2614,9 @@ const ClientDashboard = () => {
                                 </div>
 
                                 {patConfigMode ? (
-                                    <ClientPatConfigPanel clientId={clientId!} selectedYear={selectedYear} />
+                                    <Suspense fallback={<LazySectionFallback label="Configuracao patrimonial" />}>
+                                        <ClientPatConfigPanel clientId={clientId!} selectedYear={selectedYear} />
+                                    </Suspense>
                                 ) : <>
                                 {/* Render Patrimonial — usa getSumByGroup (por nome de grupo textual) */}
                                 {(() => {
@@ -2807,15 +2927,17 @@ const ClientDashboard = () => {
                                 </>}
                             </div>
                         ) : dreSubTab === 'dfc' ? (
-                            <ClientDfcSection
-                                clientId={clientId || client?.id}
-                                isAccountingView={isAccountingView}
-                                selectedYear={selectedYear}
-                                selectedMonthIndex={selectedMonthIndex}
-                                months={months}
-                                reportRef={reportRef}
-                                onExport={() => handleExportPDF('DFC')}
-                            />
+                            <Suspense fallback={<LazySectionFallback label="Secao DFC" />}>
+                                <ClientDfcSection
+                                    clientId={clientId || client?.id}
+                                    isAccountingView={isAccountingView}
+                                    selectedYear={selectedYear}
+                                    selectedMonthIndex={selectedMonthIndex}
+                                    months={months}
+                                    reportRef={reportRef}
+                                    onExport={() => handleExportPDF('DFC')}
+                                />
+                            </Suspense>
                         ) : showLegacyDfc ? (
                             <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl animate-in slide-in-from-right duration-500">
                                 {/* Cabeçalho */}
@@ -2957,7 +3079,9 @@ const ClientDashboard = () => {
 
                 {/* Aba de Suporte - visível apenas para clientes */}
                 {activeTab === 'arquivos' && isClientView && (
-                    <ClientDocumentUploadPanel />
+                    <Suspense fallback={<LazySectionFallback label="Documentos do cliente" />}>
+                        <ClientDocumentUploadPanel />
+                    </Suspense>
                 )}
 
                 {activeTab === 'suporte' && isClientView && (
@@ -3034,27 +3158,29 @@ const ClientDashboard = () => {
                             </div>
                         )}
 
-                        <SupportTicketDetailPanel
-                            ticket={selectedSupportTicket}
-                            messages={supportMessages}
-                            isLoadingMessages={isSupportMessagesLoading}
-                            replyDraft={supportReplyDraft}
-                            isSubmittingReply={isSubmittingSupportReply}
-                            onReplyDraftChange={setSupportReplyDraft}
-                            onReplySubmit={handleSupportReply}
-                            metadata={selectedSupportTicket ? (
-                                <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400">
-                                    <span>{client?.name || 'Cliente'}</span>
-                                    <span>Abertura em {new Date(selectedSupportTicket.created_at).toLocaleString('pt-BR')}</span>
-                                    {selectedSupportTicket.closed_at && (
-                                        <span>Fechado em {new Date(selectedSupportTicket.closed_at).toLocaleString('pt-BR')}</span>
-                                    )}
-                                </div>
-                            ) : undefined}
-                            emptyTitle="Selecione um chamado"
-                            emptyDescription="Escolha um ticket para acompanhar a conversa com a contabilidade e enviar novas mensagens."
-                            replyLabel="Nova mensagem para a contabilidade"
-                        />
+                        <Suspense fallback={<LazySectionFallback label="Detalhe do chamado" />}>
+                            <SupportTicketDetailPanel
+                                ticket={selectedSupportTicket}
+                                messages={supportMessages}
+                                isLoadingMessages={isSupportMessagesLoading}
+                                replyDraft={supportReplyDraft}
+                                isSubmittingReply={isSubmittingSupportReply}
+                                onReplyDraftChange={setSupportReplyDraft}
+                                onReplySubmit={handleSupportReply}
+                                metadata={selectedSupportTicket ? (
+                                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-400">
+                                        <span>{client?.name || 'Cliente'}</span>
+                                        <span>Abertura em {new Date(selectedSupportTicket.created_at).toLocaleString('pt-BR')}</span>
+                                        {selectedSupportTicket.closed_at && (
+                                            <span>Fechado em {new Date(selectedSupportTicket.closed_at).toLocaleString('pt-BR')}</span>
+                                        )}
+                                    </div>
+                                ) : undefined}
+                                emptyTitle="Selecione um chamado"
+                                emptyDescription="Escolha um ticket para acompanhar a conversa com a contabilidade e enviar novas mensagens."
+                                replyLabel="Nova mensagem para a contabilidade"
+                            />
+                        </Suspense>
                     </div>
                 )}
             </div>
