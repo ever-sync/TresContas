@@ -10,6 +10,7 @@ import {
     Trash2,
 } from 'lucide-react';
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 import {
@@ -19,9 +20,7 @@ import {
 import type {
     DFCEligibleAccount,
     DFCConfigLine,
-    DFCConfigResponse,
     DFCDisplayType,
-    DFCReportResponse,
 } from '../services/dfcService';
 
 const formatLocaleNumber = (number: number) =>
@@ -89,53 +88,60 @@ export const ClientDfcSection = ({
     onExport,
 }: ClientDfcSectionProps) => {
     const [mode, setMode] = useState<'view' | 'config'>('view');
-    const [report, setReport] = useState<DFCReportResponse | null>(null);
-    const [config, setConfig] = useState<DFCConfigResponse | null>(null);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
-    const [loadingReport, setLoadingReport] = useState(false);
-    const [loadingConfig, setLoadingConfig] = useState(false);
     const [savingConfig, setSavingConfig] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
-    useEffect(() => {
-        const loadReport = async () => {
-            try {
-                setLoadingReport(true);
-                const data = isAccountingView && clientId
-                    ? await dfcService.getReport(clientId, selectedYear)
-                    : await clientPortalDfcService.getReport(selectedYear);
-                setReport(data);
-            } catch (error) {
-                console.error('Erro ao carregar DFC:', error);
-                toast.error('Erro ao carregar DFC');
-            } finally {
-                setLoadingReport(false);
+    const queryClient = useQueryClient();
+
+    const reportQuery = useQuery({
+        queryKey: ['client-dashboard-dfc-report', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client'],
+        queryFn: async () => {
+            if (isAccountingView && clientId) {
+                return dfcService.getReport(clientId, selectedYear);
             }
-        };
 
-        if ((isAccountingView && clientId) || !isAccountingView) {
-            loadReport();
-        }
-    }, [clientId, isAccountingView, selectedYear]);
+            return clientPortalDfcService.getReport(selectedYear);
+        },
+        enabled: (isAccountingView && Boolean(clientId)) || !isAccountingView,
+        staleTime: 30_000,
+    });
+
+    const configQuery = useQuery({
+        queryKey: ['client-dashboard-dfc-config', clientId ?? 'self'],
+        queryFn: async () => {
+            if (!isAccountingView || !clientId) {
+                throw new Error('Configuracao DFC indisponivel');
+            }
+
+            return dfcService.getConfig(clientId);
+        },
+        enabled: isAccountingView && Boolean(clientId),
+        staleTime: 30_000,
+    });
+
+    const report = reportQuery.data ?? null;
+    const config = configQuery.data ?? null;
+    const loadingReport = reportQuery.isPending;
+    const loadingConfig = configQuery.isPending;
 
     useEffect(() => {
-        if (!isAccountingView || !clientId) return;
+        if (!reportQuery.isError) return;
 
-        const loadConfig = async () => {
-            try {
-                setLoadingConfig(true);
-                const data = await dfcService.getConfig(clientId);
-                setConfig(data);
-            } catch (error) {
-                console.error('Erro ao carregar configuração DFC:', error);
-                toast.error('Erro ao carregar configuração DFC');
-            } finally {
-                setLoadingConfig(false);
-            }
-        };
+        const message = reportQuery.error instanceof Error
+            ? reportQuery.error.message
+            : 'Erro ao carregar DFC';
+        toast.error(message);
+    }, [reportQuery.error, reportQuery.isError]);
 
-        loadConfig();
-    }, [clientId, isAccountingView]);
+    useEffect(() => {
+        if (!configQuery.isError) return;
+
+        const message = configQuery.error instanceof Error
+            ? configQuery.error.message
+            : 'Erro ao carregar configuracao DFC';
+        toast.error(message);
+    }, [configQuery.error, configQuery.isError]);
 
     useEffect(() => {
         if (!config) return;
@@ -191,7 +197,7 @@ export const ClientDfcSection = ({
 
         const lineEligibleAccounts = getEligibleAccountsForLine(line);
         if (lineEligibleAccounts.length === 0) {
-            toast.error('Nenhuma conta-tÃ­tulo elegÃ­vel para esta linha');
+            toast.error('Nenhuma conta-título elegível para esta linha');
             return;
         }
 
@@ -245,11 +251,12 @@ export const ClientDfcSection = ({
                     })),
             };
 
-            const data = await dfcService.saveConfig(clientId, payload);
-            setConfig(data);
-            toast.success('Configuração DFC salva');
-            const freshReport = await dfcService.getReport(clientId, selectedYear);
-            setReport(freshReport);
+            await dfcService.saveConfig(clientId, payload);
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['client-dashboard-dfc-config', clientId ?? 'self'] }),
+                queryClient.invalidateQueries({ queryKey: ['client-dashboard-dfc-report', clientId ?? 'self'] }),
+            ]);
+            toast.success('Configuracao DFC salva');
             setMode('view');
         } catch (error: unknown) {
             console.error('Erro ao salvar configuração DFC:', error);
@@ -586,3 +593,5 @@ export const ClientDfcSection = ({
 };
 
 export default ClientDfcSection;
+
+

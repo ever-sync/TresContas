@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken';
 if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET is required');
 }
-const JWT_SECRET = process.env.JWT_SECRET!;
+
+const JWT_SECRET = process.env.JWT_SECRET;
 
 type UserRole = 'admin' | 'collaborator' | 'client';
 
@@ -26,14 +27,13 @@ export interface AuthRequest extends Request {
 const getToken = (req: Request) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return null;
+
     const [scheme, token] = authHeader.split(' ');
     if (scheme !== 'Bearer' || !token) return null;
+
     return token;
 };
 
-/**
- * Middleware for admin/collaborator users (accounting staff).
- */
 export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
     const token = getToken(req);
     if (!token) {
@@ -45,7 +45,7 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
         const role = decoded.role;
 
         if (!role) {
-            return res.status(401).json({ message: 'Token invÃ¡lido' });
+            return res.status(401).json({ message: 'Token inválido' });
         }
 
         if (role !== 'admin' && role !== 'collaborator') {
@@ -55,16 +55,13 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
         req.role = role;
         req.userId = decoded.userId || decoded.id;
         req.accountingId = decoded.accountingId;
+
         next();
-    } catch (error) {
+    } catch {
         return res.status(401).json({ message: 'Token inválido' });
     }
 };
 
-/**
- * Middleware factory that restricts access to specific roles.
- * Usage: requireRole('admin') or requireRole('admin', 'collaborator')
- */
 export const requireRole = (...allowedRoles: UserRole[]) => {
     return (req: AuthRequest, res: Response, next: NextFunction) => {
         const token = getToken(req);
@@ -77,7 +74,7 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
             const role = decoded.role;
 
             if (!role) {
-                return res.status(401).json({ message: 'Token invÃ¡lido' });
+                return res.status(401).json({ message: 'Token inválido' });
             }
 
             if (!allowedRoles.includes(role)) {
@@ -95,15 +92,12 @@ export const requireRole = (...allowedRoles: UserRole[]) => {
             }
 
             next();
-        } catch (error) {
+        } catch {
             return res.status(401).json({ message: 'Token inválido' });
         }
     };
 };
 
-/**
- * Middleware for client portal access only.
- */
 export const authClientMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
     const token = getToken(req);
     if (!token) {
@@ -112,17 +106,21 @@ export const authClientMiddleware = (req: AuthRequest, res: Response, next: Next
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
+
         if (decoded.role !== 'client') {
             return res.status(403).json({ message: 'Acesso negado' });
         }
+
         req.role = 'client';
         req.clientId = decoded.clientId || decoded.id;
         req.accountingId = decoded.accountingId;
+
         if (!req.clientId) {
             return res.status(401).json({ message: 'Token inválido' });
         }
+
         next();
-    } catch (error) {
+    } catch {
         return res.status(401).json({ message: 'Token inválido' });
     }
 };

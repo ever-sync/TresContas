@@ -1,17 +1,21 @@
 import { Response } from 'express';
-import { AuthRequest } from '../middlewares/auth.middleware';
 import prisma from '../lib/prisma';
+import { AuthRequest } from '../middlewares/auth.middleware';
+import { AppError, sendErrorResponse } from '../lib/http';
+import { parseRequiredYear, toTrimmedString } from '../lib/validation';
 
 const verifyClientOwnership = async (clientId: string, accountingId: string) => {
     const client = await prisma.client.findFirst({
         where: { id: clientId, accounting_id: accountingId },
         select: { id: true },
     });
+
     return client !== null;
 };
 
 const removeDiacritics = (text: string): string => {
     if (!text) return '';
+
     return text
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -34,16 +38,27 @@ const toMonthlyDeltaValues = (values: number[]) =>
         return value - values[index - 1];
     });
 
+const parseYearFromQuery = (value: unknown) => {
+    if (value === undefined || value === null || value === '') {
+        return new Date().getFullYear();
+    }
+
+    return parseRequiredYear(value);
+};
+
 export const getMovements = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
-
-        const clientId = String(req.params.clientId);
-        if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nao encontrado' });
+        if (!req.accountingId) {
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const year = parseInt(String(req.query.year || ''), 10) || new Date().getFullYear();
+        const clientId = String(req.params.clientId);
+
+        if (!await verifyClientOwnership(clientId, req.accountingId)) {
+            throw new AppError(404, 'Cliente não encontrado');
+        }
+
+        const year = parseYearFromQuery(req.query.year);
         const type = req.query.type as string | undefined;
 
         const whereClause: Record<string, unknown> = { client_id: clientId, year };
@@ -67,52 +82,56 @@ export const getMovements = async (req: AuthRequest, res: Response) => {
         });
 
         res.json(movements);
-    } catch (error: any) {
-        console.error('Erro ao buscar movimentacoes:', error);
-        res.status(500).json({
-            message: 'Erro ao buscar movimentacoes',
-            detail: error?.message || String(error),
-        });
+    } catch (error) {
+        return sendErrorResponse(res, error, 'Erro ao buscar movimentações');
     }
 };
 
 export const importMovements = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
+        if (!req.accountingId) {
+            throw new AppError(401, 'Não autorizado');
+        }
 
         const clientId = String(req.params.clientId);
+
         if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nao encontrado' });
+            throw new AppError(404, 'Cliente não encontrado');
         }
 
-        const { year, movements, type, valueMode } = req.body;
-        if (!year || !Array.isArray(movements) || movements.length === 0) {
-            return res.status(400).json({ message: 'Ano e lista de movimentacoes sao obrigatorios' });
+        const movementType = req.body?.type === 'patrimonial' ? 'patrimonial' : 'dre';
+        const valueMode = req.body?.valueMode;
+        const parsedYear = parseRequiredYear(req.body?.year);
+        const incomingMovements = Array.isArray(req.body?.movements)
+            ? req.body.movements as ImportMovementPayload[]
+            : [];
+
+        if (incomingMovements.length === 0) {
+            throw new AppError(400, 'Ano e lista de movimentações são obrigatórios');
         }
 
-        const parsedYear = parseInt(String(year), 10);
-        if (!Number.isFinite(parsedYear) || parsedYear <= 0) {
-            return res.status(400).json({ message: 'Ano invalido' });
-        }
-
-        const movementType = type === 'patrimonial' ? 'patrimonial' : 'dre';
-        const shouldConvertAccumulatedToMonthly = movementType === 'dre' && valueMode === 'cumulative';
-        const incomingMovements = movements as ImportMovementPayload[];
+        const shouldConvertAccumulatedToMonthly =
+            movementType === 'dre' && valueMode === 'cumulative';
 
         for (const movement of incomingMovements) {
-            if (!movement.code || !movement.name) {
-                return res.status(400).json({
-                    message: `Movimentacao invalida: codigo e nome obrigatorios (codigo: ${movement.code || 'vazio'})`,
-                });
+            const code = toTrimmedString(movement.code);
+            const name = toTrimmedString(movement.name);
+
+            if (!code || !name) {
+                throw new AppError(
+                    400,
+                    `Movimentação inválida: código e nome obrigatórios (código: ${code || 'vazio'})`
+                );
             }
+
             if (!Array.isArray(movement.values) || movement.values.length !== 12) {
-                return res.status(400).json({
-                    message: `Movimentacao ${movement.code}: values deve ter exatamente 12 elementos (Jan-Dez)`,
-                });
+                throw new AppError(
+                    400,
+                    `Movimentação ${code}: values deve ter exatamente 12 elementos (Jan-Dez)`
+                );
             }
         }
 
-        // Buscar plano de contas universal da contabilidade
         const chartAccounts = await prisma.chartOfAccounts.findMany({
             where: { accounting_id: req.accountingId },
             select: {
@@ -122,14 +141,17 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
                 report_category: true,
             },
         });
+
         const chartAccountByCode = new Map<string, {
             client_id: string | null;
             reduced_code: string | null;
             report_category: string | null;
         }>();
+
         for (const account of chartAccounts) {
             const normalizedCode = account.code.trim();
             const existing = chartAccountByCode.get(normalizedCode);
+
             if (!existing || (account.client_id === clientId && existing.client_id !== clientId)) {
                 chartAccountByCode.set(normalizedCode, {
                     client_id: account.client_id,
@@ -139,60 +161,56 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             }
         }
 
-        // Buscar mapeamentos DRE configurados na tela de parametrização (prioridade máxima)
         const dreMappings = await prisma.dREMapping.findMany({
             where: { client_id: clientId },
             select: { account_code: true, category: true },
         });
+
         const dreMappingByCode = new Map(
-            dreMappings.map((m) => [m.account_code.trim(), m.category])
+            dreMappings.map((mapping) => [mapping.account_code.trim(), mapping.category])
         );
 
-        // Inferência automática de categoria DRE pelo prefixo do código contábil
-        // Usado como último fallback quando não há DE-PARA no CSV nem report_category no plano de contas
         const inferDreCategoryFromCode = (code: string): string | null => {
-            // 03 - RECEITAS
             if (code.startsWith('03.1.01')) return 'receita bruta';
             if (code.startsWith('03.1.02')) return 'deducoes de vendas';
             if (code.startsWith('03.1.03')) return 'receitas financeiras';
             if (code.startsWith('03.1.05')) return 'outras receitas';
-            if (code.startsWith('03.2'))    return 'outras receitas';
-            // 04 - CUSTOS E DESPESAS
-            if (code.startsWith('04.1'))    return 'custos das vendas';   // 04.1.01, 04.1.02, etc
+            if (code.startsWith('03.2')) return 'outras receitas';
+            if (code.startsWith('04.1')) return 'custos das vendas';
             if (code.startsWith('04.2.01')) return 'despesas comerciais';
             if (code.startsWith('04.2.02')) return 'despesas administrativas';
             if (code.startsWith('04.2.03')) return 'despesas financeiras';
             if (code.startsWith('04.2.05')) return 'despesas tributarias';
-            if (code.startsWith('04.2'))    return 'outras despesas';     // qualquer 04.2 não mapeado acima
-            if (code.startsWith('04.3'))    return 'irpj e csll';
+            if (code.startsWith('04.2')) return 'outras despesas';
+            if (code.startsWith('04.3')) return 'irpj e csll';
             return null;
         };
 
         const normalizedMovements = incomingMovements.map((movement) => {
             let normalizedCategory = null;
+
             if (movement.category && movement.category !== '#REF!' && movement.category !== '#REF') {
-                const categoryStr = String(movement.category).trim();
-                normalizedCategory = removeDiacritics(categoryStr) || categoryStr;
+                const category = String(movement.category).trim();
+                normalizedCategory = removeDiacritics(category) || category;
             }
 
-            const code = String(movement.code).trim();
-            const payloadReducedCode = movement.reduced_code ? String(movement.reduced_code).trim() : null;
+            const code = toTrimmedString(movement.code);
+            const payloadReducedCode = movement.reduced_code
+                ? toTrimmedString(movement.reduced_code)
+                : null;
             const sharedAccount = chartAccountByCode.get(code);
             const reducedCode = sharedAccount?.reduced_code || payloadReducedCode || null;
-
-            // Prioridade de resolução de categoria:
-            // 1. Mapeamento configurado na tela de parametrização (DREMapping)
-            // 2. Categoria vinda do CSV (DE-PARA)
-            // 3. report_category do plano de contas compartilhado
-            // 4. Inferência automática pelo prefixo do código
             const configuredCategory = dreMappingByCode.get(code) || null;
-            const sharedCategory = sharedAccount?.client_id === clientId && sharedAccount.report_category
-                ? removeDiacritics(sharedAccount.report_category)
+            const sharedCategory =
+                sharedAccount?.client_id === clientId && sharedAccount.report_category
+                    ? removeDiacritics(sharedAccount.report_category)
+                    : null;
+            const inferredCategory = movementType === 'dre'
+                ? inferDreCategoryFromCode(code)
                 : null;
-            const inferredCategory = movementType === 'dre' ? inferDreCategoryFromCode(code) : null;
-            const resolvedCategory = configuredCategory || normalizedCategory || sharedCategory || inferredCategory;
-
-            const parsedValues = movement.values.map((value) => parseFloat(String(value)) || 0);
+            const resolvedCategory =
+                configuredCategory || normalizedCategory || sharedCategory || inferredCategory;
+            const parsedValues = movement.values.map((value) => Number.parseFloat(String(value)) || 0);
             const values = shouldConvertAccumulatedToMonthly
                 ? toMonthlyDeltaValues(parsedValues)
                 : parsedValues;
@@ -203,8 +221,8 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
                 year: parsedYear,
                 code,
                 reduced_code: reducedCode,
-                name: String(movement.name).trim(),
-                level: parseInt(String(movement.level || '1'), 10) || 1,
+                name: toTrimmedString(movement.name),
+                level: Number.parseInt(String(movement.level || '1'), 10) || 1,
                 type: movementType,
                 category: resolvedCategory,
                 values,
@@ -220,8 +238,8 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
                 where: { client_id: clientId, year: parsedYear, type: movementType },
             });
 
-            for (let i = 0; i < normalizedMovements.length; i += batchSize) {
-                const batch = normalizedMovements.slice(i, i + batchSize);
+            for (let index = 0; index < normalizedMovements.length; index += batchSize) {
+                const batch = normalizedMovements.slice(index, index + batchSize);
                 const created = await tx.monthlyMovement.createMany({
                     data: batch,
                     skipDuplicates: true,
@@ -231,33 +249,32 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
         });
 
         res.json({
-            message: 'Movimentacoes importadas com sucesso',
+            message: 'Movimentações importadas com sucesso',
             count: totalCreated,
             year: parsedYear,
             type: movementType,
         });
-    } catch (error: any) {
-        console.error('Erro ao importar movimentacoes:', error);
-        res.status(500).json({
-            message: 'Erro ao importar movimentacoes',
-            detail: error?.message || String(error),
-        });
+    } catch (error) {
+        return sendErrorResponse(res, error, 'Erro ao importar movimentações');
     }
 };
 
 export const removeMovements = async (req: AuthRequest, res: Response) => {
     try {
-        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
-
-        const clientId = String(req.params.clientId);
-        if (!await verifyClientOwnership(clientId, req.accountingId)) {
-            return res.status(404).json({ message: 'Cliente nao encontrado' });
+        if (!req.accountingId) {
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const year = parseInt(String(req.query.year || ''), 10) || new Date().getFullYear();
-        const type = req.query.type as string | undefined;
+        const clientId = String(req.params.clientId);
 
+        if (!await verifyClientOwnership(clientId, req.accountingId)) {
+            throw new AppError(404, 'Cliente não encontrado');
+        }
+
+        const year = parseYearFromQuery(req.query.year);
+        const type = req.query.type as string | undefined;
         const whereClause: Record<string, unknown> = { client_id: clientId, year };
+
         if (type && ['dre', 'patrimonial'].includes(type)) {
             whereClause.type = type;
         }
@@ -266,13 +283,8 @@ export const removeMovements = async (req: AuthRequest, res: Response) => {
             where: whereClause,
         });
 
-        res.json({ message: 'Movimentacoes removidas', count: deleted.count, year });
-    } catch (error: any) {
-        console.error('Erro ao remover movimentacoes:', error);
-        res.status(500).json({
-            message: 'Erro ao remover movimentacoes',
-            detail: error?.message || String(error),
-        });
+        res.json({ message: 'Movimentações removidas', count: deleted.count, year });
+    } catch (error) {
+        return sendErrorResponse(res, error, 'Erro ao remover movimentações');
     }
 };
-

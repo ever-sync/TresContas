@@ -32,3 +32,21 @@ export const aiAnalysisRateLimiter = buildLimiter(
     20,
     'Muitas solicitações de análise. Tente novamente em alguns minutos.'
 );
+
+export const supportWriteRateLimiter = buildLimiter(
+    10 * 60 * 1000,
+    30,
+    'Muitas atualizações de suporte. Tente novamente em alguns minutos.'
+);
+
+export const importRateLimiter = buildLimiter(
+    15 * 60 * 1000,
+    10,
+    'Muitas importações em pouco tempo. Tente novamente em alguns minutos.'
+);
+
+export const documentUploadRateLimiter = buildLimiter(
+    15 * 60 * 1000,
+    20,
+    'Muitos uploads em pouco tempo. Tente novamente em alguns minutos.'
+);

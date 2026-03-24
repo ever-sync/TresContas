@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { getMovements, importMovements, removeMovements } from '../controllers/movement.controller';
+import { importRateLimiter } from '../middlewares/rateLimit.middleware';
 
 const router = Router({ mergeParams: true });
 
@@ -10,7 +11,7 @@ router.use(authMiddleware);
 router.get('/', getMovements);
 
 // POST   /api/clients/:clientId/movements/import
-router.post('/import', importMovements);
+router.post('/import', importRateLimiter, importMovements);
 
 // DELETE /api/clients/:clientId/movements?year=2025
 router.delete('/', removeMovements);

@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Download, FileText, Loader2, Upload } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     clientDocumentService,
-    type ClientDocument,
+    type UploadClientDocumentPayload,
 } from '../services/clientDocumentService';
 
 const formatFileSize = (sizeBytes: number) => {
@@ -26,29 +27,30 @@ const toBase64 = (file: File) =>
     });
 
 export const ClientDocumentUploadPanel = () => {
-    const [documents, setDocuments] = useState<ClientDocument[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [submitting, setSubmitting] = useState(false);
+    const queryClient = useQueryClient();
+    const [fileInputKey, setFileInputKey] = useState(0);
     const [file, setFile] = useState<File | null>(null);
     const [displayName, setDisplayName] = useState('');
     const [category, setCategory] = useState('');
 
-    const loadDocuments = async () => {
-        try {
-            setLoading(true);
-            const data = await clientDocumentService.listForClient();
-            setDocuments(data);
-        } catch (error) {
-            console.error('Erro ao carregar arquivos do cliente:', error);
-            toast.error('Erro ao carregar arquivos');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const documentsQuery = useQuery({
+        queryKey: ['client-documents'],
+        queryFn: () => clientDocumentService.listForClient(),
+        staleTime: 30_000,
+    });
 
     useEffect(() => {
-        loadDocuments();
-    }, []);
+        if (!documentsQuery.isError) return;
+
+        const message = documentsQuery.error instanceof Error
+            ? documentsQuery.error.message
+            : 'Erro ao carregar arquivos';
+        toast.error(message);
+    }, [documentsQuery.error, documentsQuery.isError]);
+
+    const uploadDocumentMutation = useMutation({
+        mutationFn: (payload: UploadClientDocumentPayload) => clientDocumentService.uploadForClient(payload),
+    });
 
     const handleSubmit = async (event: React.FormEvent) => {
         event.preventDefault();
@@ -58,9 +60,8 @@ export const ClientDocumentUploadPanel = () => {
         }
 
         try {
-            setSubmitting(true);
             const contentBase64 = await toBase64(file);
-            await clientDocumentService.uploadForClient({
+            await uploadDocumentMutation.mutateAsync({
                 original_name: file.name,
                 display_name: displayName.trim(),
                 category: category.trim(),
@@ -72,17 +73,20 @@ export const ClientDocumentUploadPanel = () => {
             setFile(null);
             setDisplayName('');
             setCategory('');
-            await loadDocuments();
+            setFileInputKey((current) => current + 1);
+            await queryClient.invalidateQueries({ queryKey: ['client-documents'] });
         } catch (error: unknown) {
             console.error('Erro ao enviar arquivo:', error);
             const message = axios.isAxiosError(error)
                 ? error.response?.data?.message || 'Erro ao enviar arquivo'
                 : 'Erro ao enviar arquivo';
             toast.error(message);
-        } finally {
-            setSubmitting(false);
         }
     };
+
+    const documents = documentsQuery.data ?? [];
+    const isLoading = documentsQuery.isPending;
+    const isSubmitting = uploadDocumentMutation.isPending;
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300 pb-12">
@@ -116,6 +120,7 @@ export const ClientDocumentUploadPanel = () => {
                             <Upload className="w-4 h-4" />
                             {file ? 'Trocar arquivo' : 'Selecionar arquivo'}
                             <input
+                                key={fileInputKey}
                                 type="file"
                                 className="hidden"
                                 onChange={(e) => setFile(e.target.files?.[0] || null)}
@@ -123,10 +128,10 @@ export const ClientDocumentUploadPanel = () => {
                         </label>
                         <button
                             type="submit"
-                            disabled={submitting}
+                            disabled={isSubmitting}
                             className="w-full flex items-center justify-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 disabled:opacity-50 text-white px-5 py-3 rounded-2xl transition-all font-bold"
                         >
-                            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                             Enviar
                         </button>
                     </div>
@@ -145,10 +150,24 @@ export const ClientDocumentUploadPanel = () => {
                     <span className="text-xs text-slate-500">{documents.length} arquivo(s)</span>
                 </div>
 
-                {loading ? (
+                {isLoading ? (
                     <div className="p-10 flex items-center justify-center gap-3 text-white/40">
                         <Loader2 className="w-5 h-5 animate-spin" />
                         Carregando arquivos...
+                    </div>
+                ) : documentsQuery.isError ? (
+                    <div className="p-16 text-center space-y-4">
+                        <FileText className="w-16 h-16 text-white/10 mx-auto" />
+                        <div>
+                            <h4 className="text-lg font-bold text-white/40 mb-2">Não foi possível carregar os arquivos</h4>
+                            <p className="text-sm text-white/20">Tente novamente para atualizar a lista.</p>
+                        </div>
+                        <button
+                            onClick={() => documentsQuery.refetch()}
+                            className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition-all"
+                        >
+                            Recarregar
+                        </button>
                     </div>
                 ) : documents.length === 0 ? (
                     <div className="p-16 text-center">

@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useMemo, useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import {
     Download,
     Upload,
@@ -38,7 +39,6 @@ import api from '../services/api';
 import { clientService } from '../services/clientService';
 import type { Client } from '../services/clientService';
 import { clientPortalService } from '../services/clientPortalService';
-import type { SupportTicket, SupportTicketMessage } from '../services/clientPortalService';
 import { chartOfAccountsService, clientChartOfAccountsService } from '../services/chartOfAccountsService';
 import type { ImportAccount } from '../services/chartOfAccountsService';
 import { movementService } from '../services/movementService';
@@ -48,6 +48,8 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
 import { TooltipCurrency, TooltipPercent } from '../components/client-dashboard/ChartTooltips';
 import type { DreMonthData } from '../components/client-dashboard/constants';
+
+type ClientDashboardProfile = Pick<Client, 'id' | 'name' | 'cnpj' | 'email' | 'status' | 'accounting_id'>;
 
 const formatLocaleNumber = (number: number) => {
     return Math.abs(number).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -210,13 +212,13 @@ const LazySectionFallback = ({ label }: { label: string }) => (
 const ClientDashboard = () => {
     const { id: clientId } = useParams();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
 
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
     const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
     const [dreConfigMode, setDreConfigMode] = useState(false);
-    const [chartAccountsReloadToken, setChartAccountsReloadToken] = useState(0);
     const [dreMappings, setDreMappings] = useState<Array<{ account_code: string; category: string }>>([]);
     const [patViewMode, setPatViewMode] = useState<ReportViewMode>('lista');
     const [patConfigMode, setPatConfigMode] = useState(false);
@@ -269,8 +271,6 @@ const ClientDashboard = () => {
         }
     };
 
-    const [client, setClient] = useState<Client | null>(null);
-    const [isClientLoading, setIsClientLoading] = useState(true);
     const [supportForm, setSupportForm] = useState({
         subject: '',
         message: '',
@@ -278,11 +278,7 @@ const ClientDashboard = () => {
     });
     const [supportSubmitting, setSupportSubmitting] = useState(false);
     const [supportError, setSupportError] = useState<string | null>(null);
-    const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
-    const [isTicketsLoading, setIsTicketsLoading] = useState(false);
     const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
-    const [supportMessages, setSupportMessages] = useState<SupportTicketMessage[]>([]);
-    const [isSupportMessagesLoading, setIsSupportMessagesLoading] = useState(false);
     const [supportReplyDraft, setSupportReplyDraft] = useState('');
     const [isSubmittingSupportReply, setIsSubmittingSupportReply] = useState(false);
     const accountingToken = useAuthStore((state) => state.token);
@@ -314,6 +310,86 @@ const ClientDashboard = () => {
     }, []);
     const showLegacyDfc = false;
 
+    const clientQuery = useQuery<ClientDashboardProfile>({
+        queryKey: ['client-dashboard-client', clientId ?? 'self'],
+        queryFn: async () => {
+            if (isAccountingView && clientId) {
+                return clientService.getById(clientId);
+            }
+
+            return clientPortalService.getMe();
+        },
+        enabled: (isAccountingView && Boolean(clientId)) || isClientView,
+        staleTime: 60_000,
+    });
+    const client = clientQuery.data ?? null;
+    const isClientLoading = clientQuery.isPending;
+
+    const chartAccountsQuery = useQuery({
+        queryKey: ['client-dashboard-chart-accounts', clientId ?? 'self'],
+        queryFn: async () => {
+            if (isAccountingView && clientId) {
+                return chartOfAccountsService.getAll(clientId);
+            }
+
+            if (isClientView) {
+                return clientChartOfAccountsService.getAll();
+            }
+
+            return [];
+        },
+        enabled: (isAccountingView && Boolean(clientId)) || isClientView,
+        staleTime: 30_000,
+    });
+
+    const dreMappingsQuery = useQuery({
+        queryKey: ['client-dashboard-dre-mappings', clientId ?? 'self'],
+        queryFn: async () => {
+            if (!isAccountingView || !clientId) return [];
+
+            const { data } = await api.get(`/clients/${clientId}/dre-mappings`);
+            return Array.isArray(data) ? data : [];
+        },
+        enabled: isAccountingView && Boolean(clientId),
+        staleTime: 30_000,
+    });
+
+    const dreMovementsQuery = useQuery({
+        queryKey: ['client-dashboard-dre-movements', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client'],
+        queryFn: async () => {
+            if (isAccountingView && clientId) {
+                return movementService.getAll(clientId, selectedYear, 'dre');
+            }
+
+            if (isClientView) {
+                const data = await clientPortalService.getMovements(selectedYear, 'dre');
+                return data.map((movement) => ({ ...movement, category: movement.category ?? undefined })) as MovementRow[];
+            }
+
+            return [];
+        },
+        enabled: (isAccountingView && Boolean(clientId)) || isClientView,
+        staleTime: 30_000,
+    });
+
+    const patrimonialMovementsQuery = useQuery({
+        queryKey: ['client-dashboard-patrimonial-movements', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client'],
+        queryFn: async () => {
+            if (isAccountingView && clientId) {
+                return movementService.getAll(clientId, selectedYear, 'patrimonial');
+            }
+
+            if (isClientView) {
+                const data = await clientPortalService.getMovements(selectedYear, 'patrimonial');
+                return data.map((movement) => ({ ...movement, category: movement.category ?? undefined })) as MovementRow[];
+            }
+
+            return [];
+        },
+        enabled: (isAccountingView && Boolean(clientId)) || isClientView,
+        staleTime: 30_000,
+    });
+
     // Mock data
     const documentAlerts = [
         { id: 1, title: 'Extrato Bancário PDF/OFX', period: 'Jan/2026', status: 'Pendente', priority: 'high' },
@@ -331,174 +407,71 @@ const ClientDashboard = () => {
 
 
 
+    useEffect(() => {
+        if (chartAccountsQuery.data === undefined) return;
+
+        const mapped: Account[] = chartAccountsQuery.data.map((account) => ({
+            classification: account.code,
+            reduced_code: account.reduced_code || undefined,
+            name: account.name.trim(),
+            values: Array(12).fill('0,00'),
+            total: '0,00',
+            level: account.level,
+            category: account.report_type || '',
+            alias: account.alias || undefined,
+            report_category: account.report_category || undefined,
+        }));
+        setAccounts(mapped);
+    }, [chartAccountsQuery.data]);
 
     useEffect(() => {
-        const loadClient = async () => {
-            try {
-                setIsClientLoading(true);
-                if (isAccountingView && clientId) {
-                    // Staff visualizando um cliente especifico
-                    const data = await clientService.getById(clientId);
-                    setClient(data);
-                } else if (isClientView) {
-                    // Cliente logado no portal - busca dados via token
-                    const data = await clientPortalService.getMe();
-                    setClient(data as Client);
-                }
-            } catch (error) {
-                if (axios.isAxiosError(error) && error.response?.status === 401) {
-                    if (isClientView) {
-                        clientLogout();
-                        navigate('/client-login');
-                    } else {
-                        navigate('/login');
-                    }
-                    return;
-                }
-                console.error('Error fetching client:', error);
-            } finally {
-                setIsClientLoading(false);
-            }
-        };
-        if ((isAccountingView && clientId) || isClientView) {
-            loadClient();
+        if (!isAccountingView || !clientId) {
+            setDreMappings([]);
+            return;
         }
-    }, [clientId, navigate, isAccountingView, isClientView, clientLogout]);
 
-    // Carregar plano de contas do banco de dados
+        setDreMappings(dreMappingsQuery.data ?? []);
+    }, [clientId, isAccountingView, dreMappingsQuery.data]);
+
     useEffect(() => {
-        const loadChartOfAccounts = async () => {
-            try {
-                let dbAccounts;
-                if (isAccountingView && clientId) {
-                    dbAccounts = await chartOfAccountsService.getAll(clientId);
-                } else if (isClientView) {
-                    dbAccounts = await clientChartOfAccountsService.getAll();
-                }
-                if (dbAccounts && dbAccounts.length > 0) {
-                    // Converter formato do banco para formato do frontend (Account interface)
-                    const mapped: Account[] = dbAccounts.map(a => ({
-                        classification: a.code,
-                        reduced_code: a.reduced_code || undefined,
-                        name: a.name.trim(),
-                        values: Array(12).fill('0,00'),
-                        total: '0,00',
-                        level: a.level,
-                        category: a.report_type || '',
-                        alias: a.alias || undefined,
-                        report_category: a.report_category || undefined,
-                    }));
-                    setAccounts(mapped);
-                }
-            } catch (error) {
-                // Silencioso - se não há plano de contas, não exibe erro
-                console.error('Erro ao carregar plano de contas:', error);
-            }
-        };
-        if ((isAccountingView && clientId) || isClientView) {
-            loadChartOfAccounts();
+        setDreMovements(dreMovementsQuery.data ?? []);
+    }, [dreMovementsQuery.data]);
+
+    useEffect(() => {
+        setPatrimonialMovements(patrimonialMovementsQuery.data ?? []);
+    }, [patrimonialMovementsQuery.data]);
+
+    const supportTicketsQuery = useQuery({
+        queryKey: ['client-support-tickets', clientId ?? 'self'],
+        queryFn: () => clientPortalService.getSupportTickets(),
+        enabled: isClientView && activeTab === 'suporte',
+        staleTime: 30_000,
+    });
+    const supportTickets = useMemo(() => supportTicketsQuery.data ?? [], [supportTicketsQuery.data]);
+    const isTicketsLoading = supportTicketsQuery.isPending;
+
+    useEffect(() => {
+        if (!isClientView || activeTab !== 'suporte') return;
+
+        if (supportTickets.length === 0) {
+            setSelectedSupportTicketId(null);
+            return;
         }
-    }, [clientId, isAccountingView, isClientView, chartAccountsReloadToken]);
 
-    useEffect(() => {
-        const loadDreMappings = async () => {
-            if (!isAccountingView || !clientId) {
-                setDreMappings([]);
-                return;
-            }
-            try {
-                const { data } = await api.get(`/clients/${clientId}/dre-mappings`);
-                setDreMappings(Array.isArray(data) ? data : []);
-            } catch (error) {
-                console.error('Erro ao carregar mapeamentos DRE:', error);
-                setDreMappings([]);
-            }
-        };
+        setSelectedSupportTicketId((current) => {
+            if (current && supportTickets.some((ticket) => ticket.id === current)) return current;
+            return supportTickets[0]?.id || null;
+        });
+    }, [isClientView, activeTab, supportTickets]);
 
-        loadDreMappings();
-    }, [clientId, isAccountingView, chartAccountsReloadToken]);
-
-    // Carregar movimentações DRE do banco de dados
-    useEffect(() => {
-        const loadDreMovements = async () => {
-            try {
-                if (isAccountingView && clientId) {
-                    const data = await movementService.getAll(clientId, selectedYear, 'dre');
-                    setDreMovements(data);
-                } else if (isClientView) {
-                    const data = await clientPortalService.getMovements(selectedYear, 'dre');
-                    setDreMovements(data.map(d => ({ ...d, category: d.category ?? undefined })) as MovementRow[]);
-                }
-            } catch (error) {
-                console.error('Erro ao carregar movimentações DRE:', error);
-            }
-        };
-        if ((isAccountingView && clientId) || isClientView) {
-            loadDreMovements();
-        }
-    }, [clientId, isAccountingView, isClientView, selectedYear]);
-
-    // Carregar movimentações Patrimonial do banco de dados
-    useEffect(() => {
-        const loadPatrimonialMovements = async () => {
-            try {
-                if (isAccountingView && clientId) {
-                    const data = await movementService.getAll(clientId, selectedYear, 'patrimonial');
-                    setPatrimonialMovements(data);
-                } else if (isClientView) {
-                    const data = await clientPortalService.getMovements(selectedYear, 'patrimonial');
-                    setPatrimonialMovements(data.map(d => ({ ...d, category: d.category ?? undefined })) as MovementRow[]);
-                }
-            } catch (error) {
-                console.error('Erro ao carregar movimentações Patrimonial:', error);
-            }
-        };
-        if ((isAccountingView && clientId) || isClientView) {
-            loadPatrimonialMovements();
-        }
-    }, [clientId, isAccountingView, isClientView, selectedYear]);
-
-    // Carregar tickets de suporte quando o cliente acessa a aba suporte
-    useEffect(() => {
-        const loadTickets = async () => {
-            if (!isClientView || activeTab !== 'suporte') return;
-            try {
-                setIsTicketsLoading(true);
-                const tickets = await clientPortalService.getSupportTickets();
-                setSupportTickets(tickets);
-                setSelectedSupportTicketId((current) => {
-                    if (current && tickets.some((ticket) => ticket.id === current)) return current;
-                    return tickets[0]?.id || null;
-                });
-            } catch (error) {
-                console.error('Erro ao carregar tickets:', error);
-            } finally {
-                setIsTicketsLoading(false);
-            }
-        };
-        loadTickets();
-    }, [isClientView, activeTab]);
-
-    useEffect(() => {
-        const loadSupportMessages = async () => {
-            if (!isClientView || activeTab !== 'suporte' || !selectedSupportTicketId) {
-                setSupportMessages([]);
-                return;
-            }
-
-            try {
-                setIsSupportMessagesLoading(true);
-                const messages = await clientPortalService.getSupportTicketMessages(selectedSupportTicketId);
-                setSupportMessages(messages);
-            } catch (error) {
-                console.error('Erro ao carregar conversa do chamado:', error);
-            } finally {
-                setIsSupportMessagesLoading(false);
-            }
-        };
-
-        loadSupportMessages();
-    }, [isClientView, activeTab, selectedSupportTicketId]);
+    const supportMessagesQuery = useQuery({
+        queryKey: ['client-support-messages', selectedSupportTicketId],
+        queryFn: () => clientPortalService.getSupportTicketMessages(selectedSupportTicketId as string),
+        enabled: isClientView && activeTab === 'suporte' && Boolean(selectedSupportTicketId),
+        staleTime: 15_000,
+    });
+    const supportMessages = useMemo(() => supportMessagesQuery.data ?? [], [supportMessagesQuery.data]);
+    const isSupportMessagesLoading = supportMessagesQuery.isPending;
 
     useEffect(() => {
         setSupportReplyDraft('');
@@ -713,24 +686,24 @@ const ClientDashboard = () => {
     const dreLinesDef = [
         { id: 'rec_bruta',      name: 'Receita Bruta',                       key: 'recBruta',        type: 'main',      category: 'Receita Bruta' },
         { id: 'deducoes',       name: 'Deduções',                            key: 'deducoes',        type: 'negative',  category: 'Deduções de Vendas' },
-        { id: 'rec_liquida',    name: 'RECEITA LIQUIDA',                     key: 'recLiquida',      type: 'main',      category: '' },
-        { id: 'custos',         name: 'Custos Das Vendas',                   key: 'custos',          type: 'negative',  category: 'Custos das Vendas' },
-        { id: 'custos_serv',    name: 'Custos Dos Serviços',                 key: 'custosServicos',  type: 'negative',  category: 'Custos Dos Serviços' },
+        { id: 'rec_liquida',    name: 'RECEITA LÍQUIDA',                    key: 'recLiquida',      type: 'main',      category: '' },
+        { id: 'custos',         name: 'Custos das Vendas',                   key: 'custos',          type: 'negative',  category: 'Custos das Vendas' },
+        { id: 'custos_serv',    name: 'Custos dos Serviços',                 key: 'custosServicos',  type: 'negative',  category: 'Custos Dos Serviços' },
         { id: 'lucro_bruto',    name: 'LUCRO OPERACIONAL',                   key: 'lucroBruto',      type: 'main',      category: '' },
         { id: 'desp_adm',       name: 'Despesas Administrativas',            key: 'despAdm',         type: 'negative',  category: 'Despesas Administrativas' },
         { id: 'desp_com',       name: 'Despesas Comerciais',                 key: 'despCom',         type: 'negative',  category: 'Despesas Comerciais' },
-        { id: 'desp_trib',      name: 'Despesas Tributarias',                key: 'despTrib',        type: 'negative',  category: 'Despesas Tributárias' },
+        { id: 'desp_trib',      name: 'Despesas Tributárias',               key: 'despTrib',        type: 'negative',  category: 'Despesas Tributárias' },
         { id: 'part_soc',       name: 'Resultado Participações Societárias', key: 'partSocietarias', type: 'positive',  category: 'Resultado Participações Societárias' },
         { id: 'outras_receitas',name: 'Outras Receitas',                     key: 'outrasReceitas',  type: 'positive',  category: 'Outras Receitas' },
         { id: 'rec_fin',        name: 'Receitas Financeiras',                key: 'recFin',          type: 'positive',  category: 'Receitas Financeiras' },
         { id: 'desp_fin',       name: 'Despesas Financeiras',                key: 'despFin',         type: 'negative',  category: 'Despesas Financeiras' },
         { id: 'lair',           name: 'LUCRO ANTES DO IRPJ E CSLL',         key: 'lair',            type: 'main',      category: '' },
-        { id: 'irpj_csll',      name: 'Irpj E Csll',                        key: 'irpjCsll',        type: 'negative',  category: 'IRPJ e CSLL' },
-        { id: 'lucro_liq',      name: 'LUCRO/PREJUÍZO LIQUIDO',             key: 'lucroLiq',        type: 'highlight', category: '' },
+        { id: 'irpj_csll',      name: 'IRPJ e CSLL',                        key: 'irpjCsll',        type: 'negative',  category: 'IRPJ e CSLL' },
+        { id: 'lucro_liq',      name: 'LUCRO/PREJUÍZO LÍQUIDO',             key: 'lucroLiq',        type: 'highlight', category: '' },
         { id: 'ebtida_lair',    name: 'LUCRO ANTES DO IRPJ E CSLL',         key: 'lair',            type: 'sub',       category: '' },
         { id: 'ebtida_dep',     name: '(+) Depreciação',                    key: 'depreciacao',     type: 'sub',       category: 'Depreciação e Amortização' },
         { id: 'ebtida_fin',     name: '(+) Resultado Financeiro',           key: 'resultFin',       type: 'sub',       category: '' },
-        { id: 'ebtida',         name: 'RESULTADO EBTIDA',                   key: 'ebtida',          type: 'highlight', category: '' },
+        { id: 'ebtida',         name: 'RESULTADO EBITDA',                  key: 'ebtida',          type: 'highlight', category: '' },
     ];
 
     const reportItems = (() => {
@@ -810,7 +783,7 @@ const ClientDashboard = () => {
                     const fileContent = evt.target?.result;
                     let wb;
                     if (isCSV) {
-                        // CSV: lido como texto UTF-8 → preserva acentos (Deduções, não DeduÃ§Ãµes)
+                        // CSV: lido como texto UTF-8 -> preserva acentos
                         // raw: true evita que XLSX converta "556.777,78" para número JS errado
                         wb = XLSX.read(fileContent as string, { type: 'string', raw: true });
                     } else {
@@ -968,6 +941,10 @@ const ClientDashboard = () => {
                         // evitando que o useEffect dispare fetch antes dos dados estarem prontos
                         setMovFn(savedData as MovementRow[]);
                         if (savedPatData) setPatrimonialMovements(savedPatData);
+                        await Promise.all([
+                            queryClient.invalidateQueries({ queryKey: ['client-dashboard-dre-movements', clientId ?? 'self'] }),
+                            queryClient.invalidateQueries({ queryKey: ['client-dashboard-patrimonial-movements', clientId ?? 'self'] }),
+                        ]);
                         if (importYear !== selectedYear) setSelectedYear(importYear);
                     } else {
                         // Sem persistência: usar dados raw
@@ -1091,6 +1068,7 @@ const ClientDashboard = () => {
                 }
 
                 setPatrimonialMovements(movements);
+                await queryClient.invalidateQueries({ queryKey: ['client-dashboard-patrimonial-movements', clientId ?? 'self'] });
             } catch (error) {
                 console.error('Erro ao importar Patrimonial bruto:', error);
                 toast.error('Erro ao importar Patrimonial', { id: toastId });
@@ -1267,31 +1245,31 @@ const ClientDashboard = () => {
 
     const dreChartIndicators = useMemo(() => ([
         { title: 'Receita Bruta', data: monthlyReportData.recBruta, color: '#0ea5e9' },
-        { title: 'DeduÃ§Ãµes', data: monthlyReportData.deducoes, color: '#f43f5e' },
-        { title: 'Receita LÃ­quida', data: monthlyReportData.recLiquida, color: '#2563eb' },
-        { title: 'Custos Das Vendas', data: monthlyReportData.custos, color: '#f59e0b' },
-        { title: 'Custos Dos ServiÃ§os', data: monthlyReportData.custosServicos, color: '#f97316' },
+        { title: 'Deduções', data: monthlyReportData.deducoes, color: '#f43f5e' },
+        { title: 'Receita Líquida', data: monthlyReportData.recLiquida, color: '#2563eb' },
+        { title: 'Custos das Vendas', data: monthlyReportData.custos, color: '#f59e0b' },
+        { title: 'Custos dos Serviços', data: monthlyReportData.custosServicos, color: '#f97316' },
         { title: 'Lucro Operacional', data: monthlyReportData.lucroBruto, color: '#3b82f6' },
         { title: 'Despesas Adm.', data: monthlyReportData.despAdm, color: '#ec4899' },
         { title: 'Despesas Com.', data: monthlyReportData.despCom, color: '#d946ef' },
         { title: 'Despesas Trib.', data: monthlyReportData.despTrib, color: '#a855f7' },
-        { title: 'Result. ParticipaÃ§Ãµes Soc.', data: monthlyReportData.partSocietarias, color: '#14b8a6' },
+        { title: 'Result. Participações Soc.', data: monthlyReportData.partSocietarias, color: '#14b8a6' },
         { title: 'Outras Receitas', data: monthlyReportData.outrasReceitas, color: '#22c55e' },
         { title: 'Receitas Fin.', data: monthlyReportData.recFin, color: '#10b981' },
         { title: 'Despesas Fin.', data: monthlyReportData.despFin, color: '#fb7185' },
         { title: 'LAIR', data: monthlyReportData.lair, color: '#6366f1' },
         { title: 'IRPJ/CSLL', data: monthlyReportData.irpjCsll, color: '#ef4444' },
-        { title: 'Lucro LÃ­quido', data: monthlyReportData.lucroLiquido, color: '#059669' },
-        { title: 'EBTIDA', data: monthlyReportData.ebtida, color: '#8b5cf6' },
+        { title: 'Lucro Líquido', data: monthlyReportData.lucroLiquido, color: '#059669' },
+        { title: 'EBITDA', data: monthlyReportData.ebtida, color: '#8b5cf6' },
     ]), [monthlyReportData]);
 
     const patChartIndicators = useMemo(() => ([
         { title: 'Ativo Circulante', data: patMonthlyDataByGroup.ativoCirc, color: '#0ea5e9' },
-        { title: 'Ativo NÃ£o Circulante', data: patMonthlyDataByGroup.ativoNaoCirc, color: '#2563eb' },
+        { title: 'Ativo Não Circulante', data: patMonthlyDataByGroup.ativoNaoCirc, color: '#2563eb' },
         { title: 'Total do Ativo', data: patMonthlyDataByGroup.totalAtivo, color: '#06b6d4' },
         { title: 'Passivo Circulante', data: patMonthlyDataByGroup.passivoCirc, color: '#f43f5e' },
-        { title: 'Passivo NÃ£o Circulante', data: patMonthlyDataByGroup.passivoNaoCirc, color: '#f59e0b' },
-        { title: 'PatrimÃ´nio LÃ­quido', data: patMonthlyDataByGroup.patrimonioLiq, color: '#10b981' },
+        { title: 'Passivo Não Circulante', data: patMonthlyDataByGroup.passivoNaoCirc, color: '#f59e0b' },
+        { title: 'Patrimônio Líquido', data: patMonthlyDataByGroup.patrimonioLiq, color: '#10b981' },
         { title: 'Total do Passivo', data: patMonthlyDataByGroup.totalPassivo, color: '#8b5cf6' },
     ]), [patMonthlyDataByGroup]);
 
@@ -1467,6 +1445,10 @@ const ClientDashboard = () => {
                     report_category: a.report_category || undefined,
                 }));
                 setAccounts(mapped);
+                await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ['client-dashboard-chart-accounts', targetClientId] }),
+                    queryClient.invalidateQueries({ queryKey: ['client-dashboard-dre-mappings', targetClientId] }),
+                ]);
             } catch (error) {
                 console.error('Erro ao importar plano de contas:', error);
                 toast.error('Erro ao importar plano de contas', { id: 'import-coa' });
@@ -1498,25 +1480,19 @@ const ClientDashboard = () => {
 
     const handleSupportSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!clientId) return;
+        if (!isClientView && !clientId) return;
         try {
             setSupportSubmitting(true);
             setSupportError(null);
-            await clientPortalService.createSupportTicket({
+            const createdTicket = await clientPortalService.createSupportTicket({
                 subject: supportForm.subject,
                 message: supportForm.message,
                 priority: supportForm.priority as 'low' | 'medium' | 'high',
             });
             setIsSupportOpen(false);
             setSupportForm({ subject: '', message: '', priority: 'medium' });
-            // Recarregar tickets se estiver na aba suporte
-            if (activeTab === 'suporte' && isClientView) {
-                try {
-                    const tickets = await clientPortalService.getSupportTickets();
-                    setSupportTickets(tickets);
-                    setSelectedSupportTicketId(tickets[0]?.id || null);
-                } catch { /* silently ignore */ }
-            }
+            setSelectedSupportTicketId(createdTicket.id);
+            await queryClient.invalidateQueries({ queryKey: ['client-support-tickets', clientId ?? 'self'] });
         } catch (error) {
             const message = axios.isAxiosError(error)
                 ? error.response?.data?.message || 'Erro ao abrir chamado'
@@ -1539,15 +1515,10 @@ const ClientDashboard = () => {
             setIsSubmittingSupportReply(true);
             await clientPortalService.replySupportTicket(selectedSupportTicketId, supportReplyDraft.trim());
             setSupportReplyDraft('');
-
-            const [tickets, messages] = await Promise.all([
-                clientPortalService.getSupportTickets(),
-                clientPortalService.getSupportTicketMessages(selectedSupportTicketId),
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['client-support-tickets', clientId ?? 'self'] }),
+                queryClient.invalidateQueries({ queryKey: ['client-support-messages', selectedSupportTicketId] }),
             ]);
-
-            setSupportTickets(tickets);
-            setSupportMessages(messages);
-            setSelectedSupportTicketId(selectedSupportTicketId);
             toast.success('Mensagem enviada');
         } catch (error) {
             console.error('Erro ao responder chamado:', error);
@@ -1559,14 +1530,12 @@ const ClientDashboard = () => {
 
     // Se nao esta autenticado como staff nem cliente, redireciona
     if (!isAccountingView && !isClientView) {
-        navigate('/client-login');
-        return null;
+        return <Navigate to="/client-login" replace />;
     }
 
     // Se staff acessou /portal sem clientId, redireciona ao dashboard
     if (isAccountingView && !clientId) {
-        navigate('/dashboard');
-        return null;
+        return <Navigate to="/dashboard" replace />;
     }
 
     return (
@@ -2239,7 +2208,12 @@ const ClientDashboard = () => {
                                         <ClientDreConfigPanel
                                             clientId={clientId!}
                                             selectedYear={selectedYear}
-                                            onSaved={() => setChartAccountsReloadToken((prev) => prev + 1)}
+                                            onSaved={async () => {
+                                                await Promise.all([
+                                                    queryClient.invalidateQueries({ queryKey: ['client-dashboard-chart-accounts', clientId ?? 'self'] }),
+                                                    queryClient.invalidateQueries({ queryKey: ['client-dashboard-dre-mappings', clientId ?? 'self'] }),
+                                                ]);
+                                            }}
                                         />
                                     </Suspense>
                                 ) : dreViewMode === 'lista' ? (
@@ -2435,8 +2409,8 @@ const ClientDashboard = () => {
                                             { title: 'Receita Bruta',                    data: monthlyReportData.recBruta,        color: '#0ea5e9' },
                                             { title: 'Deduções',                         data: monthlyReportData.deducoes,        color: '#f43f5e' },
                                             { title: 'Receita Líquida',                  data: monthlyReportData.recLiquida,      color: '#2563eb' },
-                                            { title: 'Custos Das Vendas',                data: monthlyReportData.custos,          color: '#f59e0b' },
-                                            { title: 'Custos Dos Serviços',              data: monthlyReportData.custosServicos,  color: '#f97316' },
+                                            { title: 'Custos das Vendas',                data: monthlyReportData.custos,          color: '#f59e0b' },
+                                            { title: 'Custos dos Serviços',              data: monthlyReportData.custosServicos,  color: '#f97316' },
                                             { title: 'Lucro Operacional',                data: monthlyReportData.lucroBruto,      color: '#3b82f6' },
                                             { title: 'Despesas Adm.',                    data: monthlyReportData.despAdm,         color: '#ec4899' },
                                             { title: 'Despesas Com.',                    data: monthlyReportData.despCom,         color: '#d946ef' },
@@ -2448,7 +2422,7 @@ const ClientDashboard = () => {
                                             { title: 'LAIR',                             data: monthlyReportData.lair,            color: '#6366f1' },
                                             { title: 'IRPJ/CSLL',                        data: monthlyReportData.irpjCsll,        color: '#ef4444' },
                                             { title: 'Lucro Líquido',                    data: monthlyReportData.lucroLiquido,    color: '#059669' },
-                                            { title: 'EBTIDA',                           data: monthlyReportData.ebtida,          color: '#8b5cf6' },
+                                            { title: 'EBITDA',                           data: monthlyReportData.ebtida,          color: '#8b5cf6' },
                                         ].map((indicator, i) => {
                                             const currentVal = indicator.data[selectedMonthIndex]?.value || 0;
                                             const prevVal = selectedMonthIndex > 0 ? indicator.data[selectedMonthIndex - 1]?.value : null;

@@ -16,7 +16,11 @@ import {
     downloadClientPortalDocument,
     getClientPortalDocuments,
 } from '../controllers/clientDocument.controller';
-import { aiAnalysisRateLimiter } from '../middlewares/rateLimit.middleware';
+import {
+    aiAnalysisRateLimiter,
+    documentUploadRateLimiter,
+    supportWriteRateLimiter,
+} from '../middlewares/rateLimit.middleware';
 
 const router = Router();
 
@@ -35,11 +39,11 @@ router.post('/ai-analysis', aiAnalysisRateLimiter, requireRole('admin', 'collabo
 
 // Client support tickets (read own + create)
 router.get('/support', authClientMiddleware, getClientSupportTickets);
-router.post('/support', authClientMiddleware, createClientSupportTicket);
+router.post('/support', authClientMiddleware, supportWriteRateLimiter, createClientSupportTicket);
 router.get('/support/:id/messages', authClientMiddleware, getClientSupportTicketMessages);
-router.post('/support/:id/messages', authClientMiddleware, createClientSupportTicketMessage);
+router.post('/support/:id/messages', authClientMiddleware, supportWriteRateLimiter, createClientSupportTicketMessage);
 router.get('/documents', authClientMiddleware, getClientPortalDocuments);
-router.post('/documents', authClientMiddleware, createClientPortalDocument);
+router.post('/documents', authClientMiddleware, documentUploadRateLimiter, createClientPortalDocument);
 router.get('/documents/:id/download', authClientMiddleware, downloadClientPortalDocument);
 
 export default router;

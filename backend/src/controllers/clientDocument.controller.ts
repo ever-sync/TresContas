@@ -3,6 +3,12 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import {
+    buildDocumentStoragePath,
+    deleteDocumentStorage,
+    readDocumentStorage,
+    writeDocumentStorage,
+} from '../lib/documentStorage';
 
 const MAX_DOCUMENT_SIZE_BYTES = 12 * 1024 * 1024;
 
@@ -27,7 +33,8 @@ type DownloadDocumentRow = {
     original_name: string;
     mime_type: string;
     size_bytes: number;
-    content: Buffer;
+    storage_path: string | null;
+    content: Buffer | null;
 };
 
 const parseBase64Content = (value: unknown) => {
@@ -114,7 +121,7 @@ export const downloadClientDocument = async (req: AuthRequest, res: Response) =>
 
         const id = String(req.params.id);
         const documents = await prisma.$queryRaw<DownloadDocumentRow[]>(Prisma.sql`
-            SELECT original_name, mime_type, size_bytes, content
+            SELECT original_name, mime_type, size_bytes, storage_path, content
             FROM "ClientDocument"
             WHERE id = ${id} AND accounting_id = ${req.accountingId}
             LIMIT 1
@@ -125,8 +132,13 @@ export const downloadClientDocument = async (req: AuthRequest, res: Response) =>
             return res.status(404).json({ message: 'Documento nao encontrado' });
         }
 
+        const content = await readDocumentStorage(document.storage_path, document.content);
+        if (!content) {
+            return res.status(404).json({ message: 'Documento nao encontrado' });
+        }
+
         setDownloadHeaders(res, document.original_name, document.mime_type, document.size_bytes);
-        res.send(document.content);
+        res.send(content);
     } catch (error) {
         console.error('Erro ao baixar documento do cliente:', error);
         res.status(500).json({ message: 'Erro ao baixar documento' });
@@ -181,41 +193,53 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
             return res.status(400).json({ message: 'Arquivo excede o limite de 12 MB' });
         }
 
-        const documents = await prisma.$queryRaw<BaseDocumentRow[]>(Prisma.sql`
-            INSERT INTO "ClientDocument" (
-                id,
-                accounting_id,
-                client_id,
-                original_name,
-                display_name,
-                category,
-                mime_type,
-                size_bytes,
-                content
-            )
-            VALUES (
-                ${randomUUID()},
-                ${req.accountingId},
-                ${req.clientId},
-                ${originalName},
-                ${displayName},
-                ${category},
-                ${mimeType},
-                ${content.byteLength},
-                ${content}
-            )
-            RETURNING
-                id,
-                original_name,
-                display_name,
-                category,
-                mime_type,
-                size_bytes,
-                created_at,
-                updated_at
-        `);
+        const documentId = randomUUID();
+        const storagePath = buildDocumentStoragePath(req.accountingId, req.clientId, documentId);
 
-        res.status(201).json(mapBaseDocument(documents[0]));
+        await writeDocumentStorage(storagePath, content);
+
+        try {
+            const documents = await prisma.$queryRaw<BaseDocumentRow[]>(Prisma.sql`
+                INSERT INTO "ClientDocument" (
+                    id,
+                    accounting_id,
+                    client_id,
+                    original_name,
+                    display_name,
+                    category,
+                    mime_type,
+                    size_bytes,
+                    storage_path,
+                    content
+                )
+                VALUES (
+                    ${documentId},
+                    ${req.accountingId},
+                    ${req.clientId},
+                    ${originalName},
+                    ${displayName},
+                    ${category},
+                    ${mimeType},
+                    ${content.byteLength},
+                    ${storagePath},
+                    ${null}
+                )
+                RETURNING
+                    id,
+                    original_name,
+                    display_name,
+                    category,
+                    mime_type,
+                    size_bytes,
+                    created_at,
+                    updated_at
+            `);
+
+            res.status(201).json(mapBaseDocument(documents[0]));
+        } catch (error) {
+            await deleteDocumentStorage(storagePath);
+            throw error;
+        }
     } catch (error) {
         console.error('Erro ao criar documento do cliente:', error);
         res.status(500).json({ message: 'Erro ao enviar documento' });
@@ -230,7 +254,7 @@ export const downloadClientPortalDocument = async (req: AuthRequest, res: Respon
 
         const id = String(req.params.id);
         const documents = await prisma.$queryRaw<DownloadDocumentRow[]>(Prisma.sql`
-            SELECT original_name, mime_type, size_bytes, content
+            SELECT original_name, mime_type, size_bytes, storage_path, content
             FROM "ClientDocument"
             WHERE id = ${id} AND client_id = ${req.clientId}
             LIMIT 1
@@ -241,8 +265,13 @@ export const downloadClientPortalDocument = async (req: AuthRequest, res: Respon
             return res.status(404).json({ message: 'Documento nao encontrado' });
         }
 
+        const content = await readDocumentStorage(document.storage_path, document.content);
+        if (!content) {
+            return res.status(404).json({ message: 'Documento nao encontrado' });
+        }
+
         setDownloadHeaders(res, document.original_name, document.mime_type, document.size_bytes);
-        res.send(document.content);
+        res.send(content);
     } catch (error) {
         console.error('Erro ao baixar documento do portal:', error);
         res.status(500).json({ message: 'Erro ao baixar documento' });

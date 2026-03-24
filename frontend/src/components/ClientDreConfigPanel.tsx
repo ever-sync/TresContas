@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 import api from '../services/api';
@@ -94,49 +95,60 @@ const toBackendCategory = (key: string) =>
 
 // ─── Component ──────────────────────────────────────────────────────────────
 export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, onSaved }) => {
-    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [dreAccounts, setDreAccounts] = useState<DreAccount[]>([]);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [originalMappingCodes, setOriginalMappingCodes] = useState<Set<string>>(new Set());
+    const queryClient = useQueryClient();
 
-    // Fetch existing mappings + DRE movements
+    const dreMappingsQuery = useQuery({
+        queryKey: ['client-dashboard-dre-mappings', clientId, selectedYear],
+        queryFn: async () => {
+            const response = await api.get(`/clients/${clientId}/dre-mappings`);
+            return Array.isArray(response.data) ? (response.data as DREMappingRecord[]) : [];
+        },
+        enabled: Boolean(clientId),
+        staleTime: 30_000,
+    });
+
+    const chartAccountsQuery = useQuery({
+        queryKey: ['client-dashboard-chart-accounts', clientId, selectedYear],
+        queryFn: async () => {
+            const response = await api.get(`/clients/${clientId}/chart-of-accounts`);
+            return Array.isArray(response.data) ? (response.data as DreAccount[]) : [];
+        },
+        enabled: Boolean(clientId),
+        staleTime: 30_000,
+    });
+
     useEffect(() => {
-        const load = async () => {
-            try {
-                setLoading(true);
-                const [mappingsRes, chartRes] = await Promise.all([
-                    api.get(`/clients/${clientId}/dre-mappings`),
-                    api.get(`/clients/${clientId}/chart-of-accounts`),
-                ]);
+        if (!dreMappingsQuery.isError) return;
 
-                const mappings: DREMappingRecord[] = mappingsRes.data;
-                const chart = chartRes.data as DreAccount[];
+        const message = dreMappingsQuery.error instanceof Error
+            ? dreMappingsQuery.error.message
+            : 'Erro ao carregar configuração DRE';
+        toast.error(message);
+    }, [dreMappingsQuery.error, dreMappingsQuery.isError]);
 
-                // DRE accounts (03.x, 04.x) — all accounts including T and A
-                const dreOnly = chart.filter(
-                    (m) => m.code.startsWith('03') || m.code.startsWith('04')
-                );
-                setDreAccounts(dreOnly);
+    useEffect(() => {
+        if (!chartAccountsQuery.isError) return;
 
-                // Build draft from existing mappings
-                const drafts: DraftMapping[] = mappings.map((m) => ({
-                    localId: makeLocalId(),
-                    account_code: m.account_code,
-                    account_name: m.account_name,
-                    category: stripAccents(m.category),
-                }));
-                setDraftMappings(drafts);
-                setOriginalMappingCodes(new Set(mappings.map((m) => m.account_code)));
-            } catch (error) {
-                console.error('Erro ao carregar config DRE:', error);
-                toast.error('Erro ao carregar configuração DRE');
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
-    }, [clientId, selectedYear]);
+        const message = chartAccountsQuery.error instanceof Error
+            ? chartAccountsQuery.error.message
+            : 'Erro ao carregar contas DRE';
+        toast.error(message);
+    }, [chartAccountsQuery.error, chartAccountsQuery.isError]);
+
+    useEffect(() => {
+        const mappings = dreMappingsQuery.data ?? [];
+        const drafts: DraftMapping[] = mappings.map((m) => ({
+            localId: makeLocalId(),
+            account_code: m.account_code,
+            account_name: m.account_name,
+            category: stripAccents(m.category),
+        }));
+        setDraftMappings(drafts);
+        setOriginalMappingCodes(new Set(mappings.map((m) => m.account_code)));
+    }, [dreMappingsQuery.data]);
 
     // Accounts mapped per category
     const mappingsByCategory = useMemo(() => {
@@ -148,6 +160,13 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, 
         }
         return map;
     }, [draftMappings]);
+
+    const dreAccounts = useMemo(
+        () => (chartAccountsQuery.data ?? []).filter(
+            (m) => m.code.startsWith('03') || m.code.startsWith('04')
+        ),
+        [chartAccountsQuery.data]
+    );
 
     // Set of already-mapped account codes
     const mappedCodes = useMemo(
@@ -216,6 +235,7 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, 
             }
 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
+            await queryClient.invalidateQueries({ queryKey: ['client-dashboard-dre-mappings', clientId] });
             await onSaved?.();
             toast.success('Configuração DRE salva!');
         } catch (error: unknown) {
@@ -274,11 +294,28 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, 
         toast.success(`${newMappings.length} contas classificadas automaticamente!`);
     };
 
-    if (loading) {
+    if (dreMappingsQuery.isPending || chartAccountsQuery.isPending) {
         return (
             <div className="p-12 flex items-center justify-center text-white/40 gap-3">
                 <Loader2 className="w-5 h-5 animate-spin" />
                 Carregando configuração DRE...
+            </div>
+        );
+    }
+
+    if (dreMappingsQuery.isError || chartAccountsQuery.isError) {
+        return (
+            <div className="p-12 flex flex-col items-center justify-center text-center text-white/40 gap-4">
+                <div>
+                    <p className="text-lg font-bold text-white/70">Nao foi possivel carregar a configuração DRE</p>
+                    <p className="text-sm text-white/30 mt-2">Tente novamente para recarregar os dados.</p>
+                </div>
+                <button
+                    onClick={() => Promise.all([dreMappingsQuery.refetch(), chartAccountsQuery.refetch()])}
+                    className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 transition-colors"
+                >
+                    Recarregar
+                </button>
             </div>
         );
     }

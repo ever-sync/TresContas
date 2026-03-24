@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
@@ -155,53 +156,64 @@ const inferPatCategory = (code: string): string | null => {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }) => {
-    const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [patAccounts, setPatAccounts] = useState<PatAccount[]>([]);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [originalMappingCodes, setOriginalMappingCodes] = useState<Set<string>>(new Set());
 
+    const queryClient = useQueryClient();
+
+    const patConfigQuery = useQuery({
+        queryKey: ['client-pat-config', clientId, selectedYear],
+        queryFn: async () => {
+            const [mappingsRes, chartRes] = await Promise.all([
+                api.get(`/clients/${clientId}/dre-mappings`),
+                api.get(`/clients/${clientId}/chart-of-accounts`),
+            ]);
+
+            const allMappings = Array.isArray(mappingsRes.data) ? (mappingsRes.data as MappingRecord[]) : [];
+            const chart = Array.isArray(chartRes.data) ? (chartRes.data as PatAccount[]) : [];
+
+            const patOnly = chart.filter((m) => m.code.startsWith('01') || m.code.startsWith('02'));
+            const patCategoryKeys = new Set(ALL_CATEGORY_KEYS);
+            const patMappings = allMappings.filter((m) => patCategoryKeys.has(stripAccents(m.category)));
+
+            const drafts: DraftMapping[] = patMappings.map((m) => ({
+                localId: makeLocalId(),
+                account_code: m.account_code,
+                account_name: m.account_name,
+                category: stripAccents(m.category),
+            }));
+
+            return {
+                patAccounts: patOnly,
+                drafts,
+                originalCodes: new Set(patMappings.map((m) => m.account_code)),
+            };
+        },
+        enabled: Boolean(clientId),
+        staleTime: 30_000,
+    });
+
+    const patConfig = patConfigQuery.data ?? null;
+
     useEffect(() => {
-        const load = async () => {
-            try {
-                setLoading(true);
-                const [mappingsRes, chartRes] = await Promise.all([
-                    api.get(`/clients/${clientId}/dre-mappings`),
-                    api.get(`/clients/${clientId}/chart-of-accounts`),
-                ]);
+        if (!patConfigQuery.isError) return;
 
-                const allMappings: MappingRecord[] = mappingsRes.data;
-                const chart = chartRes.data as PatAccount[];
+        const message = patConfigQuery.error instanceof Error
+            ? patConfigQuery.error.message
+            : 'Erro ao carregar configuracao Patrimonial';
+        toast.error(message);
+    }, [patConfigQuery.error, patConfigQuery.isError]);
 
-                // Patrimonial accounts (01.x, 02.x) — all accounts including T and A
-                const patOnly = chart.filter(
-                    (m) => m.code.startsWith('01') || m.code.startsWith('02')
-                );
-                setPatAccounts(patOnly);
+    useEffect(() => {
+        if (!patConfig) return;
+        setPatAccounts(patConfig.patAccounts);
+        setDraftMappings(patConfig.drafts);
+        setOriginalMappingCodes(patConfig.originalCodes);
+    }, [patConfig]);
 
-                // Filter mappings that are for patrimonial categories
-                const patCategoryKeys = new Set(ALL_CATEGORY_KEYS);
-                const patMappings = allMappings.filter((m) =>
-                    patCategoryKeys.has(stripAccents(m.category))
-                );
-
-                const drafts: DraftMapping[] = patMappings.map((m) => ({
-                    localId: makeLocalId(),
-                    account_code: m.account_code,
-                    account_name: m.account_name,
-                    category: stripAccents(m.category),
-                }));
-                setDraftMappings(drafts);
-                setOriginalMappingCodes(new Set(patMappings.map((m) => m.account_code)));
-            } catch (error) {
-                console.error('Erro ao carregar config Patrimonial:', error);
-                toast.error('Erro ao carregar configuração Patrimonial');
-            } finally {
-                setLoading(false);
-            }
-        };
-        load();
-    }, [clientId, selectedYear]);
+    const loading = patConfigQuery.isPending;
 
     const mappingsByCategory = useMemo(() => {
         const map: Record<string, DraftMapping[]> = {};
@@ -279,7 +291,8 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
             }
 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
-            toast.success('Configuração Patrimonial salva!');
+            await queryClient.invalidateQueries({ queryKey: ['client-pat-config', clientId, selectedYear] });
+            toast.success('Configuracao Patrimonial salva!');
         } catch (error) {
             console.error('Erro ao salvar config Patrimonial:', error);
             toast.error('Erro ao salvar configuração Patrimonial');
@@ -470,3 +483,5 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
 };
 
 export default ClientPatConfigPanel;
+
+

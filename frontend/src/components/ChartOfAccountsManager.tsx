@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     chartOfAccountsService,
-    type ChartAccount,
     type ImportAccount,
 } from '../services/chartOfAccountsService';
 
@@ -55,27 +55,25 @@ const isTitleType = (value: unknown) => {
 export const ChartOfAccountsManager = ({
     searchTerm = '',
 }: ChartOfAccountsManagerProps) => {
-    const [accounts, setAccounts] = useState<ChartAccount[]>([]);
-    const [loading, setLoading] = useState(true);
+    const queryClient = useQueryClient();
 
-    const loadAccounts = async () => {
-        try {
-            setLoading(true);
-            const data = await chartOfAccountsService.getSharedAll();
-            setAccounts(data);
-        } catch (error) {
-            console.error('Erro ao carregar plano de contas compartilhado:', error);
-            toast.error('Erro ao carregar plano de contas');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const chartAccountsQuery = useQuery({
+        queryKey: ['staff-chart-of-accounts'],
+        queryFn: () => chartOfAccountsService.getSharedAll(),
+        staleTime: 30_000,
+    });
 
     useEffect(() => {
-        loadAccounts();
-    }, []);
+        if (!chartAccountsQuery.isError) return;
+
+        const message = chartAccountsQuery.error instanceof Error
+            ? chartAccountsQuery.error.message
+            : 'Erro ao carregar plano de contas';
+        toast.error(message);
+    }, [chartAccountsQuery.error, chartAccountsQuery.isError]);
 
     const filteredAccounts = useMemo(() => {
+        const accounts = chartAccountsQuery.data ?? [];
         const normalizedSearch = searchTerm.toLowerCase();
         if (!normalizedSearch) return accounts;
         return accounts.filter((account) =>
@@ -83,7 +81,7 @@ export const ChartOfAccountsManager = ({
             account.name.toLowerCase().includes(normalizedSearch) ||
             (account.alias || '').toLowerCase().includes(normalizedSearch)
         );
-    }, [accounts, searchTerm]);
+    }, [chartAccountsQuery.data, searchTerm]);
 
     const handleImportPlanoDeContas = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -201,7 +199,7 @@ export const ChartOfAccountsManager = ({
                 toast.loading(`Importando ${importAccounts.length} contas...`, { id: 'import-shared-coa' });
                 const result = await chartOfAccountsService.bulkImportShared(importAccounts);
                 toast.success(`${result.count} contas importadas com sucesso!`, { id: 'import-shared-coa' });
-                await loadAccounts();
+                await queryClient.invalidateQueries({ queryKey: ['staff-chart-of-accounts'] });
             } catch (error: unknown) {
                 console.error('Erro ao importar plano de contas:', error);
                 const msg = axios.isAxiosError(error)
@@ -232,15 +230,29 @@ export const ChartOfAccountsManager = ({
             <div className="bg-[#0d1829]/80 backdrop-blur-xl rounded-2xl border border-white/5 overflow-hidden">
                 <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
                     <h3 className="text-white font-semibold">Plano compartilhado</h3>
-                    <span className="text-xs text-slate-500">{accounts.length} contas</span>
+                    <span className="text-xs text-slate-500">{(chartAccountsQuery.data ?? []).length} contas</span>
                 </div>
 
-                {loading ? (
+                {chartAccountsQuery.isPending ? (
                     <div className="p-16 flex items-center justify-center gap-3 text-slate-400">
                         <Loader2 className="w-5 h-5 animate-spin" />
                         Carregando plano de contas...
                     </div>
-                ) : accounts.length === 0 ? (
+                ) : chartAccountsQuery.isError ? (
+                    <div className="p-16 text-center space-y-4">
+                        <FileSpreadsheet className="w-16 h-16 text-white/10 mx-auto" />
+                        <div>
+                            <h4 className="text-lg font-bold text-white/40 mb-2">Não foi possível carregar o plano de contas</h4>
+                            <p className="text-sm text-white/20">Tente novamente para atualizar a lista.</p>
+                        </div>
+                        <button
+                            onClick={() => chartAccountsQuery.refetch()}
+                            className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl border border-white/10 text-white/70 hover:text-white hover:bg-white/5 transition-all"
+                        >
+                            Recarregar
+                        </button>
+                    </div>
+                ) : (chartAccountsQuery.data ?? []).length === 0 ? (
                     <div className="p-16 text-center">
                         <FileSpreadsheet className="w-16 h-16 text-white/10 mx-auto mb-4" />
                         <h4 className="text-lg font-bold text-white/40 mb-2">Nenhum plano de contas</h4>

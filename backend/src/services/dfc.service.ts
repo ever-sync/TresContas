@@ -442,7 +442,7 @@ export const saveDfcConfig = async (
         }
         const effectiveCode = getEffectiveAccountCode(account);
         if (!isAccountCompatibleWithSourceType(account, lineDefinition.sourceType)) {
-            throw badRequest(`A conta ${effectiveCode} nÃ£o Ã© compatÃ­vel com a linha ${lineDefinition.label}.`);
+            throw badRequest(`A conta ${effectiveCode} não é compatível com a linha ${lineDefinition.label}.`);
         }
 
         const dedupeKey = `${mapping.line_key}::${mapping.chart_account_id}`;

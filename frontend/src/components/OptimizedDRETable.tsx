@@ -23,20 +23,20 @@ interface OptimizedDRETableProps {
 const DRE_LINES: DRELineItem[] = [
     { id: 'rec_bruta', name: 'Receita Bruta', key: 'recBruta', type: 'positive', category: 'Receita Bruta' },
     { id: 'deducoes', name: 'Deduções', key: 'deducoes', type: 'negative', category: 'Deduções' },
-    { id: 'rec_liquida', name: 'RECEITA LIQUIDA', key: 'recLiquida', type: 'main' },
-    { id: 'custos', name: 'Custos Das Vendas', key: 'custos', type: 'negative', category: 'Custos Das Vendas' },
+    { id: 'rec_liquida', name: 'RECEITA LÍQUIDA', key: 'recLiquida', type: 'main' },
+    { id: 'custos', name: 'Custos das Vendas', key: 'custos', type: 'negative', category: 'Custos Das Vendas' },
     { id: 'lucro_bruto', name: 'LUCRO BRUTO', key: 'lucroBruto', type: 'main' },
     { id: 'desp_adm', name: 'Despesas Administrativas', key: 'despAdm', type: 'negative', category: 'Despesas Administrativas' },
     { id: 'desp_com', name: 'Despesas Comerciais', key: 'despCom', type: 'negative', category: 'Despesas Comerciais' },
-    { id: 'desp_trib', name: 'Despesas Tributarias', key: 'despTrib', type: 'negative', category: 'Despesas Tributarias' },
+    { id: 'desp_trib', name: 'Despesas Tributárias', key: 'despTrib', type: 'negative', category: 'Despesas Tributarias' },
     { id: 'desp_outras', name: 'Outras Despesas', key: 'despOutras', type: 'negative', category: 'Outras Despesas' },
     { id: 'outras_receitas', name: 'Outras Receitas', key: 'outrasReceitas', type: 'positive', category: 'Outras Receitas' },
     { id: 'rec_fin', name: 'Receitas Financeiras', key: 'recFin', type: 'positive', category: 'Receitas Financeiras' },
     { id: 'desp_fin', name: 'Despesas Financeiras', key: 'despFin', type: 'negative', category: 'Despesas Financeiras' },
     { id: 'lair', name: 'LUCRO ANTES DO IRPJ E CSLL', key: 'lair', type: 'main' },
-    { id: 'irpj_csll', name: 'Irpj E Csll', key: 'irpjCsll', type: 'negative', category: 'Irpj E Csll' },
-    { id: 'lucro_liq', name: 'LUCRO/PREJUÍZO LIQUIDO', key: 'lucroLiq', type: 'highlight' },
-    { id: 'ebtida', name: 'RESULTADO EBTIDA', key: 'ebtida', type: 'highlight' },
+    { id: 'irpj_csll', name: 'IRPJ e CSLL', key: 'irpjCsll', type: 'negative', category: 'IRPJ e CSLL' },
+    { id: 'lucro_liq', name: 'LUCRO/PREJUÍZO LÍQUIDO', key: 'lucroLiq', type: 'highlight' },
+    { id: 'ebtida', name: 'RESULTADO EBITDA', key: 'ebtida', type: 'highlight' },
 ];
 
 export const OptimizedDRETable: React.FC<OptimizedDRETableProps> = ({

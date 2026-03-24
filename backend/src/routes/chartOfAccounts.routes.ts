@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middlewares/auth.middleware';
 import { getAll, create, bulkImport, remove, removeAll } from '../controllers/chartOfAccounts.controller';
+import { importRateLimiter } from '../middlewares/rateLimit.middleware';
 
 const router = Router({ mergeParams: true });
 
@@ -14,7 +15,7 @@ router.get('/', getAll);
 router.post('/', create);
 
 // POST   /api/clients/:clientId/chart-of-accounts/import
-router.post('/import', bulkImport);
+router.post('/import', importRateLimiter, bulkImport);
 
 // DELETE /api/clients/:clientId/chart-of-accounts/:id
 router.delete('/:id', remove);

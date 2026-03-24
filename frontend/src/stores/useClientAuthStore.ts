@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ClientAuthUser } from '../services/authTypes';
+import { clearClientQueryCache } from '../lib/queryClient';
+import { sessionStorageJSON } from '../lib/persistStorage';
 
 export type ClientUser = ClientAuthUser;
 
@@ -19,10 +21,14 @@ export const useClientAuthStore = create<ClientAuthState>()(
       token: null,
       expiresAt: null,
       setAuth: (client, token, expiresAt) => set({ client, token, expiresAt }),
-      logout: () => set({ client: null, token: null, expiresAt: null }),
+      logout: () => {
+        clearClientQueryCache();
+        set({ client: null, token: null, expiresAt: null });
+      },
     }),
     {
       name: 'trescontas-client-auth',
+      storage: sessionStorageJSON,
     }
   )
 );

@@ -2,6 +2,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useMutation } from '@tanstack/react-query';
 import { X, User, Mail, Phone, Lock, Loader2, Eye, EyeOff, Sparkles, Shield } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { userService } from '../services/userService';
@@ -33,7 +34,7 @@ export const UserModal: React.FC<Props> = ({ isOpen, onClose, onSuccess, user })
         register,
         handleSubmit,
         reset,
-        formState: { errors, isSubmitting },
+        formState: { errors },
     } = useForm<UserFormData>({
         resolver: zodResolver(userSchema),
         defaultValues: {
@@ -42,6 +43,39 @@ export const UserModal: React.FC<Props> = ({ isOpen, onClose, onSuccess, user })
     });
 
     const [showPassword, setShowPassword] = React.useState(false);
+    const saveUserMutation = useMutation({
+        mutationFn: async (data: UserFormData) => {
+            if (user) {
+                const updateData: UpdateUserData = { ...data, phone: data.phone || undefined };
+                if (!updateData.password) delete updateData.password;
+                return userService.update(user.id, updateData);
+            }
+
+            if (!data.password) {
+                throw new Error('Senha e obrigatoria para novos colaboradores');
+            }
+
+            return userService.create({
+                name: data.name,
+                email: data.email,
+                password: data.password,
+                role: data.role,
+                phone: data.phone || undefined,
+            });
+        },
+        onSuccess: () => {
+            onSuccess();
+            onClose();
+        },
+        onError: (error: unknown) => {
+            const message = axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Erro ao salvar colaborador'
+                : error instanceof Error
+                    ? error.message
+                    : 'Erro ao salvar colaborador';
+            toast.error(message);
+        },
+    });
 
     React.useEffect(() => {
         if (user) {
@@ -63,33 +97,13 @@ export const UserModal: React.FC<Props> = ({ isOpen, onClose, onSuccess, user })
         }
     }, [user, reset, isOpen]);
 
-    const onSubmit = async (data: UserFormData) => {
-        try {
-            if (user) {
-                const updateData: UpdateUserData = { ...data, phone: data.phone || undefined };
-                if (!updateData.password) delete updateData.password;
-                await userService.update(user.id, updateData);
-            } else {
-                if (!data.password) {
-                    toast.error('Senha e obrigatoria para novos colaboradores');
-                    return;
-                }
-                await userService.create({
-                    name: data.name,
-                    email: data.email,
-                    password: data.password,
-                    role: data.role,
-                    phone: data.phone || undefined,
-                });
-            }
-            onSuccess();
-            onClose();
-        } catch (error) {
-            const message = axios.isAxiosError(error)
-                ? error.response?.data?.message || 'Erro ao salvar colaborador'
-                : 'Erro ao salvar colaborador';
-            toast.error(message);
+    const onSubmit = (data: UserFormData) => {
+        if (!user && !data.password) {
+            toast.error('Senha e obrigatoria para novos colaboradores');
+            return;
         }
+
+        saveUserMutation.mutate(data);
     };
 
     if (!isOpen) return null;
@@ -221,10 +235,10 @@ export const UserModal: React.FC<Props> = ({ isOpen, onClose, onSuccess, user })
                         </button>
                         <button
                             type="submit"
-                            disabled={isSubmitting}
+                            disabled={saveUserMutation.isPending}
                             className="flex-1 bg-linear-to-r from-cyan-500 to-blue-600 text-white font-semibold px-6 py-3.5 rounded-xl shadow-lg shadow-cyan-500/20 hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                         >
-                            {isSubmitting ? (
+                            {saveUserMutation.isPending ? (
                                 <>
                                     <Loader2 className="w-5 h-5 animate-spin" />
                                     Salvando...

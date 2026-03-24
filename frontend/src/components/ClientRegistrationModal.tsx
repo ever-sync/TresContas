@@ -3,6 +3,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useMutation } from '@tanstack/react-query';
 import { X, Building2, User, Mail, Briefcase, Phone, MapPin, Lock, Loader2, Eye, EyeOff, Copy, Check, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { isValidCNPJ, formatCNPJ } from '../lib/utils';
@@ -55,7 +56,7 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
     setValue,
     watch,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
     defaultValues: {
@@ -96,6 +97,29 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
   const [isFetchingCNPJ, setIsFetchingCNPJ] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
+  const saveClientMutation = useMutation({
+    mutationFn: async (data: ClientFormData) => {
+      if (client) {
+        const updateData: ClientUpdatePayload = { ...data };
+        if (!updateData.password) delete updateData.password;
+        return clientService.update(client.id, updateData);
+      }
+
+      return clientService.create(data);
+    },
+    onSuccess: () => {
+      onSuccess();
+      onClose();
+    },
+    onError: (error: unknown) => {
+      const message = axios.isAxiosError(error)
+        ? error.response?.data?.message || 'Erro ao cadastrar cliente'
+        : error instanceof Error
+          ? error.message
+          : 'Erro ao cadastrar cliente';
+      toast.error(message);
+    },
+  });
 
   const cnpjValue = watch('cnpj');
   const passwordValue = watch('password');
@@ -143,29 +167,13 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
     setValue('cnpj', formatCNPJ(e.target.value));
   };
 
-  const onSubmit = async (data: ClientFormData) => {
-      try {
-        if (client) {
-          // Clean up data for update: if password is empty, don't send it
-          const updateData: ClientUpdatePayload = { ...data };
-          if (!updateData.password) delete updateData.password;
-          await clientService.update(client.id, updateData);
-      } else {
-        // Criacao: senha e obrigatoria para o cliente poder logar
-        if (!data.password || data.password.length < 6) {
-          toast.error('Senha e obrigatoria (minimo 6 caracteres) para o cliente acessar o portal');
-          return;
-        }
-        await clientService.create(data);
+  const onSubmit = (data: ClientFormData) => {
+      if (!client && (!data.password || data.password.length < 6)) {
+        toast.error('Senha e obrigatoria (minimo 6 caracteres) para o cliente acessar o portal');
+        return;
       }
-      onSuccess();
-      onClose();
-    } catch (error) {
-      const message = axios.isAxiosError(error)
-        ? error.response?.data?.message || 'Erro ao cadastrar cliente'
-        : 'Erro ao cadastrar cliente';
-      toast.error(message);
-    }
+
+      saveClientMutation.mutate(data);
   };
 
   if (!isOpen) return null;
@@ -416,10 +424,10 @@ export const ClientRegistrationModal: React.FC<Props> = ({ isOpen, onClose, onSu
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={saveClientMutation.isPending}
               className="flex-1 bg-linear-to-r from-cyan-500 to-blue-600 text-white font-semibold px-6 py-3.5 rounded-xl shadow-lg shadow-cyan-500/20 hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              {isSubmitting ? (
+              {saveClientMutation.isPending ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
                   Cadastrando...

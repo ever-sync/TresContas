@@ -3,17 +3,24 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 import { securityConfig } from '../config/security';
+import { AppError, sendErrorResponse } from '../lib/http';
+import {
+    assertMinimumLength,
+    assertValidEmail,
+    normalizeDigits,
+    normalizeEmail,
+    toOptionalTrimmedString,
+    toTrimmedString,
+} from '../lib/validation';
 
 if (!process.env.JWT_SECRET) {
     throw new Error('JWT_SECRET is required');
 }
-const JWT_SECRET = process.env.JWT_SECRET!;
+
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = securityConfig.jwtExpiresIn as jwt.SignOptions['expiresIn'];
 
-const isNonEmptyString = (value: unknown) =>
-    typeof value === 'string' && value.trim().length > 0;
-
-const isValidEmail = (value: string) => value.includes('@') && value.includes('.');
+const getRawPassword = (value: unknown) => (typeof value === 'string' ? value : '');
 
 const signAccessToken = (payload: object) =>
     jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
@@ -30,30 +37,24 @@ const getTokenExpiryIsoString = (token: string) => {
 
 export const register = async (req: Request, res: Response) => {
     try {
-        const name = isNonEmptyString(req.body?.name) ? req.body.name.trim() : '';
-        const rawCnpj = isNonEmptyString(req.body?.cnpj) ? req.body.cnpj.trim() : '';
-        const email = isNonEmptyString(req.body?.email) ? req.body.email.trim() : '';
-        const rawPhone = isNonEmptyString(req.body?.phone) ? req.body.phone.trim() : null;
-        const password = isNonEmptyString(req.body?.password) ? req.body.password : '';
-
-        const cnpj = rawCnpj.replace(/\D/g, '');
-        const phone = rawPhone ? rawPhone.replace(/\D/g, '') : null;
+        const name = toTrimmedString(req.body?.name);
+        const cnpj = normalizeDigits(toTrimmedString(req.body?.cnpj));
+        const email = normalizeEmail(req.body?.email);
+        const rawPhone = toOptionalTrimmedString(req.body?.phone);
+        const password = getRawPassword(req.body?.password);
+        const phone = rawPhone ? normalizeDigits(rawPhone) : null;
 
         if (!name || !cnpj || !email || !password) {
-            return res.status(400).json({ message: 'Nome, CNPJ, email e senha sao obrigatorios' });
+            throw new AppError(400, 'Nome, CNPJ, email e senha são obrigatórios');
         }
 
-        if (!isValidEmail(email)) {
-            return res.status(400).json({ message: 'Email invalido' });
-        }
+        assertValidEmail(email);
 
         if (phone && phone.length < 10) {
-            return res.status(400).json({ message: 'Telefone invalido' });
+            throw new AppError(400, 'Telefone inválido');
         }
 
-        if (password.length < 8) {
-            return res.status(400).json({ message: 'Senha deve ter pelo menos 8 caracteres' });
-        }
+        assertMinimumLength(password, 8, 'Senha deve ter pelo menos 8 caracteres');
 
         const existingAccounting = await prisma.accounting.findFirst({
             where: {
@@ -62,7 +63,7 @@ export const register = async (req: Request, res: Response) => {
         });
 
         if (existingAccounting) {
-            return res.status(400).json({ message: 'Email ou CNPJ ja cadastrado' });
+            throw new AppError(400, 'Email ou CNPJ já cadastrado');
         }
 
         const existingUser = await prisma.user.findUnique({
@@ -70,7 +71,7 @@ export const register = async (req: Request, res: Response) => {
         });
 
         if (existingUser) {
-            return res.status(400).json({ message: 'Email ja cadastrado' });
+            throw new AppError(400, 'Email já cadastrado');
         }
 
         const hashedPassword = await bcrypt.hash(password, 12);
@@ -101,13 +102,11 @@ export const register = async (req: Request, res: Response) => {
             return { accounting, user };
         });
 
-        const token = signAccessToken(
-            {
-                userId: result.user.id,
-                accountingId: result.accounting.id,
-                role: result.user.role,
-            }
-        );
+        const token = signAccessToken({
+            userId: result.user.id,
+            accountingId: result.accounting.id,
+            role: result.user.role,
+        });
 
         res.status(201).json({
             token,
@@ -122,28 +121,25 @@ export const register = async (req: Request, res: Response) => {
                 cnpj: result.accounting.cnpj,
             },
         });
-    } catch (error: any) {
-        console.error('Registration Error:', error);
-        if (error.code === 'P2002') {
-            return res.status(400).json({ message: 'Email ou CNPJ ja cadastrado no banco' });
+    } catch (error: unknown) {
+        if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
+            return res.status(400).json({ message: 'Email ou CNPJ já cadastrado no banco' });
         }
-        res.status(500).json({ message: 'Erro ao realizar cadastro no servidor' });
+
+        return sendErrorResponse(res, error, 'Erro ao realizar cadastro no servidor');
     }
 };
 
 export const login = async (req: Request, res: Response) => {
     try {
-        const rawEmail = isNonEmptyString(req.body?.email) ? req.body.email.trim() : '';
-        const email = rawEmail.toLowerCase();
-        const password = isNonEmptyString(req.body?.password) ? req.body.password : '';
+        const email = normalizeEmail(req.body?.email);
+        const password = getRawPassword(req.body?.password);
 
         if (!email || !password) {
-            return res.status(400).json({ message: 'Email e senha sao obrigatorios' });
+            throw new AppError(400, 'Email e senha são obrigatórios');
         }
 
-        if (!isValidEmail(email)) {
-            return res.status(400).json({ message: 'Email invalido' });
-        }
+        assertValidEmail(email);
 
         const user = await prisma.user.findUnique({
             where: { email },
@@ -151,26 +147,24 @@ export const login = async (req: Request, res: Response) => {
         });
 
         if (!user) {
-            return res.status(401).json({ message: 'Credenciais invalidas' });
+            throw new AppError(401, 'Credenciais inválidas');
         }
 
         if (user.status !== 'active') {
-            return res.status(403).json({ message: 'Conta inativa. Contacte o administrador.' });
+            throw new AppError(403, 'Conta inativa. Contate o administrador.');
         }
 
         const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
         if (!isPasswordValid) {
-            return res.status(401).json({ message: 'Credenciais invalidas' });
+            throw new AppError(401, 'Credenciais inválidas');
         }
 
-        const token = signAccessToken(
-            {
-                userId: user.id,
-                accountingId: user.accounting_id,
-                role: user.role,
-            }
-        );
+        const token = signAccessToken({
+            userId: user.id,
+            accountingId: user.accounting_id,
+            role: user.role,
+        });
 
         res.json({
             token,
@@ -186,37 +180,35 @@ export const login = async (req: Request, res: Response) => {
             },
         });
     } catch (error) {
-        console.error('Login Error:', error);
-        res.status(500).json({ message: 'Erro ao realizar login no servidor' });
+        return sendErrorResponse(res, error, 'Erro ao realizar login no servidor');
     }
 };
 
 export const clientLogin = async (req: Request, res: Response) => {
     try {
-        const client_id = isNonEmptyString(req.body?.client_id) ? req.body.client_id.trim() : undefined;
-        const rawEmail = isNonEmptyString(req.body?.email) ? req.body.email.trim().toLowerCase() : '';
-        const rawCnpj = isNonEmptyString(req.body?.cnpj) ? req.body.cnpj.trim() : '';
-        const password = isNonEmptyString(req.body?.password) ? req.body.password : '';
-
-        const cnpj = rawCnpj ? rawCnpj.replace(/\D/g, '') : '';
-        const email = rawEmail || '';
+        const clientId = toTrimmedString(req.body?.client_id);
+        const email = normalizeEmail(req.body?.email);
+        const cnpj = normalizeDigits(toTrimmedString(req.body?.cnpj));
+        const password = getRawPassword(req.body?.password);
 
         if ((!email && !cnpj) || !password) {
-            return res.status(400).json({ message: 'Email/CNPJ e senha sao obrigatorios' });
+            throw new AppError(400, 'Email/CNPJ e senha são obrigatórios');
         }
 
-        const emailMatchesClient = (client: { email: string | null; representative_email: string | null }) =>
-            !email || client.email === email || client.representative_email === email;
+        const emailMatchesClient = (client: {
+            email: string | null;
+            representative_email: string | null;
+        }) => !email || client.email === email || client.representative_email === email;
 
         let client = null;
 
-        if (client_id) {
+        if (clientId) {
             const requestedClient = await prisma.client.findUnique({
-                where: { id: client_id },
+                where: { id: clientId },
             });
 
             if (!requestedClient || (cnpj && requestedClient.cnpj !== cnpj) || !emailMatchesClient(requestedClient)) {
-                return res.status(401).json({ message: 'Credenciais invalidas' });
+                throw new AppError(401, 'Credenciais inválidas');
             }
 
             client = requestedClient;
@@ -226,11 +218,13 @@ export const clientLogin = async (req: Request, res: Response) => {
             });
 
             if (!requestedClient || !emailMatchesClient(requestedClient)) {
-                return res.status(401).json({ message: 'Credenciais invalidas' });
+                throw new AppError(401, 'Credenciais inválidas');
             }
 
             client = requestedClient;
         } else {
+            assertValidEmail(email);
+
             const matchedClients = await prisma.client.findMany({
                 where: {
                     OR: [{ representative_email: email }, { email }],
@@ -240,38 +234,35 @@ export const clientLogin = async (req: Request, res: Response) => {
             });
 
             if (matchedClients.length > 1) {
-                return res.status(409).json({
-                    message: 'Mais de um cliente encontrado para este email. Informe tambem o CNPJ.',
-                });
+                throw new AppError(409, 'Mais de um cliente encontrado para este email. Informe também o CNPJ.');
             }
 
             client = matchedClients[0] || null;
         }
 
         if (!client) {
-            return res.status(401).json({ message: 'Credenciais invalidas' });
+            throw new AppError(401, 'Credenciais inválidas');
         }
 
         if (!client.password_hash) {
-            return res.status(401).json({ message: 'Senha nao configurada. Solicite a sua contabilidade.' });
+            throw new AppError(401, 'Senha não configurada. Solicite o acesso à sua contabilidade.');
         }
 
         if (client.status !== 'active') {
-            return res.status(403).json({ message: 'Conta inativa. Contacte sua contabilidade.' });
+            throw new AppError(403, 'Conta inativa. Contate sua contabilidade.');
         }
 
         const isPasswordValid = await bcrypt.compare(password, client.password_hash);
+
         if (!isPasswordValid) {
-            return res.status(401).json({ message: 'Credenciais invalidas' });
+            throw new AppError(401, 'Credenciais inválidas');
         }
 
-        const token = signAccessToken(
-            {
-                role: 'client',
-                clientId: client.id,
-                accountingId: client.accounting_id,
-            }
-        );
+        const token = signAccessToken({
+            role: 'client',
+            clientId: client.id,
+            accountingId: client.accounting_id,
+        });
 
         res.json({
             token,
@@ -286,7 +277,6 @@ export const clientLogin = async (req: Request, res: Response) => {
             },
         });
     } catch (error) {
-        console.error('Client Login Error:', error);
-        res.status(500).json({ message: 'Erro ao realizar login do cliente' });
+        return sendErrorResponse(res, error, 'Erro ao realizar login do cliente');
     }
 };

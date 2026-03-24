@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { StaffAuthUser } from '../services/authTypes';
+import { clearStaffQueryCache } from '../lib/queryClient';
+import { sessionStorageJSON } from '../lib/persistStorage';
 
 export type User = StaffAuthUser;
 
@@ -19,10 +21,14 @@ export const useAuthStore = create<AuthState>()(
             token: null,
             expiresAt: null,
             setAuth: (user, token, expiresAt) => set({ user, token, expiresAt }),
-            logout: () => set({ user: null, token: null, expiresAt: null }),
+            logout: () => {
+                clearStaffQueryCache();
+                set({ user: null, token: null, expiresAt: null });
+            },
         }),
         {
             name: 'trescontas-auth',
+            storage: sessionStorageJSON,
         }
     )
 );

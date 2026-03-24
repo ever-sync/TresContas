@@ -113,7 +113,7 @@ const getSupportTicketForClient = async (id: string, clientId: string) =>
 export const getClientProfile = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
+            return res.status(401).json({ message: 'Não autorizado' });
         }
 
         const client = await prisma.client.findUnique({
@@ -122,7 +122,7 @@ export const getClientProfile = async (req: AuthRequest, res: Response) => {
         });
 
         if (!client) {
-            return res.status(404).json({ message: 'Cliente nÃ£o encontrado' });
+            return res.status(404).json({ message: 'Cliente não encontrado' });
         }
 
         res.json(client);
@@ -134,7 +134,7 @@ export const getClientProfile = async (req: AuthRequest, res: Response) => {
 export const getClientSupportTickets = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
+            return res.status(401).json({ message: 'Não autorizado' });
         }
 
         const tickets = await prisma.supportTicket.findMany({
@@ -152,7 +152,7 @@ export const getClientSupportTickets = async (req: AuthRequest, res: Response) =
 export const createClientSupportTicket = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId || !req.accountingId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
+            return res.status(401).json({ message: 'Não autorizado' });
         }
 
         const subject = isNonEmptyString(req.body?.subject) ? req.body.subject.trim() : '';
@@ -160,11 +160,11 @@ export const createClientSupportTicket = async (req: AuthRequest, res: Response)
         const priority = isNonEmptyString(req.body?.priority) ? req.body.priority.trim() : 'medium';
 
         if (!subject || !message) {
-            return res.status(400).json({ message: 'Assunto e descriÃ§Ã£o sÃ£o obrigatÃ³rios' });
+            return res.status(400).json({ message: 'Assunto e descrição são obrigatórios' });
         }
 
         if (!isValidPriority(priority)) {
-            return res.status(400).json({ message: 'Prioridade invÃ¡lida' });
+            return res.status(400).json({ message: 'Prioridade inválida' });
         }
 
         const authorName = await getClientAuthorName(req.clientId);
@@ -216,13 +216,13 @@ export const createClientSupportTicket = async (req: AuthRequest, res: Response)
 export const getClientSupportTicketMessages = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'Nao autorizado' });
+            return res.status(401).json({ message: 'Não autorizado' });
         }
 
         const ticketId = String(req.params.id);
         const ticket = await getSupportTicketForClient(ticketId, req.clientId);
         if (!ticket) {
-            return res.status(404).json({ message: 'Chamado nao encontrado' });
+            return res.status(404).json({ message: 'Chamado não encontrado' });
         }
 
         const messages = await prisma.$queryRaw<SupportTicketMessageRow[]>(Prisma.sql`
@@ -248,18 +248,18 @@ export const getClientSupportTicketMessages = async (req: AuthRequest, res: Resp
 export const createClientSupportTicketMessage = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'Nao autorizado' });
+            return res.status(401).json({ message: 'Não autorizado' });
         }
 
         const ticketId = String(req.params.id);
         const body = isNonEmptyString(req.body?.body) ? req.body.body.trim() : '';
         if (!body) {
-            return res.status(400).json({ message: 'Mensagem obrigatoria' });
+            return res.status(400).json({ message: 'Mensagem obrigatória' });
         }
 
         const ticket = await getSupportTicketForClient(ticketId, req.clientId);
         if (!ticket) {
-            return res.status(404).json({ message: 'Chamado nao encontrado' });
+            return res.status(404).json({ message: 'Chamado não encontrado' });
         }
 
         const authorName = await getClientAuthorName(req.clientId);
@@ -314,7 +314,7 @@ export const createClientSupportTicketMessage = async (req: AuthRequest, res: Re
 export const getClientMovements = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
+            return res.status(401).json({ message: 'Não autorizado' });
         }
 
         const year = parseInt(req.query.year as string) || new Date().getFullYear();
@@ -342,15 +342,15 @@ export const getClientMovements = async (req: AuthRequest, res: Response) => {
 
         res.json(movements);
     } catch (error) {
-        console.error('Erro ao buscar movimentaÃ§Ãµes do cliente:', error);
-        res.status(500).json({ message: 'Erro ao buscar movimentaÃ§Ãµes' });
+        console.error('Erro ao buscar movimentações do cliente:', error);
+        res.status(500).json({ message: 'Erro ao buscar movimentações' });
     }
 };
 
 export const getClientChartOfAccounts = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.clientId || !req.accountingId) {
-            return res.status(401).json({ message: 'NÃ£o autorizado' });
+            return res.status(401).json({ message: 'Não autorizado' });
         }
 
         const accounts = await prisma.chartOfAccounts.findMany({

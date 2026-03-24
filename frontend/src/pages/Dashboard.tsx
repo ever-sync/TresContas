@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     Users,
     Plus,
@@ -27,7 +28,7 @@ import { useNavigate } from 'react-router-dom';
 import { clientService } from '../services/clientService';
 import type { Client } from '../services/clientService';
 import { supportService } from '../services/supportService';
-import type { SupportTicket, SupportTicketMessage } from '../services/supportService';
+import type { SupportTicket } from '../services/supportService';
 import { userService } from '../services/userService';
 import type { User as TeamUser } from '../services/userService';
 import { ClientRegistrationModal } from '../components/ClientRegistrationModal';
@@ -39,57 +40,37 @@ import SupportTicketDetailPanel from '../components/support/SupportTicketDetailP
 const Dashboard = () => {
     const { user, logout } = useAuthStore();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [searchTerm, setSearchTerm] = useState('');
-    const [clients, setClients] = useState<Client[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
-    const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
     const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team'>('dashboard');
-    const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
-    const [isSupportLoading, setIsSupportLoading] = useState(false);
     const [supportFilter, setSupportFilter] = useState<'open' | 'in_progress' | 'closed' | 'all'>('open');
     const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
-    const [supportMessages, setSupportMessages] = useState<SupportTicketMessage[]>([]);
-    const [isSupportMessagesLoading, setIsSupportMessagesLoading] = useState(false);
     const [supportReplyDraft, setSupportReplyDraft] = useState('');
     const [isSubmittingSupportReply, setIsSubmittingSupportReply] = useState(false);
 
     // Team management state
-    const [teamMembers, setTeamMembers] = useState<TeamUser[]>([]);
-    const [isTeamLoading, setIsTeamLoading] = useState(false);
     const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
 
     const isAdmin = user?.role === 'admin';
 
-    const fetchClients = useCallback(async () => {
-        try {
-            setIsLoading(true);
-            const data = await clientService.getAll();
-            setClients(data);
-        } catch (error) {
-            if (axios.isAxiosError(error) && error.response?.status === 401) {
-                logout();
-                navigate('/login');
-                return;
-            }
-            console.error('Error fetching clients:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [logout, navigate]);
-
-    useEffect(() => {
-        fetchClients();
-    }, [fetchClients]);
+    const clientsQuery = useQuery({
+        queryKey: ['staff-clients'],
+        queryFn: () => clientService.getAll(),
+        staleTime: 60_000,
+    });
+    const clients = clientsQuery.data ?? [];
+    const isLoading = clientsQuery.isPending;
 
     const handleToggleStatus = async (e: React.MouseEvent, client: Client) => {
         e.stopPropagation();
         try {
             const newStatus = client.status === 'active' ? 'inactive' : 'active';
             await clientService.update(client.id, { status: newStatus });
-            fetchClients();
+            await queryClient.invalidateQueries({ queryKey: ['staff-clients'] });
         } catch (error) {
             console.error('Erro ao alternar status:', error);
         }
@@ -106,58 +87,30 @@ const Dashboard = () => {
         setEditingClient(null);
     };
 
-    const fetchSupportTickets = useCallback(async () => {
-        try {
-            setIsSupportLoading(true);
-            const data = await supportService.getAll();
-            setSupportTickets(data);
-        } catch (error) {
-            if (axios.isAxiosError(error) && error.response?.status === 401) {
-                logout();
-                navigate('/login');
-                return;
-            }
-            console.error('Error fetching support tickets:', error);
-        } finally {
-            setIsSupportLoading(false);
-        }
-    }, [logout, navigate]);
+    const supportTicketsQuery = useQuery({
+        queryKey: ['support-tickets'],
+        queryFn: () => supportService.getAll(),
+        enabled: activeView === 'support',
+        staleTime: 30_000,
+    });
+    const supportTickets = supportTicketsQuery.data ?? [];
+    const isSupportLoading = supportTicketsQuery.isPending;
 
-    useEffect(() => {
-        if (activeView === 'support') {
-            fetchSupportTickets();
-        }
-    }, [activeView, fetchSupportTickets]);
-
-    const fetchTeamMembers = useCallback(async () => {
-        try {
-            setIsTeamLoading(true);
-            const data = await userService.getAll();
-            setTeamMembers(data);
-        } catch (error) {
-            if (axios.isAxiosError(error) && error.response?.status === 401) {
-                logout();
-                navigate('/login');
-                return;
-            }
-            console.error('Error fetching team:', error);
-        } finally {
-            setIsTeamLoading(false);
-        }
-    }, [logout, navigate]);
-
-    useEffect(() => {
-        if (activeView === 'team' || activeView === 'dashboard') {
-            fetchTeamMembers();
-        }
-    }, [activeView, fetchTeamMembers]);
+    const teamMembersQuery = useQuery({
+        queryKey: ['team-members'],
+        queryFn: () => userService.getAll(),
+        enabled: activeView === 'dashboard' || activeView === 'team',
+        staleTime: 60_000,
+    });
+    const teamMembers = teamMembersQuery.data ?? [];
+    const isTeamLoading = teamMembersQuery.isPending;
 
     const handleDeleteUser = async (userId: string) => {
         if (!confirm('Tem certeza que deseja remover este colaborador?')) return;
         try {
             await userService.delete(userId);
             toast.success('Colaborador removido com sucesso');
-            fetchTeamMembers();
+            await queryClient.invalidateQueries({ queryKey: ['team-members'] });
         } catch (error) {
             const message = axios.isAxiosError(error)
                 ? error.response?.data?.message || 'Erro ao remover colaborador'
@@ -197,7 +150,6 @@ const Dashboard = () => {
 
         if (!filteredTickets.length) {
             setSelectedSupportTicketId(null);
-            setSupportMessages([]);
             return;
         }
 
@@ -207,23 +159,14 @@ const Dashboard = () => {
         }
     }, [activeView, filteredTickets, selectedSupportTicketId]);
 
-    const fetchSupportMessages = useCallback(async (ticketId: string) => {
-        try {
-            setIsSupportMessagesLoading(true);
-            const data = await supportService.getMessages(ticketId);
-            setSupportMessages(data);
-        } catch (error) {
-            console.error('Error fetching support messages:', error);
-            toast.error('Erro ao carregar conversa do chamado');
-        } finally {
-            setIsSupportMessagesLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (activeView !== 'support' || !selectedSupportTicketId) return;
-        fetchSupportMessages(selectedSupportTicketId);
-    }, [activeView, selectedSupportTicketId, fetchSupportMessages]);
+    const supportMessagesQuery = useQuery({
+        queryKey: ['support-messages', selectedSupportTicketId],
+        queryFn: () => supportService.getMessages(selectedSupportTicketId as string),
+        enabled: activeView === 'support' && Boolean(selectedSupportTicketId),
+        staleTime: 15_000,
+    });
+    const supportMessages = supportMessagesQuery.data ?? [];
+    const isSupportMessagesLoading = supportMessagesQuery.isPending;
 
     useEffect(() => {
         setSupportReplyDraft('');
@@ -233,7 +176,7 @@ const Dashboard = () => {
         try {
             await supportService.updateStatus(ticketId, status);
             toast.success('Status atualizado');
-            await fetchSupportTickets();
+            await queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
         } catch (error) {
             console.error('Error updating support ticket status:', error);
             toast.error('Erro ao atualizar status do chamado');
@@ -251,8 +194,8 @@ const Dashboard = () => {
             await supportService.reply(selectedSupportTicketId, supportReplyDraft.trim());
             setSupportReplyDraft('');
             await Promise.all([
-                fetchSupportMessages(selectedSupportTicketId),
-                fetchSupportTickets(),
+                queryClient.invalidateQueries({ queryKey: ['support-tickets'] }),
+                queryClient.invalidateQueries({ queryKey: ['support-messages', selectedSupportTicketId] }),
             ]);
             toast.success('Resposta enviada');
         } catch (error) {
@@ -1136,14 +1079,14 @@ const Dashboard = () => {
             <ClientRegistrationModal
                 isOpen={isModalOpen}
                 onClose={handleModalClose}
-                onSuccess={fetchClients}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['staff-clients'] })}
                 client={editingClient}
             />
 
             <UserModal
                 isOpen={isUserModalOpen}
                 onClose={() => { setIsUserModalOpen(false); setEditingUser(null); }}
-                onSuccess={fetchTeamMembers}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['team-members'] })}
                 user={editingUser}
             />
         </div>

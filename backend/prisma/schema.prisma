@@ -323,7 +323,8 @@ model ClientDocument {
   category      String
   mime_type     String
   size_bytes    Int
-  content       Bytes
+  storage_path  String?
+  content       Bytes?
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
   accounting    Accounting @relation(fields: [accounting_id], references: [id])
@@ -333,5 +334,6 @@ model ClientDocument {
   @@index([accounting_id])
   @@index([client_id])
   @@index([category])
+  @@index([storage_path])
   @@index([created_at])
 }

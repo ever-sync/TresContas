@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { X, Plus, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 import { dreMappingService } from '../services/dreMappingService';
+import { getCategoryDisplayLabel } from '../lib/categoryConstants';
 
 interface QuickAccountRegistrationModalProps {
     isOpen: boolean;
@@ -27,10 +29,40 @@ export const QuickAccountRegistrationModal: React.FC<QuickAccountRegistrationMod
         category: '',
         level: '15',
     });
-    const [isLoading, setIsLoading] = useState(false);
     const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
     const validCategories = dreMappingService.getValidCategories();
+    const saveAccountMutation = useMutation({
+        mutationFn: async () => {
+            await dreMappingService.createOrUpdate(
+                clientId,
+                formData.code.trim(),
+                formData.name.trim(),
+                formData.category.trim()
+            );
+        },
+        onSuccess: () => {
+            toast.success('Conta registrada com sucesso!');
+            onAccountCreated?.();
+            setFormData({
+                code: '',
+                name: '',
+                category: '',
+                level: '15',
+            });
+            setValidationErrors({});
+            onClose();
+        },
+        onError: (error: unknown) => {
+            console.error('Erro ao registrar conta:', error);
+            const message = axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Erro ao registrar conta'
+                : error instanceof Error
+                    ? error.message
+                    : 'Erro ao registrar conta';
+            toast.error(message);
+        },
+    });
 
     const validateForm = (): boolean => {
         const errors: Record<string, string> = {};
@@ -65,38 +97,7 @@ export const QuickAccountRegistrationModal: React.FC<QuickAccountRegistrationMod
             return;
         }
 
-        try {
-            setIsLoading(true);
-
-            // Criar mapeamento DRE
-            await dreMappingService.createOrUpdate(
-                clientId,
-                formData.code.trim(),
-                formData.name.trim(),
-                formData.category.trim()
-            );
-
-            toast.success('Conta registrada com sucesso!');
-            onAccountCreated?.();
-            
-            // Resetar formulário
-            setFormData({
-                code: '',
-                name: '',
-                category: '',
-                level: '15',
-            });
-            setValidationErrors({});
-            onClose();
-        } catch (error: unknown) {
-            console.error('Erro ao registrar conta:', error);
-            const message = axios.isAxiosError(error)
-                ? error.response?.data?.message || 'Erro ao registrar conta'
-                : 'Erro ao registrar conta';
-            toast.error(message);
-        } finally {
-            setIsLoading(false);
-        }
+        saveAccountMutation.mutate();
     };
 
     if (!isOpen) return null;
@@ -226,7 +227,7 @@ export const QuickAccountRegistrationModal: React.FC<QuickAccountRegistrationMod
                             <option value="">Selecione uma categoria...</option>
                             {validCategories.map(cat => (
                                 <option key={cat} value={cat} className="bg-[#0d1829]">
-                                    {cat}
+                                    {getCategoryDisplayLabel(cat)}
                                 </option>
                             ))}
                         </select>
@@ -254,21 +255,21 @@ export const QuickAccountRegistrationModal: React.FC<QuickAccountRegistrationMod
 
                 {/* Footer */}
                 <div className="flex items-center justify-end gap-3 p-6 border-t border-white/5 bg-white/[0.02]">
-                    <button
-                        onClick={onClose}
-                        disabled={isLoading}
-                        className="px-6 py-2.5 text-sm font-bold text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-all disabled:opacity-50"
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={isLoading}
-                        className="px-6 py-2.5 text-sm font-bold bg-linear-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-2"
-                    >
-                        {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                        {isLoading ? 'Registrando...' : 'Registrar Conta'}
-                    </button>
+                        <button
+                            onClick={onClose}
+                            disabled={saveAccountMutation.isPending}
+                            className="px-6 py-2.5 text-sm font-bold text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-all disabled:opacity-50"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={saveAccountMutation.isPending}
+                            className="px-6 py-2.5 text-sm font-bold bg-linear-to-r from-cyan-500 to-blue-600 text-white rounded-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {saveAccountMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
+                            {saveAccountMutation.isPending ? 'Registrando...' : 'Registrar Conta'}
+                        </button>
                 </div>
             </div>
         </div>

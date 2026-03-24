@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgresql://user:password@localhost:5432/trescontas
+      JWT_SECRET: test-secret
+      GROQ_API_KEY: test-key
+      ALLOWED_ORIGINS: http://localhost:5173
+      PORT: 3001
+      DOCUMENT_STORAGE_PATH: ./backend/storage/client-documents
+      VITE_API_URL: http://localhost:3001/api
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+
+      - name: Install backend deps
+        run: npm ci --prefix backend
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build

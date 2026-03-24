@@ -1,7 +1,6 @@
 /**
- * Constantes de categorias DE-PARA para o SaaS de Contabilidade
- * Baseado na análise das 30 categorias identificadas no Plano de Contas
- * Com suporte robusto a encoding incorreto e diacríticos
+ * Canonical DE-PARA categories for the app.
+ * Canonical values are ASCII-normalized to match backend validation.
  */
 
 export const VALID_CATEGORIES = [
@@ -9,8 +8,8 @@ export const VALID_CATEGORIES = [
     'Clientes',
     'Contas A Pagar Cp',
     'Custos Das Vendas',
-    'Deduções',
-    'Depreciação e Amortização',
+    'Deducoes',
+    'Depreciacao E Amortizacao',
     'Despesas Administrativas',
     'Despesas Antecipadas',
     'Despesas Comerciais',
@@ -39,236 +38,230 @@ export const VALID_CATEGORIES = [
     'Tributos A CompensarCP',
 ];
 
+export const CATEGORY_DISPLAY_LABELS: Record<string, string> = {
+    Deducoes: 'Deduções',
+    'Depreciacao E Amortizacao': 'Depreciação e Amortização',
+    'Contas A Pagar Cp': 'Contas a Pagar CP',
+    'Despesas Tributarias': 'Despesas Tributárias',
+    Intangivel: 'Intangível',
+    'Irpj E Csll': 'IRPJ e CSLL',
+    Disponivel: 'Disponível',
+    'Obrigacoes Trabalhistas': 'Obrigações Trabalhistas',
+    'Obrigacoes Tributarias': 'Obrigações Tributárias',
+    'Emprestimos E Financiamentos Cp': 'Empréstimos e Financiamentos CP',
+    'Emprestimos E Financiamentos Lp': 'Empréstimos e Financiamentos LP',
+    'Parcelamentos Cp': 'Parcelamentos CP',
+    'Parcelamentos Lp': 'Parcelamentos LP',
+    'Tributos A CompensarCP': 'Tributos a Compensar CP',
+};
+
 /**
- * Remove diacríticos e normaliza encoding de caracteres especiais
- * Converte "DeduÃ§Ãµes" para "deducoes"
- * Converte "Deduções" para "deducoes"
+ * Remove diacritics and normalize whitespace.
  */
 export const removeDiacritics = (text: string): string => {
     if (!text) return '';
-    
-    // Normalizar para NFD (decomposição) e remover diacríticos
+
     return text
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '') // Remove diacríticos
+        .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
         .trim();
 };
 
 /**
- * Mapeamento de aliases para categorias canônicas
- * Ajuda a normalizar variações de nomes de categorias
- * Todas as chaves devem estar em minúsculas e sem diacríticos
+ * Aliases for canonical categories.
+ * Keys must be lower-case and without diacritics.
  */
 export const CATEGORY_ALIASES: Record<string, string> = {
-    // Receitas
+    // Revenue
     'receita bruta': 'Receita Bruta',
     'receitas bruta': 'Receita Bruta',
     'receita de vendas': 'Receita Bruta',
     'receitas de vendas': 'Receita Bruta',
 
-    // Deduções (com suporte a encoding incorreto e diacríticos)
-    'deducoes': 'Deduções',
-    'deducao': 'Deduções',
-    'deducoes de vendas': 'Deduções',
-    'deducao de vendas': 'Deduções',
-    'devolucoes': 'Deduções',
-    'devolucao': 'Deduções',
-    'devoluçoes': 'Deduções',
-    'devolução': 'Deduções',
+    // Deducoes
+    deducoes: 'Deducoes',
+    deducao: 'Deducoes',
+    'deducoes de vendas': 'Deducoes',
+    'deducao de vendas': 'Deducoes',
+    devolucoes: 'Deducoes',
+    devolucao: 'Deducoes',
 
-    // Custos
+    // Costs
     'custos das vendas': 'Custos Das Vendas',
     'custos da vendas': 'Custos Das Vendas',
     'custo das vendas': 'Custos Das Vendas',
     'custo da vendas': 'Custos Das Vendas',
     'custo de mercadoria vendida': 'Custos Das Vendas',
-    'cmv': 'Custos Das Vendas',
+    cmv: 'Custos Das Vendas',
 
-    // Despesas Administrativas
+    // Administrative expenses
     'despesas administrativas': 'Despesas Administrativas',
     'despesa administrativa': 'Despesas Administrativas',
     'despesas admin': 'Despesas Administrativas',
 
-    // Despesas Comerciais
+    // Commercial expenses
     'despesas comerciais': 'Despesas Comerciais',
     'despesa comercial': 'Despesas Comerciais',
     'despesas de vendas': 'Despesas Comerciais',
 
-    // Despesas Financeiras
+    // Financial expenses
     'despesas financeiras': 'Despesas Financeiras',
     'despesa financeira': 'Despesas Financeiras',
-    'juros': 'Despesas Financeiras',
+    juros: 'Despesas Financeiras',
 
-    // Receitas Financeiras
+    // Financial revenue
     'receitas financeiras': 'Receitas Financeiras',
     'receita financeira': 'Receitas Financeiras',
-    'rendimentos': 'Receitas Financeiras',
+    rendimentos: 'Receitas Financeiras',
 
-    // Despesas Tributárias
+    // Tax expenses
     'despesas tributarias': 'Despesas Tributarias',
     'despesa tributaria': 'Despesas Tributarias',
 
-    // Outras Despesas
+    // Other expenses
     'outras despesas': 'Outras Despesas',
     'outra despesa': 'Outras Despesas',
     'despesas diversas': 'Outras Despesas',
     'despesa diversa': 'Outras Despesas',
 
-    // IRPJ e CSLL
+    // IRPJ and CSLL
     'irpj e csll': 'Irpj E Csll',
     'imposto de renda': 'Irpj E Csll',
     'contribuicao social': 'Irpj E Csll',
 
-    // Disponível
-    'disponivel': 'Disponivel',
-    'disponibilidades': 'Disponivel',
-    'caixa': 'Disponivel',
-    'bancos': 'Disponivel',
+    // Available
+    disponivel: 'Disponivel',
+    disponibilidades: 'Disponivel',
+    caixa: 'Disponivel',
+    bancos: 'Disponivel',
 
-    // Clientes
-    'clientes': 'Clientes',
+    // Clients
+    clientes: 'Clientes',
     'contas a receber': 'Clientes',
     'duplicatas a receber': 'Clientes',
 
-    // Estoques
-    'estoques': 'Estoques',
-    'estoque': 'Estoques',
-    'mercadorias': 'Estoques',
+    // Inventory
+    estoques: 'Estoques',
+    estoque: 'Estoques',
+    mercadorias: 'Estoques',
 
-    // Fornecedores
-    'fornecedores': 'Fornecedores',
+    // Suppliers
+    fornecedores: 'Fornecedores',
     'contas a pagar': 'Fornecedores',
 
-    // Imobilizado
-    'imobilizado': 'Imobilizado',
+    // Fixed assets
+    imobilizado: 'Imobilizado',
     'ativo imobilizado': 'Imobilizado',
     'bens e direitos': 'Imobilizado',
 
-    // Intangível
-    'intangivel': 'Intangivel',
+    // Intangibles
+    intangivel: 'Intangivel',
 
-    // Outras Receitas
+    // Other revenue
     'outras receitas': 'Outras Receitas',
     'outra receita': 'Outras Receitas',
 
-    // Adiantamentos
-    'adiantamentos': 'Adiantamentos',
-    'adiantamento': 'Adiantamentos',
+    // Advances
+    adiantamentos: 'Adiantamentos',
+    adiantamento: 'Adiantamentos',
 
-    // Despesas Antecipadas
+    // Prepaid expenses
     'despesas antecipadas': 'Despesas Antecipadas',
     'despesa antecipada': 'Despesas Antecipadas',
 
-    // Contas a Pagar CP
+    // Short-term payables
     'contas a pagar cp': 'Contas A Pagar Cp',
     'contas a pagar curto prazo': 'Contas A Pagar Cp',
 
-    // Empréstimos e Financiamentos CP
+    // Short-term loans
     'emprestimos e financiamentos cp': 'Emprestimos E Financiamentos Cp',
     'emprestimo e financiamento cp': 'Emprestimos E Financiamentos Cp',
     'emprestimos cp': 'Emprestimos E Financiamentos Cp',
 
-    // Parcelamentos CP
+    // Installments
     'parcelamentos cp': 'Parcelamentos Cp',
     'parcelamento cp': 'Parcelamentos Cp',
 
-    // Obrigações Trabalhistas
+    // Labor liabilities
     'obrigacoes trabalhistas': 'Obrigacoes Trabalhistas',
     'salarios a pagar': 'Obrigacoes Trabalhistas',
     'encargos trabalhistas': 'Obrigacoes Trabalhistas',
 
-    // Obrigações Tributárias
+    // Tax liabilities
     'obrigacoes tributarias': 'Obrigacoes Tributarias',
     'impostos a pagar': 'Obrigacoes Tributarias',
 
-    // Tributos a Compensar CP
+    // Taxes recoverable
     'tributos a compensarcp': 'Tributos A CompensarCP',
     'tributos a compensar cp': 'Tributos A CompensarCP',
 
-    // Outras Contas a Pagar LP
+    // Long-term payables
     'outras contas a pagar lp': 'Outras Contas A Pagar Lp',
     'outras contas a pagar longo prazo': 'Outras Contas A Pagar Lp',
 
-    // Outras Contas a Receber LP
+    // Long-term receivables
     'outras contas a receber lp': 'Outras Contas A Receber Lp',
     'outras contas a receber longo prazo': 'Outras Contas A Receber Lp',
 
-    // Parcelamentos LP
+    // Long-term installments
     'parcelamentos lp': 'Parcelamentos Lp',
     'parcelamento lp': 'Parcelamentos Lp',
 
-    // Processos Judiciais
+    // Legal processes
     'processos judiciais': 'Processos Judiciais',
     'processo judicial': 'Processos Judiciais',
-    'contingencias': 'Processos Judiciais',
+    contingencias: 'Processos Judiciais',
 
-    // Reserva de Lucros
+    // Equity
     'reserva de lucros': 'Reserva De Lucros',
-    'reservas': 'Reserva De Lucros',
-
-    // Resultado do Exercício
+    reservas: 'Reserva De Lucros',
     'resultado do exercicio': 'Resultado Do Exercicio',
     'lucro do exercicio': 'Resultado Do Exercicio',
 
-    // Depreciação e Amortização
-    'depreciacao e amortizacao': 'Depreciação e Amortização',
-    'depreciacoes': 'Depreciação e Amortização',
-    'amortizacoes': 'Depreciação e Amortização',
-    'depreciacao': 'Depreciação e Amortização',
-    'amortizacao': 'Depreciação e Amortização',
+    // Depreciation and amortization
+    'depreciacao e amortizacao': 'Depreciacao E Amortizacao',
+    depreciacoes: 'Depreciacao E Amortizacao',
+    amortizacoes: 'Depreciacao E Amortizacao',
+    depreciacao: 'Depreciacao E Amortizacao',
+    amortizacao: 'Depreciacao E Amortizacao',
 };
 
-/**
- * Normaliza um nome de categoria para a forma canônica
- * Suporta encoding incorreto e diacríticos
- * Exemplo: "DeduÃ§Ãµes" → "Deduções"
- */
 export const normalizeCategory = (categoryName: string): string | null => {
     if (!categoryName) return null;
-    
-    // Primeiro, tentar normalizar com diacríticos removidos
+
     const withoutDiacritics = removeDiacritics(categoryName);
-    
-    // Buscar no mapeamento de aliases
+
     if (CATEGORY_ALIASES[withoutDiacritics]) {
         return CATEGORY_ALIASES[withoutDiacritics];
     }
-    
-    // Tentar com a versão original (em caso de encoding UTF-8 correto)
+
     const originalLower = categoryName.trim().toLowerCase();
     if (CATEGORY_ALIASES[originalLower]) {
         return CATEGORY_ALIASES[originalLower];
     }
-    
-    // Se não encontrou, retornar null
+
     return null;
 };
 
-/**
- * Verifica se uma categoria é válida
- */
 export const isValidCategory = (categoryName: string): boolean => {
-    return VALID_CATEGORIES.includes(categoryName);
+    const canonical = normalizeCategory(categoryName) || categoryName;
+    return VALID_CATEGORIES.includes(canonical);
 };
 
-/**
- * Retorna a categoria canônica ou a original se não encontrar alias
- */
 export const getCanonicalCategory = (categoryName: string): string => {
     const normalized = normalizeCategory(categoryName);
     return normalized || categoryName;
 };
 
-/**
- * Função de debug para testar normalização
- * Retorna informações sobre como uma string foi normalizada
- */
-export const debugNormalization = (categoryName: string) => {
-    return {
-        original: categoryName,
-        withoutDiacritics: removeDiacritics(categoryName),
-        normalized: normalizeCategory(categoryName),
-        isValid: isValidCategory(normalizeCategory(categoryName) || categoryName),
-    };
+export const getCategoryDisplayLabel = (categoryName: string): string => {
+    const canonical = normalizeCategory(categoryName) || categoryName;
+    return CATEGORY_DISPLAY_LABELS[canonical] || canonical;
 };
+
+export const debugNormalization = (categoryName: string) => ({
+    original: categoryName,
+    withoutDiacritics: removeDiacritics(categoryName),
+    normalized: normalizeCategory(categoryName),
+    isValid: isValidCategory(normalizeCategory(categoryName) || categoryName),
+});

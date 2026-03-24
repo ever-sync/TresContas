@@ -1,15 +1,20 @@
 import { Response } from 'express';
 import { Prisma } from '@prisma/client';
-import { AuthRequest } from '../middlewares/auth.middleware';
-import prisma from '../lib/prisma';
 import bcrypt from 'bcryptjs';
+import prisma from '../lib/prisma';
+import { AuthRequest } from '../middlewares/auth.middleware';
+import { AppError, sendErrorResponse } from '../lib/http';
+import {
+    assertMinimumLength,
+    assertOneOf,
+    assertValidEmail,
+    normalizeEmail,
+    toOptionalTrimmedString,
+    toTrimmedString,
+} from '../lib/validation';
 
-const isNonEmptyString = (value: unknown) =>
-    typeof value === 'string' && value.trim().length > 0;
-
-const isValidEmail = (value: string) => value.includes('@') && value.includes('.');
-
-const isValidRole = (value: string) => ['admin', 'collaborator'].includes(value);
+const VALID_ROLES = ['admin', 'collaborator'] as const;
+const VALID_USER_STATUSES = ['active', 'invited', 'inactive'] as const;
 
 const userSelect = {
     id: true,
@@ -24,14 +29,10 @@ const userSelect = {
     updated_at: true,
 };
 
-/**
- * List all users (team members) of the accounting firm.
- * Accessible by: admin, collaborator
- */
 export const getUsers = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
 
         const users = await prisma.user.findMany({
@@ -42,77 +43,68 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 
         res.json(users);
     } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({ message: 'Erro ao buscar usuários' });
+        return sendErrorResponse(res, error, 'Erro ao buscar usuários');
     }
 };
 
-/**
- * Get a single user by ID.
- * Accessible by: admin, collaborator
- */
 export const getUserById = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const { id } = req.params;
         const user = await prisma.user.findFirst({
             where: {
-                id: String(id),
+                id: String(req.params.id),
                 accounting_id: req.accountingId,
             },
             select: userSelect,
         });
 
         if (!user) {
-            return res.status(404).json({ message: 'Usuário não encontrado' });
+            throw new AppError(404, 'Usuário não encontrado');
         }
 
         res.json(user);
     } catch (error) {
-        console.error('Error fetching user:', error);
-        res.status(500).json({ message: 'Erro ao buscar usuário' });
+        return sendErrorResponse(res, error, 'Erro ao buscar usuário');
     }
 };
 
-/**
- * Create a new collaborator/admin user.
- * Accessible by: admin only
- */
 export const createUser = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const name = isNonEmptyString(req.body?.name) ? req.body.name.trim() : '';
-        const email = isNonEmptyString(req.body?.email) ? req.body.email.trim().toLowerCase() : '';
-        const password = isNonEmptyString(req.body?.password) ? req.body.password : '';
-        const role = isNonEmptyString(req.body?.role) ? req.body.role.trim() : 'collaborator';
-        const phone = isNonEmptyString(req.body?.phone) ? req.body.phone.trim() : null;
+        const name = toTrimmedString(req.body?.name);
+        const email = normalizeEmail(req.body?.email);
+        const password = typeof req.body?.password === 'string' ? req.body.password : '';
+        const role = toTrimmedString(req.body?.role) || 'collaborator';
+        const phone = toOptionalTrimmedString(req.body?.phone);
 
-        const errors: string[] = [];
-
-        if (!name) errors.push('Nome é obrigatório');
-        if (!email) errors.push('Email é obrigatório');
-        if (!password) errors.push('Senha é obrigatória');
-        if (email && !isValidEmail(email)) errors.push('Email inválido');
-        if (!isValidRole(role)) errors.push('Papel inválido (admin ou collaborator)');
-        if (password && password.length < 8) errors.push('Senha deve ter pelo menos 8 caracteres');
-
-        if (errors.length > 0) {
-            return res.status(400).json({ message: errors[0], errors });
+        if (!name) {
+            throw new AppError(400, 'Nome é obrigatório');
         }
 
-        // Check if email already exists
+        if (!email) {
+            throw new AppError(400, 'Email é obrigatório');
+        }
+
+        if (!password) {
+            throw new AppError(400, 'Senha é obrigatória');
+        }
+
+        assertValidEmail(email);
+        assertOneOf(role, VALID_ROLES, 'Papel inválido (admin ou collaborator)');
+        assertMinimumLength(password, 8, 'Senha deve ter pelo menos 8 caracteres');
+
         const existingUser = await prisma.user.findUnique({
             where: { email },
         });
 
         if (existingUser) {
-            return res.status(400).json({ message: 'Email já cadastrado' });
+            throw new AppError(400, 'Email já cadastrado');
         }
 
         const hashedPassword = await bcrypt.hash(password, 12);
@@ -131,100 +123,116 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         });
 
         res.status(201).json(user);
-    } catch (error: any) {
+    } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'Email já cadastrado' });
         }
-        console.error('Error creating user:', error);
-        res.status(500).json({ message: 'Erro ao criar usuário' });
+
+        return sendErrorResponse(res, error, 'Erro ao criar usuário');
     }
 };
 
-/**
- * Update an existing user.
- * Accessible by: admin only
- */
 export const updateUser = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const { id } = req.params;
-
-        // Verify user belongs to same accounting
+        const id = String(req.params.id);
         const existingUser = await prisma.user.findFirst({
-            where: { id: String(id), accounting_id: req.accountingId },
+            where: { id, accounting_id: req.accountingId },
         });
 
         if (!existingUser) {
-            return res.status(404).json({ message: 'Usuário não encontrado' });
+            throw new AppError(404, 'Usuário não encontrado');
         }
 
         const data: Record<string, unknown> = {};
 
-        if (req.body.name !== undefined) data.name = req.body.name;
-        if (req.body.email !== undefined) data.email = req.body.email.toLowerCase();
-        if (req.body.role !== undefined && isValidRole(req.body.role)) data.role = req.body.role;
-        if (req.body.status !== undefined) data.status = req.body.status;
-        if (req.body.phone !== undefined) data.phone = req.body.phone;
-
-        // If password is being changed
-        if (isNonEmptyString(req.body?.password)) {
-            if (req.body.password.length < 8) {
-                return res.status(400).json({ message: 'Senha deve ter pelo menos 8 caracteres' });
+        if (req.body.name !== undefined) {
+            const name = toTrimmedString(req.body.name);
+            if (!name) {
+                throw new AppError(400, 'Nome é obrigatório');
             }
-            data.password_hash = await bcrypt.hash(req.body.password, 12);
+            data.name = name;
+        }
+
+        if (req.body.email !== undefined) {
+            const email = normalizeEmail(req.body.email);
+            if (!email) {
+                throw new AppError(400, 'Email é obrigatório');
+            }
+            assertValidEmail(email);
+            data.email = email;
+        }
+
+        if (req.body.role !== undefined) {
+            data.role = assertOneOf(
+                toTrimmedString(req.body.role),
+                VALID_ROLES,
+                'Papel inválido (admin ou collaborator)'
+            );
+        }
+
+        if (req.body.status !== undefined) {
+            data.status = assertOneOf(
+                toTrimmedString(req.body.status),
+                VALID_USER_STATUSES,
+                'Status inválido'
+            );
+        }
+
+        if (req.body.phone !== undefined) {
+            data.phone = toOptionalTrimmedString(req.body.phone);
+        }
+
+        if (req.body.password !== undefined) {
+            const password = typeof req.body.password === 'string' ? req.body.password : '';
+            assertMinimumLength(password, 8, 'Senha deve ter pelo menos 8 caracteres');
+            data.password_hash = await bcrypt.hash(password, 12);
         }
 
         const updatedUser = await prisma.user.update({
-            where: { id: String(id) },
+            where: { id },
             data,
             select: userSelect,
         });
 
         res.json(updatedUser);
-    } catch (error: any) {
+    } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'Email já cadastrado' });
         }
-        console.error('Error updating user:', error);
-        res.status(500).json({ message: 'Erro ao atualizar usuário' });
+
+        return sendErrorResponse(res, error, 'Erro ao atualizar usuário');
     }
 };
 
-/**
- * Delete a user.
- * Accessible by: admin only
- * Admin cannot delete themselves.
- */
 export const deleteUser = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const { id } = req.params;
+        const id = String(req.params.id);
 
-        // Prevent self-deletion
         if (id === req.userId) {
-            return res.status(400).json({ message: 'Você não pode excluir sua própria conta' });
+            throw new AppError(400, 'Você não pode excluir sua própria conta');
         }
 
         const result = await prisma.user.deleteMany({
             where: {
-                id: String(id),
+                id,
                 accounting_id: req.accountingId,
             },
         });
 
         if (result.count === 0) {
-            return res.status(404).json({ message: 'Usuário não encontrado' });
+            throw new AppError(404, 'Usuário não encontrado');
         }
 
         res.status(204).send();
     } catch (error) {
-        console.error('Error deleting user:', error);
-        res.status(500).json({ message: 'Erro ao excluir usuário' });
+        return sendErrorResponse(res, error, 'Erro ao excluir usuário');
     }
 };

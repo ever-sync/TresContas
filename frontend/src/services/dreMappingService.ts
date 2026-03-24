@@ -1,6 +1,5 @@
-import axios from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import api from './api';
+import { VALID_CATEGORIES } from '../lib/categoryConstants';
 
 export interface DREMapping {
     id: string;
@@ -19,32 +18,22 @@ export interface UnmappedMovement {
     level: number;
 }
 
-const VALID_CATEGORIES = [
-    'Adiantamentos', 'Clientes', 'Contas A Pagar Cp', 'Custos Das Vendas', 'Deduções',
-    'Despesas Administrativas', 'Despesas Antecipadas', 'Despesas Comerciais', 'Despesas Financeiras',
-    'Despesas Tributarias', 'Disponivel', 'Emprestimos E Financiamentos Cp', 'Estoques', 'Fornecedores',
-    'Imobilizado', 'Intangivel', 'Irpj E Csll', 'Obrigacoes Trabalhistas', 'Obrigacoes Tributarias',
-    'Outras Contas A Pagar Lp', 'Outras Contas A Receber Lp', 'Outras Receitas', 'Parcelamentos Cp',
-    'Parcelamentos Lp', 'Processos Judiciais', 'Receita Bruta', 'Receitas Financeiras',
-    'Reserva De Lucros', 'Resultado Do Exercicio', 'Tributos A CompensarCP'
-];
-
 export const dreMappingService = {
     /**
-     * Retorna todas as categorias válidas para mapeamento
+     * Returns all valid categories for mapping.
      */
     getValidCategories: () => VALID_CATEGORIES,
 
     /**
-     * Busca todos os mapeamentos DRE para um cliente
+     * Fetches all DRE mappings for a client.
      */
     getAll: async (clientId: string): Promise<DREMapping[]> => {
-        const response = await axios.get(`${API_BASE_URL}/clients/${clientId}/dre-mappings`);
+        const response = await api.get(`/clients/${clientId}/dre-mappings`);
         return response.data;
     },
 
     /**
-     * Cria ou atualiza um mapeamento DRE
+     * Creates or updates a DRE mapping.
      */
     createOrUpdate: async (
         clientId: string,
@@ -52,7 +41,7 @@ export const dreMappingService = {
         accountName: string,
         category: string
     ): Promise<DREMapping> => {
-        const response = await axios.post(`${API_BASE_URL}/clients/${clientId}/dre-mappings`, {
+        const response = await api.post(`/clients/${clientId}/dre-mappings`, {
             account_code: accountCode,
             account_name: accountName,
             category,
@@ -61,34 +50,34 @@ export const dreMappingService = {
     },
 
     /**
-     * Remove um mapeamento DRE
+     * Removes a DRE mapping.
      */
     delete: async (clientId: string, accountCode: string): Promise<void> => {
-        await axios.delete(`${API_BASE_URL}/clients/${clientId}/dre-mappings/${accountCode}`);
+        await api.delete(`/clients/${clientId}/dre-mappings/${accountCode}`);
     },
 
     /**
-     * Busca movimentações não mapeadas
+     * Fetches unmapped movements.
      */
     getUnmappedMovements: async (
         clientId: string,
         year: number,
         type: 'dre' | 'patrimonial' = 'dre'
     ): Promise<UnmappedMovement[]> => {
-        const response = await axios.get(
-            `${API_BASE_URL}/clients/${clientId}/unmapped-movements?year=${year}&type=${type}`
-        );
+        const response = await api.get(`/clients/${clientId}/unmapped-movements`, {
+            params: { year, type },
+        });
         return response.data;
     },
 
     /**
-     * Importa múltiplos mapeamentos DRE em uma única requisição
+     * Bulk imports DRE mappings in a single request.
      */
     bulkImport: async (
         clientId: string,
         mappings: Array<{ account_code: string; account_name: string; category: string }>
     ): Promise<{ count: number }> => {
-        const response = await axios.post(`${API_BASE_URL}/clients/${clientId}/bulk-dre-mappings`, {
+        const response = await api.post(`/clients/${clientId}/bulk-dre-mappings`, {
             mappings,
         });
         return response.data;

@@ -1,6 +1,8 @@
 import { Response } from 'express';
-import { AuthRequest } from '../middlewares/auth.middleware';
 import prisma from '../lib/prisma';
+import { AuthRequest } from '../middlewares/auth.middleware';
+import { AppError, sendErrorResponse } from '../lib/http';
+import { toTrimmedString } from '../lib/validation';
 
 const accountSelect = {
     id: true,
@@ -33,22 +35,19 @@ const verifyClientOwnership = async (clientId: string, accountingId: string) => 
         where: { id: clientId, accounting_id: accountingId },
         select: { id: true },
     });
+
     return client !== null;
 };
 
-const ensureSharedChartAccess = async (req: AuthRequest, res: Response) => {
+const ensureSharedChartAccess = async (req: AuthRequest) => {
     if (!req.accountingId) {
-        res.status(401).json({ message: 'Nao autorizado' });
-        return false;
+        throw new AppError(401, 'Não autorizado');
     }
 
     const clientId = req.params.clientId ? String(req.params.clientId) : null;
     if (clientId && !await verifyClientOwnership(clientId, req.accountingId)) {
-        res.status(404).json({ message: 'Cliente nao encontrado' });
-        return false;
+        throw new AppError(404, 'Cliente não encontrado');
     }
-
-    return true;
 };
 
 const normalizeAccountType = (type: unknown) =>
@@ -71,15 +70,16 @@ const isTitleType = (type: unknown) => {
 
 const normalizeAccountInput = (account: ImportAccountPayload) => {
     const titleType = isTitleType(account.type);
+
     return {
-        code: String(account.code || '').trim(),
-        reduced_code: account.reduced_code ? String(account.reduced_code).trim() : null,
-        name: String(account.name || '').trim(),
-        level: parseInt(String(account.level || '1'), 10) || 1,
+        code: toTrimmedString(account.code),
+        reduced_code: account.reduced_code ? toTrimmedString(account.reduced_code) : null,
+        name: toTrimmedString(account.name),
+        level: Number.parseInt(String(account.level || '1'), 10) || 1,
         type: titleType ? 'T' : 'A',
-        alias: account.alias ? String(account.alias).trim() : null,
-        report_type: account.report_type ? String(account.report_type).trim() : null,
-        report_category: account.report_category ? String(account.report_category).trim() : null,
+        alias: account.alias ? toTrimmedString(account.alias) : null,
+        report_type: account.report_type ? toTrimmedString(account.report_type) : null,
+        report_category: account.report_category ? toTrimmedString(account.report_category) : null,
         parent_id: null,
         is_analytic: !titleType,
     };
@@ -87,9 +87,7 @@ const normalizeAccountInput = (account: ImportAccountPayload) => {
 
 export const getAll = async (req: AuthRequest, res: Response) => {
     try {
-        if (!await ensureSharedChartAccess(req, res)) {
-            return;
-        }
+        await ensureSharedChartAccess(req);
 
         const accounts = await prisma.chartOfAccounts.findMany({
             where: { accounting_id: req.accountingId },
@@ -98,26 +96,18 @@ export const getAll = async (req: AuthRequest, res: Response) => {
         });
 
         res.json(accounts);
-    } catch (error: any) {
-        console.error('Erro ao buscar plano de contas compartilhado:', error);
-        res.status(500).json({
-            message: 'Erro ao buscar plano de contas',
-            detail: error?.message || String(error),
-            code: error?.code,
-            meta: error?.meta,
-        });
+    } catch (error) {
+        return sendErrorResponse(res, error, 'Erro ao buscar plano de contas');
     }
 };
 
 export const create = async (req: AuthRequest, res: Response) => {
     try {
-        if (!await ensureSharedChartAccess(req, res)) {
-            return;
-        }
+        await ensureSharedChartAccess(req);
 
         const normalized = normalizeAccountInput(req.body as ImportAccountPayload);
         if (!normalized.code || !normalized.name) {
-            return res.status(400).json({ message: 'Codigo e nome sao obrigatorios' });
+            throw new AppError(400, 'Código e nome são obrigatórios');
         }
 
         const account = await prisma.chartOfAccounts.create({
@@ -130,146 +120,133 @@ export const create = async (req: AuthRequest, res: Response) => {
         });
 
         res.status(201).json(account);
-    } catch (error: any) {
-        if (error?.code === 'P2002') {
-            return res.status(400).json({ message: 'Codigo ou codigo reduzido ja existe no plano compartilhado' });
+    } catch (error: unknown) {
+        if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
+            return res.status(400).json({ message: 'Código ou código reduzido já existe no plano compartilhado' });
         }
-        console.error('Erro ao criar conta no plano compartilhado:', error);
-        res.status(500).json({ message: 'Erro ao criar conta' });
+
+        return sendErrorResponse(res, error, 'Erro ao criar conta');
     }
 };
 
 export const bulkImport = async (req: AuthRequest, res: Response) => {
     try {
-        console.log('[bulkImport] accountingId:', req.accountingId, 'body keys:', Object.keys(req.body || {}), 'accounts count:', Array.isArray(req.body?.accounts) ? req.body.accounts.length : 'N/A');
+        await ensureSharedChartAccess(req);
 
-        if (!await ensureSharedChartAccess(req, res)) {
-            return;
-        }
+        const payloadAccounts = Array.isArray(req.body?.accounts)
+            ? req.body.accounts as ImportAccountPayload[]
+            : [];
 
-        const payloadAccounts = Array.isArray(req.body?.accounts) ? req.body.accounts as ImportAccountPayload[] : [];
         if (payloadAccounts.length === 0) {
-            return res.status(400).json({ message: 'Lista de contas e obrigatoria' });
+            throw new AppError(400, 'Lista de contas é obrigatória');
         }
 
         const normalizedAccounts = payloadAccounts.map(normalizeAccountInput);
+
         for (const account of normalizedAccounts) {
             if (!account.code || !account.name) {
-                return res.status(400).json({
-                    message: `Conta invalida: codigo e nome obrigatorios (codigo: ${account.code || 'vazio'})`,
-                });
+                throw new AppError(
+                    400,
+                    `Conta inválida: código e nome obrigatórios (código: ${account.code || 'vazio'})`
+                );
             }
         }
 
-        // Deduplicar por code (manter o último se houver repetidos)
         const deduped = new Map<string, typeof normalizedAccounts[number]>();
         for (const account of normalizedAccounts) {
             deduped.set(account.code, account);
         }
         const uniqueAccounts = Array.from(deduped.values());
 
-        // Deduplicar reduced_code (null é ok, mas dois iguais não)
         const seenReducedCodes = new Set<string>();
         for (const account of uniqueAccounts) {
-            if (account.reduced_code) {
-                if (seenReducedCodes.has(account.reduced_code)) {
-                    account.reduced_code = null; // limpar duplicado
-                } else {
-                    seenReducedCodes.add(account.reduced_code);
-                }
+            if (!account.reduced_code) {
+                continue;
             }
+
+            if (seenReducedCodes.has(account.reduced_code)) {
+                account.reduced_code = null;
+                continue;
+            }
+
+            seenReducedCodes.add(account.reduced_code);
         }
 
-        // Estratégia: delete all + createMany (muito mais rápido que N upserts)
         const batchSize = 500;
         let totalCreated = 0;
 
-        // Buscar IDs das contas atuais para limpar FKs
-        const existingAccountIds = (await prisma.chartOfAccounts.findMany({
-            where: { accounting_id: req.accountingId! },
-            select: { id: true },
-        })).map((a) => a.id);
-
-        if (existingAccountIds.length > 0) {
-            // Remover AccountingEntryItems que referenciam essas contas
-            await prisma.accountingEntryItem.deleteMany({
-                where: { account_id: { in: existingAccountIds } },
-            });
-
-            // Remover DFCLineMappings (FK para ChartOfAccounts)
-            await prisma.dFCLineMapping.deleteMany({
+        await prisma.$transaction(async (tx) => {
+            const existingAccountIds = (await tx.chartOfAccounts.findMany({
                 where: { accounting_id: req.accountingId! },
-            });
+                select: { id: true },
+            })).map((account) => account.id);
 
-            // Remover DREMappings
-            await prisma.dREMapping.deleteMany({
-                where: { accounting_id: req.accountingId! },
-            });
+            if (existingAccountIds.length > 0) {
+                await tx.accountingEntryItem.deleteMany({
+                    where: { account_id: { in: existingAccountIds } },
+                });
 
-            // Deletar contas existentes
-            await prisma.chartOfAccounts.deleteMany({
-                where: { accounting_id: req.accountingId! },
-            });
-        }
+                await tx.dFCLineMapping.deleteMany({
+                    where: { accounting_id: req.accountingId! },
+                });
 
-        for (let i = 0; i < uniqueAccounts.length; i += batchSize) {
-            const batch = uniqueAccounts.slice(i, i + batchSize);
-            const result = await prisma.chartOfAccounts.createMany({
-                data: batch.map((account) => ({
-                    accounting_id: req.accountingId!,
-                    client_id: null,
-                    ...account,
-                })),
-                skipDuplicates: true,
-            });
-            totalCreated += result.count;
-        }
+                await tx.dREMapping.deleteMany({
+                    where: { accounting_id: req.accountingId! },
+                });
+
+                await tx.chartOfAccounts.deleteMany({
+                    where: { accounting_id: req.accountingId! },
+                });
+            }
+
+            for (let index = 0; index < uniqueAccounts.length; index += batchSize) {
+                const batch = uniqueAccounts.slice(index, index + batchSize);
+                const result = await tx.chartOfAccounts.createMany({
+                    data: batch.map((account) => ({
+                        accounting_id: req.accountingId!,
+                        client_id: null,
+                        ...account,
+                    })),
+                    skipDuplicates: true,
+                });
+                totalCreated += result.count;
+            }
+        });
 
         res.json({
             message: 'Plano de contas compartilhado importado com sucesso',
             count: totalCreated,
         });
-    } catch (error: any) {
-        if (error?.code === 'P2002') {
-            return res.status(400).json({ message: 'Codigo ou codigo reduzido duplicado no plano compartilhado' });
+    } catch (error: unknown) {
+        if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {
+            return res.status(400).json({ message: 'Código ou código reduzido duplicado no plano compartilhado' });
         }
-        console.error('Erro ao importar plano de contas compartilhado:', error);
-        res.status(500).json({
-            message: 'Erro ao importar plano de contas',
-            detail: error?.message || String(error),
-            code: error?.code,
-            meta: error?.meta,
-        });
+
+        return sendErrorResponse(res, error, 'Erro ao importar plano de contas');
     }
 };
 
 export const remove = async (req: AuthRequest, res: Response) => {
     try {
-        if (!await ensureSharedChartAccess(req, res)) {
-            return;
-        }
+        await ensureSharedChartAccess(req);
 
-        const id = String(req.params.id);
         const deleted = await prisma.chartOfAccounts.deleteMany({
-            where: { id, accounting_id: req.accountingId },
+            where: { id: String(req.params.id), accounting_id: req.accountingId },
         });
 
         if (deleted.count === 0) {
-            return res.status(404).json({ message: 'Conta nao encontrada' });
+            throw new AppError(404, 'Conta não encontrada');
         }
 
         res.status(204).send();
     } catch (error) {
-        console.error('Erro ao excluir conta do plano compartilhado:', error);
-        res.status(500).json({ message: 'Erro ao excluir conta' });
+        return sendErrorResponse(res, error, 'Erro ao excluir conta');
     }
 };
 
 export const removeAll = async (req: AuthRequest, res: Response) => {
     try {
-        if (!await ensureSharedChartAccess(req, res)) {
-            return;
-        }
+        await ensureSharedChartAccess(req);
 
         const deleted = await prisma.chartOfAccounts.deleteMany({
             where: { accounting_id: req.accountingId },
@@ -277,7 +254,6 @@ export const removeAll = async (req: AuthRequest, res: Response) => {
 
         res.json({ message: 'Plano de contas compartilhado removido', count: deleted.count });
     } catch (error) {
-        console.error('Erro ao limpar plano de contas compartilhado:', error);
-        res.status(500).json({ message: 'Erro ao limpar plano de contas' });
+        return sendErrorResponse(res, error, 'Erro ao limpar plano de contas');
     }
 };

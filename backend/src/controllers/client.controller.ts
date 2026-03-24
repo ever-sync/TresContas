@@ -1,16 +1,21 @@
 import { Response } from 'express';
 import { Prisma } from '@prisma/client';
-import { AuthRequest } from '../middlewares/auth.middleware';
-import prisma from '../lib/prisma';
 import bcrypt from 'bcryptjs';
+import prisma from '../lib/prisma';
+import { AuthRequest } from '../middlewares/auth.middleware';
+import { AppError, sendErrorResponse } from '../lib/http';
+import {
+    assertMinimumLength,
+    assertOneOf,
+    assertValidEmail,
+    normalizeDigits,
+    normalizeEmail,
+    toOptionalTrimmedString,
+    toTrimmedString,
+} from '../lib/validation';
 
-const isNonEmptyString = (value: unknown) =>
-    typeof value === 'string' && value.trim().length > 0;
-
-const isValidEmail = (value: string) => value.includes('@') && value.includes('.');
-
-const isValidTaxRegime = (value: string) =>
-    ['simples', 'presumido', 'real', 'mei'].includes(value);
+const VALID_TAX_REGIMES = ['simples', 'presumido', 'real', 'mei'] as const;
+const VALID_CLIENT_STATUSES = ['active', 'inactive'] as const;
 
 const clientSelect = {
     id: true,
@@ -32,8 +37,9 @@ const clientSelect = {
 export const getClients = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
+
         const clients = await prisma.client.findMany({
             where: { accounting_id: req.accountingId },
             orderBy: { name: 'asc' },
@@ -42,85 +48,80 @@ export const getClients = async (req: AuthRequest, res: Response) => {
 
         res.json(clients);
     } catch (error) {
-        console.error('Error fetching clients:', error);
-        res.status(500).json({ message: 'Erro ao buscar clientes' });
+        return sendErrorResponse(res, error, 'Erro ao buscar clientes');
     }
 };
 
 export const getClientById = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const { id } = req.params;
         const client = await prisma.client.findFirst({
             where: {
-                id: String(id),
+                id: String(req.params.id),
                 accounting_id: req.accountingId,
             },
             select: clientSelect,
         });
 
         if (!client) {
-            return res.status(404).json({ message: 'Cliente não encontrado' });
+            throw new AppError(404, 'Cliente não encontrado');
         }
 
         res.json(client);
     } catch (error) {
-        res.status(500).json({ message: 'Erro ao buscar cliente' });
+        return sendErrorResponse(res, error, 'Erro ao buscar cliente');
     }
 };
 
 export const createClient = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
 
-        const name = isNonEmptyString(req.body?.name) ? req.body.name.trim() : '';
-        const rawCnpj = isNonEmptyString(req.body?.cnpj) ? req.body.cnpj.trim() : '';
-        const cnpj = rawCnpj.replace(/\D/g, ''); // Armazena CNPJ apenas com digitos
-        const email = isNonEmptyString(req.body?.email) ? req.body.email.trim().toLowerCase() : null;
-        const phone = isNonEmptyString(req.body?.phone) ? req.body.phone.trim() : null;
-        const industry = isNonEmptyString(req.body?.industry) ? req.body.industry.trim() : null;
-        const address = isNonEmptyString(req.body?.address) ? req.body.address.trim() : null;
-        const password = isNonEmptyString(req.body?.password) ? req.body.password : '';
-        const tax_regime = isNonEmptyString(req.body?.tax_regime) ? req.body.tax_regime.trim() : null;
-        const representative_email = isNonEmptyString(req.body?.representative_email)
-            ? req.body.representative_email.trim().toLowerCase()
-            : null;
-        const representative_name = isNonEmptyString(req.body?.representative_name)
-            ? req.body.representative_name.trim()
-            : null;
+        const name = toTrimmedString(req.body?.name);
+        const cnpj = normalizeDigits(toTrimmedString(req.body?.cnpj));
+        const email = normalizeEmail(req.body?.email) || null;
+        const rawPhone = toOptionalTrimmedString(req.body?.phone);
+        const phone = rawPhone ? normalizeDigits(rawPhone) : null;
+        const industry = toOptionalTrimmedString(req.body?.industry);
+        const address = toOptionalTrimmedString(req.body?.address);
+        const password = typeof req.body?.password === 'string' ? req.body.password : '';
+        const taxRegime = toOptionalTrimmedString(req.body?.tax_regime);
+        const representativeEmail = normalizeEmail(req.body?.representative_email) || null;
+        const representativeName = toOptionalTrimmedString(req.body?.representative_name);
 
-        const errors: string[] = [];
-
-        if (!name) errors.push('Nome é obrigatório');
-        if (!cnpj) errors.push('CNPJ é obrigatório');
-        if (email && !isValidEmail(email)) errors.push('Email inválido');
-        if (representative_email && !isValidEmail(representative_email)) {
-            errors.push('Email do representante inválido');
-        }
-        if (phone && phone.replace(/\D/g, '').length < 10) {
-            errors.push('Telefone inválido');
-        }
-        if (tax_regime && !isValidTaxRegime(tax_regime)) {
-            errors.push('Regime tributário inválido');
-        }
-        if (!password || password.length < 6) {
-            errors.push('Senha é obrigatória e deve ter pelo menos 6 caracteres');
+        if (!name) {
+            throw new AppError(400, 'Nome é obrigatório');
         }
 
-        if (errors.length > 0) {
-            return res.status(400).json({ message: errors[0], errors });
+        if (!cnpj) {
+            throw new AppError(400, 'CNPJ é obrigatório');
         }
 
-        let password_hash = null;
-        if (password) {
-            const salt = await bcrypt.genSalt(10);
-            password_hash = await bcrypt.hash(password, salt);
+        if (email) {
+            assertValidEmail(email);
         }
+
+        if (representativeEmail) {
+            assertValidEmail(representativeEmail, 'Email do representante');
+        }
+
+        if (phone && phone.length < 10) {
+            throw new AppError(400, 'Telefone inválido');
+        }
+
+        if (taxRegime) {
+            assertOneOf(taxRegime, VALID_TAX_REGIMES, 'Regime tributário inválido');
+        }
+
+        assertMinimumLength(password, 6, 'Senha é obrigatória e deve ter pelo menos 6 caracteres');
+
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
 
         const client = await prisma.client.create({
             data: {
@@ -130,114 +131,156 @@ export const createClient = async (req: AuthRequest, res: Response) => {
                 phone,
                 industry,
                 address,
-                password_hash,
-                tax_regime,
-                representative_email,
-                representative_name,
+                password_hash: passwordHash,
+                tax_regime: taxRegime,
+                representative_email: representativeEmail,
+                representative_name: representativeName,
                 status: 'active',
-                accounting_id: req.accountingId!,
+                accounting_id: req.accountingId,
             },
             select: clientSelect,
         });
 
         res.status(201).json(client);
-    } catch (error: any) {
+    } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'CNPJ já cadastrado' });
         }
+
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
-            console.error('Foreign key constraint failed. Check if accounting_id exists:', req.accountingId);
             return res.status(400).json({ message: 'Usuário administrador não encontrado no banco' });
         }
-        console.error('Detailed error creating client:', error);
-        res.status(500).json({ message: 'Erro ao criar cliente' });
+
+        return sendErrorResponse(res, error, 'Erro ao criar cliente');
     }
 };
 
 export const updateClient = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
-        const { id } = req.params;
-        const {
-            name,
-            cnpj,
-            email,
-            phone,
-            industry,
-            address,
-            tax_regime,
-            representative_email,
-            representative_name,
-            status,
-            password,
-        } = req.body;
 
-        // Check ownership
+        const id = String(req.params.id);
         const existingClient = await prisma.client.findFirst({
-            where: { id: String(id), accounting_id: req.accountingId },
+            where: { id, accounting_id: req.accountingId },
         });
 
         if (!existingClient) {
-            return res.status(404).json({ message: 'Cliente não encontrado' });
+            throw new AppError(404, 'Cliente não encontrado');
         }
 
         const data: Record<string, unknown> = {};
 
-        if (name !== undefined) data.name = name;
-        if (cnpj !== undefined) data.cnpj = cnpj.replace(/\D/g, '');
-        if (email !== undefined) data.email = email ? email.trim().toLowerCase() : email;
-        if (phone !== undefined) data.phone = phone;
-        if (industry !== undefined) data.industry = industry;
-        if (address !== undefined) data.address = address;
-        if (tax_regime !== undefined) data.tax_regime = tax_regime;
-        if (representative_email !== undefined) data.representative_email = representative_email ? representative_email.trim().toLowerCase() : representative_email;
-        if (representative_name !== undefined) data.representative_name = representative_name;
-        if (status !== undefined) data.status = status;
+        if (req.body.name !== undefined) {
+            const name = toTrimmedString(req.body.name);
+            if (!name) {
+                throw new AppError(400, 'Nome é obrigatório');
+            }
+            data.name = name;
+        }
 
-        // Atualizar senha se fornecida
-        if (password && password.length >= 6) {
+        if (req.body.cnpj !== undefined) {
+            const cnpj = normalizeDigits(toTrimmedString(req.body.cnpj));
+            if (!cnpj) {
+                throw new AppError(400, 'CNPJ é obrigatório');
+            }
+            data.cnpj = cnpj;
+        }
+
+        if (req.body.email !== undefined) {
+            const email = normalizeEmail(req.body.email);
+            if (email) {
+                assertValidEmail(email);
+                data.email = email;
+            } else {
+                data.email = null;
+            }
+        }
+
+        if (req.body.phone !== undefined) {
+            const rawPhone = toOptionalTrimmedString(req.body.phone);
+            const phone = rawPhone ? normalizeDigits(rawPhone) : null;
+            if (phone && phone.length < 10) {
+                throw new AppError(400, 'Telefone inválido');
+            }
+            data.phone = phone;
+        }
+
+        if (req.body.industry !== undefined) data.industry = toOptionalTrimmedString(req.body.industry);
+        if (req.body.address !== undefined) data.address = toOptionalTrimmedString(req.body.address);
+
+        if (req.body.tax_regime !== undefined) {
+            const taxRegime = toOptionalTrimmedString(req.body.tax_regime);
+            if (taxRegime) {
+                assertOneOf(taxRegime, VALID_TAX_REGIMES, 'Regime tributário inválido');
+                data.tax_regime = taxRegime;
+            } else {
+                data.tax_regime = null;
+            }
+        }
+
+        if (req.body.representative_email !== undefined) {
+            const representativeEmail = normalizeEmail(req.body.representative_email);
+            if (representativeEmail) {
+                assertValidEmail(representativeEmail, 'Email do representante');
+                data.representative_email = representativeEmail;
+            } else {
+                data.representative_email = null;
+            }
+        }
+
+        if (req.body.representative_name !== undefined) {
+            data.representative_name = toOptionalTrimmedString(req.body.representative_name);
+        }
+
+        if (req.body.status !== undefined) {
+            const status = toTrimmedString(req.body.status);
+            data.status = assertOneOf(status, VALID_CLIENT_STATUSES, 'Status inválido');
+        }
+
+        if (req.body.password !== undefined) {
+            const password = typeof req.body.password === 'string' ? req.body.password : '';
+            assertMinimumLength(password, 6, 'Senha deve ter pelo menos 6 caracteres');
             const salt = await bcrypt.genSalt(10);
             data.password_hash = await bcrypt.hash(password, salt);
         }
 
         const updatedClient = await prisma.client.update({
-            where: { id: String(id) },
+            where: { id },
             data,
             select: clientSelect,
         });
 
         res.json(updatedClient);
-    } catch (error: any) {
+    } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
             return res.status(400).json({ message: 'CNPJ já cadastrado' });
         }
-        console.error('Detailed error updating client:', error);
-        res.status(500).json({ message: 'Erro ao atualizar cliente' });
+
+        return sendErrorResponse(res, error, 'Erro ao atualizar cliente');
     }
 };
 
 export const deleteClient = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
-            return res.status(401).json({ message: 'Não autorizado' });
+            throw new AppError(401, 'Não autorizado');
         }
-        const { id } = req.params;
 
         const result = await prisma.client.deleteMany({
             where: {
-                id: String(id),
-                accounting_id: req.accountingId
+                id: String(req.params.id),
+                accounting_id: req.accountingId,
             },
         });
 
         if (result.count === 0) {
-            return res.status(404).json({ message: 'Cliente não encontrado ou não autorizado' });
+            throw new AppError(404, 'Cliente não encontrado ou não autorizado');
         }
 
         res.status(204).send();
     } catch (error) {
-        res.status(500).json({ message: 'Erro ao excluir cliente' });
+        return sendErrorResponse(res, error, 'Erro ao excluir cliente');
     }
 };

@@ -1,8 +1,9 @@
 
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useMutation } from '@tanstack/react-query';
 import { LayoutDashboard, Mail, Lock, Building, FileText, Phone, ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -25,15 +26,14 @@ const Register = () => {
     const navigate = useNavigate();
     const setAuth = useAuthStore((state) => state.setAuth);
     const [showPassword, setShowPassword] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-    const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<RegisterFormData>({
+    const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<RegisterFormData>({
         resolver: zodResolver(registerSchema),
     });
 
-    const cnpjValue = watch('cnpj');
-    const phoneValue = watch('phone');
+    const cnpjValue = useWatch({ control, name: 'cnpj' });
+    const phoneValue = useWatch({ control, name: 'phone' });
 
     useEffect(() => {
         if (cnpjValue) {
@@ -47,21 +47,28 @@ const Register = () => {
         }
     }, [phoneValue, setValue]);
 
-    const onSubmit = async (data: RegisterFormData) => {
-        try {
-            setIsLoading(true);
-            setErrorMessage(null);
+    const registerMutation = useMutation({
+        mutationFn: async (data: RegisterFormData) => {
             const response = await api.post<StaffAuthResponse>('/auth/register', data);
-            setAuth(response.data.user, response.data.token, response.data.expires_at);
+            return response.data;
+        },
+        onSuccess: (data) => {
+            setAuth(data.user, data.token, data.expires_at);
             navigate('/dashboard');
-        } catch (error: unknown) {
+        },
+        onError: (error: unknown) => {
             const message = axios.isAxiosError(error)
                 ? error.response?.data?.message || 'Erro ao realizar cadastro'
-                : 'Erro ao realizar cadastro';
+                : error instanceof Error
+                    ? error.message
+                    : 'Erro ao realizar cadastro';
             setErrorMessage(message);
-        } finally {
-            setIsLoading(false);
-        }
+        },
+    });
+
+    const onSubmit = (data: RegisterFormData) => {
+        setErrorMessage(null);
+        registerMutation.mutate(data);
     };
 
     return (
@@ -171,10 +178,10 @@ const Register = () => {
 
                         <button
                             type="submit"
-                            disabled={isLoading}
+                            disabled={registerMutation.isPending}
                             className="w-full bg-linear-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-4 rounded-2xl shadow-[0_8px_30px_rgb(8,145,178,0.2)] transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
                         >
-                            {isLoading ? (
+                            {registerMutation.isPending ? (
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                                 <>

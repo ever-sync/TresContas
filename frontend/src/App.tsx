@@ -1,13 +1,14 @@
 import React, { Suspense, lazy, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 
+import AppErrorBoundary from './components/AppErrorBoundary';
+import { queryClient } from './lib/queryClient';
 import { useAuthStore } from './stores/useAuthStore';
 import { useClientAuthStore } from './stores/useClientAuthStore';
 import { clearExpiredSessions, isSessionExpired } from './lib/authSession';
 
-const queryClient = new QueryClient();
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -104,24 +105,26 @@ function App() {
       <Router>
         <AuthSessionBootstrap />
         <Suspense fallback={<RouteLoadingScreen />}>
-          <Routes>
-            {/* Public routes */}
-            <Route path="/hero" element={<HeroPage />} />
-            <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
-            <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
-            <Route path="/client-login" element={<ClientLogin />} />
+          <AppErrorBoundary>
+            <Routes>
+              {/* Public routes */}
+              <Route path="/hero" element={<HeroPage />} />
+              <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
+              <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
+              <Route path="/client-login" element={<ClientLogin />} />
 
-            {/* Staff routes (admin + collaborator see same dashboard) */}
-            <Route path="/dashboard" element={<RequireStaff><Dashboard /></RequireStaff>} />
+              {/* Staff routes (admin + collaborator see same dashboard) */}
+              <Route path="/dashboard" element={<RequireStaff><Dashboard /></RequireStaff>} />
 
-            {/* Client portal (read-only) */}
-            <Route path="/portal" element={<RequireClient><ClientDashboard /></RequireClient>} />
+              {/* Client portal (read-only) */}
+              <Route path="/portal" element={<RequireClient><ClientDashboard /></RequireClient>} />
 
-            {/* Staff viewing specific client */}
-            <Route path="/client/:id" element={<RequireStaff><ClientDashboard /></RequireStaff>} />
+              {/* Staff viewing specific client */}
+              <Route path="/client/:id" element={<RequireStaff><ClientDashboard /></RequireStaff>} />
 
-            <Route path="/" element={<Navigate to="/login" replace />} />
-          </Routes>
+              <Route path="/" element={<Navigate to="/login" replace />} />
+            </Routes>
+          </AppErrorBoundary>
         </Suspense>
       </Router>
     </QueryClientProvider>
