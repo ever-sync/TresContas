@@ -1,7 +1,6 @@
 import { readFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { Response } from 'express';
-import formidable, { type Fields, type File as FormidableFile, type Files } from 'formidable';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
@@ -14,6 +13,36 @@ import {
 import { recordAuditEvent } from '../lib/auditEvents';
 
 const MAX_DOCUMENT_SIZE_BYTES = 12 * 1024 * 1024;
+
+type FormidableFieldValue = string | string[] | undefined;
+
+type FormidableFields = Record<string, FormidableFieldValue>;
+
+type FormidableFile = {
+    filepath: string;
+    originalFilename?: string | null;
+    newFilename?: string | null;
+    mimetype?: string | null;
+};
+
+type FormidableFiles = Record<string, FormidableFile | FormidableFile[] | undefined>;
+
+type FormidableOptions = {
+    multiples?: boolean;
+    maxFileSize?: number;
+    keepExtensions?: boolean;
+    allowEmptyFiles?: boolean;
+};
+
+type FormidableInstance = {
+    parse: (req: AuthRequest) => Promise<[FormidableFields, FormidableFiles]>;
+};
+
+const formidableModule = require('formidable') as {
+    default: (options?: FormidableOptions) => FormidableInstance;
+};
+
+const formidable = formidableModule.default;
 
 type BaseDocumentRow = {
     id: string;
@@ -101,7 +130,7 @@ const mapStaffDocument = (row: StaffDocumentRow) => ({
     },
 });
 
-const getFirstString = (fields: Fields, name: string) => {
+const getFirstString = (fields: FormidableFields, name: string) => {
     const value = fields[name];
     if (typeof value === 'string') {
         return value.trim();
@@ -114,7 +143,7 @@ const getFirstString = (fields: Fields, name: string) => {
     return '';
 };
 
-const getUploadedFile = (files: Files, fieldName: string): FormidableFile | null => {
+const getUploadedFile = (files: FormidableFiles, fieldName: string): FormidableFile | null => {
     const fileValue = files[fieldName];
     if (!fileValue) return null;
 
