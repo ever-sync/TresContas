@@ -2,16 +2,21 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { resolveDatabaseSslOptions, securityConfig } from '../config/security';
+import { normalizeDatabaseConnectionString } from './databaseUrl';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
     throw new Error('DATABASE_URL is required');
 }
 
+const normalizedConnectionString = normalizeDatabaseConnectionString(
+    connectionString,
+    securityConfig.databaseSslMode
+);
 const ssl = resolveDatabaseSslOptions(securityConfig);
 
 const pool = new Pool({
-    connectionString,
+    connectionString: normalizedConnectionString,
     ssl,
     max: 10,
 });

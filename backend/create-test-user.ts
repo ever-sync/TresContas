@@ -3,13 +3,18 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
+import { resolveDatabaseSslOptions, securityConfig } from './src/config/security';
+import { normalizeDatabaseConnectionString } from './src/lib/databaseUrl';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
     throw new Error('DATABASE_URL is required');
 }
 
-const pool = new Pool({ connectionString });
+const pool = new Pool({
+    connectionString: normalizeDatabaseConnectionString(connectionString, securityConfig.databaseSslMode),
+    ssl: resolveDatabaseSslOptions(securityConfig),
+});
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 

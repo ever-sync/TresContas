@@ -10,8 +10,8 @@
     "typecheck": "tsc --noEmit",
     "generate:prisma": "prisma generate",
     "migrate:client-documents": "ts-node src/scripts/migrate-client-documents.ts",
-    "test": "node ./node_modules/vitest/vitest.mjs run tests/app-security.test.ts tests/security-config.test.ts --environment node --pool threads",
-    "test:watch": "node ./node_modules/vitest/vitest.mjs tests/app-security.test.ts tests/security-config.test.ts --environment node --pool threads"
+    "test": "node ./node_modules/vitest/vitest.mjs run tests/app-security.test.ts tests/security-config.test.ts tests/database-url.test.ts --environment node --pool threads",
+    "test:watch": "node ./node_modules/vitest/vitest.mjs tests/app-security.test.ts tests/security-config.test.ts tests/database-url.test.ts --environment node --pool threads"
   },
   "keywords": [],
   "author": "",

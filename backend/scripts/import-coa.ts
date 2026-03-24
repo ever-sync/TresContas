@@ -7,14 +7,16 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import path from 'path';
+import { resolveDatabaseSslOptions, securityConfig } from '../src/config/security';
+import { normalizeDatabaseConnectionString } from '../src/lib/databaseUrl';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres.zwrhsvqblidnjjkblzih:Trescon%402025@aws-0-us-west-2.pooler.supabase.com:5432/postgres?sslmode=require';
 
 const pool = new Pool({
-    connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
+    connectionString: normalizeDatabaseConnectionString(DATABASE_URL, securityConfig.databaseSslMode),
+    ssl: resolveDatabaseSslOptions(securityConfig),
     max: 5,
 });
 const adapter = new PrismaPg(pool);
