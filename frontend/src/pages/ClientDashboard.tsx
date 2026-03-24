@@ -897,26 +897,98 @@ const MockModuleSection = ({
                 : 'grid-cols-1 xl:grid-cols-3';
     const lineChart = module.charts?.find((chart): chart is MockModuleLineChart => chart.type === 'line');
     const pieChart = module.charts?.find((chart): chart is MockModulePieChart => chart.type === 'pie');
+    const heroStatuses = module.statuses.slice(0, 3);
+    const heroActions = module.actions.slice(0, 3);
+    const heroCards = module.cards.slice(0, 3);
 
     return (
         <div ref={reportRef} className="space-y-6 animate-in fade-in duration-500 pb-12">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h3 className="text-3xl font-bold text-white tracking-tight">{module.title}</h3>
-                    <p className="text-white/40 text-sm mt-2 max-w-2xl">{module.description}</p>
+            <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
+                <div className="xl:col-span-3 relative overflow-hidden rounded-[28px] border border-cyan-500/15 bg-linear-to-br from-[#12304d] via-[#0d1829] to-[#101f35] p-7 shadow-2xl shadow-black/20">
+                    <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
+                    <div className="absolute -bottom-20 left-12 h-52 w-52 rounded-full bg-blue-500/10 blur-3xl" />
+                    <div className="relative z-10 space-y-6">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.24em] text-cyan-300">
+                                    <Sparkles className="h-3.5 w-3.5" />
+                                    Módulo estratégico
+                                </div>
+                                <h3 className="mt-4 text-3xl font-black tracking-tight text-white">{module.title}</h3>
+                                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/55">{module.description}</p>
+                            </div>
+                            <div className="hidden md:flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-white/40">
+                                <Sparkles className="w-4 h-4 text-cyan-400" />
+                                <span className="text-xs font-bold uppercase tracking-[0.2em]">Mockado</span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {heroCards.map((card) => (
+                                <div key={`hero-${card.label}`} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 backdrop-blur-sm">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">{card.label}</p>
+                                    <p className="mt-2 text-xl font-black tracking-tight text-white">{card.value}</p>
+                                    <p className="mt-2 text-xs leading-relaxed text-white/40">{card.hint}</p>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                            {heroStatuses.map((status) => (
+                                <div key={`hero-status-${status.label}`} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2">
+                                    <span className={`h-2.5 w-2.5 rounded-full ${status.tone === 'ok' ? 'bg-emerald-400' : status.tone === 'warn' ? 'bg-amber-400' : 'bg-cyan-400'}`} />
+                                    <span className="text-xs font-bold text-white/70">{status.label}</span>
+                                    <span className="text-xs text-white/35">{status.value}</span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-black/20 px-5 py-4">
+                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/35">Leitura rápida</p>
+                            <p className="mt-2 text-sm leading-relaxed text-white/65">{module.note}</p>
+                        </div>
+                    </div>
                 </div>
-                <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40">
-                    <Sparkles className="w-4 h-4 text-cyan-400" />
-                    <span className="text-xs font-bold uppercase tracking-[0.2em]">Mockado</span>
+
+                <div className="xl:col-span-2 rounded-[28px] border border-white/10 bg-[#0d1829]/90 p-6 shadow-2xl shadow-black/20">
+                    <div className="flex items-start justify-between gap-4 mb-6">
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300/70">Pulso operacional</p>
+                            <h4 className="mt-2 text-xl font-black tracking-tight text-white">Prioridades desta aba</h4>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-cyan-300">
+                            <BarChart3 className="h-5 w-5" />
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {heroActions.map((action, index) => (
+                            <div key={`hero-action-${action.label}`} className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-bold text-white">{action.label}</p>
+                                    <span className="text-[10px] font-black uppercase tracking-[0.24em] text-white/25">0{index + 1}</span>
+                                </div>
+                                <p className="mt-2 text-xs leading-relaxed text-white/45">{action.detail}</p>
+                                <div className="mt-4 h-2 rounded-full bg-white/5">
+                                    <div
+                                        className="h-2 rounded-full bg-linear-to-r from-cyan-400 via-blue-500 to-emerald-400"
+                                        style={{ width: `${92 - index * 18}%` }}
+                                    />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                 {module.cards.map((card) => (
-                    <div key={card.label} className={`bg-linear-to-br ${MODULE_CARD_TONES[card.tone]} backdrop-blur-xl border rounded-2xl p-5`}>
-                        <p className="text-white/60 text-xs font-black uppercase tracking-widest mb-2">{card.label}</p>
-                        <h4 className="text-white text-2xl font-black tracking-tight">{card.value}</h4>
-                        <p className="text-white/45 text-xs mt-2">{card.hint}</p>
+                    <div key={card.label} className={`group relative overflow-hidden bg-linear-to-br ${MODULE_CARD_TONES[card.tone]} backdrop-blur-xl border rounded-2xl p-5`}>
+                        <div className="absolute inset-x-0 top-0 h-1 bg-white/20" />
+                        <div className="absolute -right-10 -top-10 h-24 w-24 rounded-full bg-white/10 blur-2xl transition-opacity group-hover:opacity-100" />
+                        <p className="relative text-white/60 text-xs font-black uppercase tracking-widest mb-2">{card.label}</p>
+                        <h4 className="relative text-white text-2xl font-black tracking-tight">{card.value}</h4>
+                        <p className="relative text-white/45 text-xs mt-2">{card.hint}</p>
                     </div>
                 ))}
             </div>
