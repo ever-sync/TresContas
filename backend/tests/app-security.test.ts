@@ -6,6 +6,12 @@ const prismaMock = {
         findFirst: vi.fn(),
         create: vi.fn(),
     },
+    authSession: {
+        create: vi.fn(),
+        findUnique: vi.fn(),
+        update: vi.fn(),
+        updateMany: vi.fn(),
+    },
     user: {
         findUnique: vi.fn(),
         create: vi.fn(),
@@ -14,6 +20,8 @@ const prismaMock = {
         findUnique: vi.fn(),
         findMany: vi.fn(),
     },
+    $executeRaw: vi.fn(),
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
 };
 
@@ -65,12 +73,30 @@ const loadApp = async () => {
 beforeEach(() => {
     prismaMock.accounting.findFirst.mockReset();
     prismaMock.accounting.create.mockReset();
+    prismaMock.authSession.create.mockReset();
+    prismaMock.authSession.findUnique.mockReset();
+    prismaMock.authSession.update.mockReset();
+    prismaMock.authSession.updateMany.mockReset();
     prismaMock.user.findUnique.mockReset();
     prismaMock.user.create.mockReset();
     prismaMock.client.findUnique.mockReset();
     prismaMock.client.findMany.mockReset();
+    prismaMock.$executeRaw.mockReset();
+    prismaMock.$queryRaw.mockReset();
     prismaMock.$transaction.mockReset();
-    prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock));
+    prismaMock.$executeRaw.mockResolvedValue(1);
+    prismaMock.$queryRaw.mockResolvedValue([]);
+    prismaMock.$transaction.mockImplementation(async (arg: unknown) => {
+        if (Array.isArray(arg)) {
+            return Promise.all(arg as Array<Promise<unknown>>);
+        }
+
+        if (typeof arg === 'function') {
+            return arg(prismaMock);
+        }
+
+        return null;
+    });
     bcryptMock.hash.mockReset();
     bcryptMock.compare.mockReset();
 });
@@ -113,7 +139,7 @@ describe('app security', () => {
         expect(response.headers['access-control-allow-origin']).toBeUndefined();
     });
 
-    it('returns expires_at in login responses', async () => {
+    it('sets auth cookies on login responses', async () => {
         prismaMock.user.findUnique.mockResolvedValue({
             id: 'user-1',
             accounting_id: 'accounting-1',
@@ -123,9 +149,13 @@ describe('app security', () => {
             email: 'raphael@example.com',
             password_hash: 'hashed-password',
             accounting: {
+                id: 'accounting-1',
                 name: 'TresContas',
                 cnpj: '12345678000199',
             },
+        });
+        prismaMock.authSession.create.mockResolvedValue({
+            id: 'session-1',
         });
         bcryptMock.compare.mockResolvedValue(true);
 
@@ -135,9 +165,37 @@ describe('app security', () => {
             .send({ email: 'raphael@example.com', password: 'strong-password' });
 
         expect(response.status).toBe(200);
-        expect(response.body.token).toEqual(expect.any(String));
         expect(response.body.expires_at).toEqual(expect.any(String));
-        expect(Number.isNaN(Date.parse(response.body.expires_at))).toBe(false);
+        expect(response.body.user).toMatchObject({
+            id: 'user-1',
+            email: 'raphael@example.com',
+            role: 'admin',
+            accountingId: 'accounting-1',
+            accountingName: 'TresContas',
+            cnpj: '12345678000199',
+        });
+        expect(response.headers['set-cookie']).toEqual(
+            expect.arrayContaining([
+                expect.stringContaining('tc_staff_at='),
+                expect.stringContaining('tc_staff_rt='),
+            ])
+        );
+    });
+
+    it('accepts forgot-password requests without revealing account existence', async () => {
+        prismaMock.user.findUnique.mockResolvedValue({
+            id: 'user-1',
+            accounting_id: 'accounting-1',
+            email: 'raphael@example.com',
+        });
+
+        const app = await loadApp();
+        const response = await request(app)
+            .post('/api/auth/forgot-password')
+            .send({ email: 'raphael@example.com' });
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toBe('Se existir uma conta associada, voce recebera instrucoes para redefinir a senha.');
     });
 
     it('rate limits repeated login attempts', async () => {

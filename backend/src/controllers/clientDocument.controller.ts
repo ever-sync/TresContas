@@ -1,5 +1,7 @@
-import { Response } from 'express';
+import { readFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
+import { Response } from 'express';
+import formidable, { type Fields, type File as FormidableFile, type Files } from 'formidable';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
@@ -9,6 +11,7 @@ import {
     readDocumentStorage,
     writeDocumentStorage,
 } from '../lib/documentStorage';
+import { recordAuditEvent } from '../lib/auditEvents';
 
 const MAX_DOCUMENT_SIZE_BYTES = 12 * 1024 * 1024;
 
@@ -30,12 +33,29 @@ type StaffDocumentRow = BaseDocumentRow & {
 };
 
 type DownloadDocumentRow = {
+    id: string;
     original_name: string;
     mime_type: string;
     size_bytes: number;
     storage_path: string | null;
     content: Buffer | null;
 };
+
+type UploadedDocumentInput =
+    | {
+        originalName: string;
+        displayName: string;
+        category: string;
+        mimeType: string;
+        content: Buffer;
+    }
+    | {
+        originalName: string;
+        displayName: string;
+        category: string;
+        mimeType: string;
+        content: Buffer;
+    };
 
 const parseBase64Content = (value: unknown) => {
     const normalized = typeof value === 'string' ? value.trim() : '';
@@ -81,6 +101,98 @@ const mapStaffDocument = (row: StaffDocumentRow) => ({
     },
 });
 
+const getFirstString = (fields: Fields, name: string) => {
+    const value = fields[name];
+    if (typeof value === 'string') {
+        return value.trim();
+    }
+
+    if (Array.isArray(value) && typeof value[0] === 'string') {
+        return value[0].trim();
+    }
+
+    return '';
+};
+
+const getUploadedFile = (files: Files, fieldName: string): FormidableFile | null => {
+    const fileValue = files[fieldName];
+    if (!fileValue) return null;
+
+    return Array.isArray(fileValue) ? fileValue[0] : fileValue;
+};
+
+const parseMultipartDocument = async (req: AuthRequest): Promise<UploadedDocumentInput> => {
+    const form = formidable({
+        multiples: false,
+        maxFileSize: MAX_DOCUMENT_SIZE_BYTES,
+        keepExtensions: true,
+        allowEmptyFiles: false,
+    });
+
+    const [fields, files] = await form.parse(req);
+    const file = getUploadedFile(files, 'document');
+
+    if (!file) {
+        throw new Error('Arquivo obrigatorio');
+    }
+
+    const displayName = getFirstString(fields, 'display_name');
+    const category = getFirstString(fields, 'category');
+    const mimeType = file.mimetype || 'application/octet-stream';
+    const originalName = file.originalFilename || file.newFilename || 'documento';
+
+    if (!displayName || !category) {
+        throw new Error('Nome, categoria e arquivo sao obrigatorios');
+    }
+
+    const content = await readFile(file.filepath);
+
+    if (content.byteLength > MAX_DOCUMENT_SIZE_BYTES) {
+        throw new Error('Arquivo excede o limite de 12 MB');
+    }
+
+    return {
+        originalName,
+        displayName,
+        category,
+        mimeType,
+        content,
+    };
+};
+
+const parseJsonDocument = (req: AuthRequest): UploadedDocumentInput => {
+    const originalName = isNonEmptyString(req.body?.original_name) ? req.body.original_name.trim() : '';
+    const displayName = isNonEmptyString(req.body?.display_name) ? req.body.display_name.trim() : '';
+    const category = isNonEmptyString(req.body?.category) ? req.body.category.trim() : '';
+    const mimeType = isNonEmptyString(req.body?.mime_type) ? req.body.mime_type.trim() : 'application/octet-stream';
+    const content = parseBase64Content(req.body?.content_base64);
+
+    if (!originalName || !displayName || !category || !content) {
+        throw new Error('Nome, categoria e arquivo sao obrigatorios');
+    }
+
+    if (content.byteLength > MAX_DOCUMENT_SIZE_BYTES) {
+        throw new Error('Arquivo excede o limite de 12 MB');
+    }
+
+    return {
+        originalName,
+        displayName,
+        category,
+        mimeType,
+        content,
+    };
+};
+
+const parseDocumentUpload = async (req: AuthRequest) => {
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if (contentType.includes('multipart/form-data')) {
+        return parseMultipartDocument(req);
+    }
+
+    return parseJsonDocument(req);
+};
+
 export const listClientDocuments = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
@@ -121,7 +233,7 @@ export const downloadClientDocument = async (req: AuthRequest, res: Response) =>
 
         const id = String(req.params.id);
         const documents = await prisma.$queryRaw<DownloadDocumentRow[]>(Prisma.sql`
-            SELECT original_name, mime_type, size_bytes, storage_path, content
+            SELECT id, original_name, mime_type, size_bytes, storage_path, content
             FROM "ClientDocument"
             WHERE id = ${id} AND accounting_id = ${req.accountingId}
             LIMIT 1
@@ -136,6 +248,19 @@ export const downloadClientDocument = async (req: AuthRequest, res: Response) =>
         if (!content) {
             return res.status(404).json({ message: 'Documento nao encontrado' });
         }
+
+        await recordAuditEvent({
+            action: 'document.download',
+            entityType: 'client_document',
+            entityId: document.id,
+            accountingId: req.accountingId,
+            actorId: req.userId,
+            actorRole: req.role,
+            request: req,
+            metadata: {
+                sizeBytes: document.size_bytes,
+            },
+        });
 
         setDownloadHeaders(res, document.original_name, document.mime_type, document.size_bytes);
         res.send(content);
@@ -179,27 +304,14 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
             return res.status(401).json({ message: 'Nao autorizado' });
         }
 
-        const originalName = isNonEmptyString(req.body?.original_name) ? req.body.original_name.trim() : '';
-        const displayName = isNonEmptyString(req.body?.display_name) ? req.body.display_name.trim() : '';
-        const category = isNonEmptyString(req.body?.category) ? req.body.category.trim() : '';
-        const mimeType = isNonEmptyString(req.body?.mime_type) ? req.body.mime_type.trim() : 'application/octet-stream';
-        const content = parseBase64Content(req.body?.content_base64);
-
-        if (!originalName || !displayName || !category || !content) {
-            return res.status(400).json({ message: 'Nome, categoria e arquivo sao obrigatorios' });
-        }
-
-        if (content.byteLength > MAX_DOCUMENT_SIZE_BYTES) {
-            return res.status(400).json({ message: 'Arquivo excede o limite de 12 MB' });
-        }
-
+        const upload = await parseDocumentUpload(req);
         const documentId = randomUUID();
         const storagePath = buildDocumentStoragePath(req.accountingId, req.clientId, documentId);
 
-        await writeDocumentStorage(storagePath, content);
+        await writeDocumentStorage(storagePath, upload.content);
 
         try {
-            const documents = await prisma.$queryRaw<BaseDocumentRow[]>(Prisma.sql`
+            await prisma.$executeRaw(Prisma.sql`
                 INSERT INTO "ClientDocument" (
                     id,
                     accounting_id,
@@ -210,21 +322,27 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
                     mime_type,
                     size_bytes,
                     storage_path,
-                    content
-                )
-                VALUES (
+                    content,
+                    created_at,
+                    updated_at
+                ) VALUES (
                     ${documentId},
                     ${req.accountingId},
                     ${req.clientId},
-                    ${originalName},
-                    ${displayName},
-                    ${category},
-                    ${mimeType},
-                    ${content.byteLength},
+                    ${upload.originalName},
+                    ${upload.displayName},
+                    ${upload.category},
+                    ${upload.mimeType},
+                    ${upload.content.byteLength},
                     ${storagePath},
-                    ${null}
+                    ${null},
+                    ${new Date()},
+                    ${new Date()}
                 )
-                RETURNING
+            `);
+
+            const createdRows = await prisma.$queryRaw<BaseDocumentRow[]>(Prisma.sql`
+                SELECT
                     id,
                     original_name,
                     display_name,
@@ -233,16 +351,40 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
                     size_bytes,
                     created_at,
                     updated_at
+                FROM "ClientDocument"
+                WHERE id = ${documentId}
+                LIMIT 1
             `);
+            const created = createdRows[0];
 
-            res.status(201).json(mapBaseDocument(documents[0]));
+            if (!created) {
+                throw new Error('Documento nao encontrado apos envio');
+            }
+
+            await recordAuditEvent({
+                action: 'client.document.upload',
+                entityType: 'client_document',
+                entityId: created.id,
+                accountingId: req.accountingId,
+                clientId: req.clientId,
+                actorId: req.clientId,
+                actorRole: 'client',
+                request: req,
+                metadata: {
+                    category: created.category,
+                    sizeBytes: created.size_bytes,
+                },
+            });
+
+            res.status(201).json(mapBaseDocument(created));
         } catch (error) {
             await deleteDocumentStorage(storagePath);
             throw error;
         }
     } catch (error) {
         console.error('Erro ao criar documento do cliente:', error);
-        res.status(500).json({ message: 'Erro ao enviar documento' });
+        const message = error instanceof Error ? error.message : 'Erro ao enviar documento';
+        res.status(400).json({ message });
     }
 };
 
@@ -254,7 +396,7 @@ export const downloadClientPortalDocument = async (req: AuthRequest, res: Respon
 
         const id = String(req.params.id);
         const documents = await prisma.$queryRaw<DownloadDocumentRow[]>(Prisma.sql`
-            SELECT original_name, mime_type, size_bytes, storage_path, content
+            SELECT id, original_name, mime_type, size_bytes, storage_path, content
             FROM "ClientDocument"
             WHERE id = ${id} AND client_id = ${req.clientId}
             LIMIT 1
@@ -269,6 +411,20 @@ export const downloadClientPortalDocument = async (req: AuthRequest, res: Respon
         if (!content) {
             return res.status(404).json({ message: 'Documento nao encontrado' });
         }
+
+        await recordAuditEvent({
+            action: 'client.document.download',
+            entityType: 'client_document',
+            entityId: document.id,
+            accountingId: req.accountingId,
+            clientId: req.clientId,
+            actorId: req.clientId,
+            actorRole: 'client',
+            request: req,
+            metadata: {
+                sizeBytes: document.size_bytes,
+            },
+        });
 
         setDownloadHeaders(res, document.original_name, document.mime_type, document.size_bytes);
         res.send(content);

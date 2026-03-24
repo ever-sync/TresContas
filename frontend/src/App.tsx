@@ -7,7 +7,7 @@ import AppErrorBoundary from './components/AppErrorBoundary';
 import { queryClient } from './lib/queryClient';
 import { useAuthStore } from './stores/useAuthStore';
 import { useClientAuthStore } from './stores/useClientAuthStore';
-import { clearExpiredSessions, isSessionExpired } from './lib/authSession';
+import { bootstrapAuthSessions } from './lib/authSession';
 
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
@@ -18,12 +18,7 @@ const HeroPage = lazy(() => import('./pages/HeroPage'));
 
 const AuthSessionBootstrap = () => {
   useEffect(() => {
-    clearExpiredSessions();
-    const intervalId = window.setInterval(() => {
-      clearExpiredSessions();
-    }, 30_000);
-
-    return () => window.clearInterval(intervalId);
+    void bootstrapAuthSessions();
   }, []);
 
   return null;
@@ -34,11 +29,14 @@ const AuthSessionBootstrap = () => {
  * Redirects to /login if not authenticated.
  */
 const RequireStaff = ({ children }: { children: React.ReactNode }) => {
-  const token = useAuthStore((state) => state.token);
+  const status = useAuthStore((state) => state.status);
   const user = useAuthStore((state) => state.user);
-  const expiresAt = useAuthStore((state) => state.expiresAt);
 
-  if (!token || !user || isSessionExpired(expiresAt)) {
+  if (status === 'unknown') {
+    return <RouteLoadingScreen />;
+  }
+
+  if (status !== 'authenticated' || !user) {
     return <Navigate to="/login" replace />;
   }
   return children;
@@ -49,11 +47,14 @@ const RequireStaff = ({ children }: { children: React.ReactNode }) => {
  * Redirects to /client-login if not authenticated.
  */
 const RequireClient = ({ children }: { children: React.ReactNode }) => {
-  const token = useClientAuthStore((state) => state.token);
+  const status = useClientAuthStore((state) => state.status);
   const client = useClientAuthStore((state) => state.client);
-  const expiresAt = useClientAuthStore((state) => state.expiresAt);
 
-  if (!token || !client || isSessionExpired(expiresAt)) {
+  if (status === 'unknown') {
+    return <RouteLoadingScreen />;
+  }
+
+  if (status !== 'authenticated' || !client) {
     return <Navigate to="/client-login" replace />;
   }
   return children;
@@ -63,12 +64,31 @@ const RequireClient = ({ children }: { children: React.ReactNode }) => {
  * Only shows content when no staff user is logged in.
  */
 const PublicOnly = ({ children }: { children: React.ReactNode }) => {
-  const token = useAuthStore((state) => state.token);
-  const expiresAt = useAuthStore((state) => state.expiresAt);
+  const status = useAuthStore((state) => state.status);
+  const user = useAuthStore((state) => state.user);
 
-  if (token && !isSessionExpired(expiresAt)) {
+  if (status === 'unknown') {
+    return <RouteLoadingScreen />;
+  }
+
+  if (status === 'authenticated' && user) {
     return <Navigate to="/dashboard" replace />;
   }
+  return children;
+};
+
+const PublicClientOnly = ({ children }: { children: React.ReactNode }) => {
+  const status = useClientAuthStore((state) => state.status);
+  const client = useClientAuthStore((state) => state.client);
+
+  if (status === 'unknown') {
+    return <RouteLoadingScreen />;
+  }
+
+  if (status === 'authenticated' && client) {
+    return <Navigate to="/portal" replace />;
+  }
+
   return children;
 };
 
@@ -111,7 +131,7 @@ function App() {
               <Route path="/hero" element={<HeroPage />} />
               <Route path="/login" element={<PublicOnly><Login /></PublicOnly>} />
               <Route path="/register" element={<PublicOnly><Register /></PublicOnly>} />
-              <Route path="/client-login" element={<ClientLogin />} />
+              <Route path="/client-login" element={<PublicClientOnly><ClientLogin /></PublicClientOnly>} />
 
               {/* Staff routes (admin + collaborator see same dashboard) */}
               <Route path="/dashboard" element={<RequireStaff><Dashboard /></RequireStaff>} />

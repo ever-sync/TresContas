@@ -16,14 +16,11 @@ export interface ClientAuthUser {
 }
 
 export interface StaffAuthResponse {
-    token: string;
-    expires_at: string;
+    expires_at?: string;
     user: StaffAuthUser;
 }
 
 export interface ClientAuthResponse {
-    token: string;
-    expires_at: string;
+    expires_at?: string;
     client: ClientAuthUser;
 }
-

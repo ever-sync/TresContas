@@ -11,6 +11,21 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: trescontas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U user -d trescontas"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     env:
       DATABASE_URL: postgresql://user:password@localhost:5432/trescontas
       JWT_SECRET: test-secret
@@ -38,6 +53,12 @@ jobs:
 
       - name: Install backend deps
         run: npm ci --prefix backend
+
+      - name: Apply database migrations
+        run: npm exec --prefix backend prisma migrate deploy
+
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Lint
         run: npm run lint

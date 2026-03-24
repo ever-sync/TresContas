@@ -1,76 +1,76 @@
-import { clearExpiredSessions, isSessionExpired } from '../src/lib/authSession';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { bootstrapAuthSessions, handleUnauthorizedClientSession, handleUnauthorizedStaffSession } from '../src/lib/authSession';
 import { useAuthStore } from '../src/stores/useAuthStore';
 import { useClientAuthStore } from '../src/stores/useClientAuthStore';
+
+const authServiceMock = vi.hoisted(() => ({
+    getStaffMe: vi.fn(),
+    getClientMe: vi.fn(),
+}));
+
+vi.mock('../src/services/authService', () => ({
+    authService: authServiceMock,
+}));
 
 const resetStores = () => {
     useAuthStore.setState({
         user: null,
-        token: null,
-        expiresAt: null,
+        status: 'unknown',
     });
 
     useClientAuthStore.setState({
         client: null,
-        token: null,
-        expiresAt: null,
+        status: 'unknown',
     });
 };
 
 describe('authSession', () => {
     beforeEach(() => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date('2026-03-23T12:00:00-03:00'));
         resetStores();
+        authServiceMock.getStaffMe.mockReset();
+        authServiceMock.getClientMe.mockReset();
+        vi.stubGlobal('window', {
+            location: {
+                pathname: '/',
+                assign: vi.fn(),
+            },
+        } as unknown as Window);
     });
 
     afterEach(() => {
         resetStores();
-        vi.useRealTimers();
+        vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
 
-    it('detects valid and expired sessions', () => {
-        expect(isSessionExpired('2026-03-23T12:00:01-03:00')).toBe(false);
-        expect(isSessionExpired('2026-03-23T11:59:59-03:00')).toBe(true);
-        expect(isSessionExpired('invalid-date')).toBe(true);
-        expect(isSessionExpired(null)).toBe(true);
-    });
-
-    it('clears expired staff sessions without touching valid client sessions', () => {
-        useAuthStore.setState({
-            user: {
-                id: 'staff-1',
-                name: 'Ana',
-                email: 'ana@example.com',
-                role: 'admin',
-                accountingId: 'acc-1',
-                accountingName: 'TresContas',
-                cnpj: '12345678000199',
-            },
-            token: 'staff-token',
-            expiresAt: '2026-03-23T11:59:59-03:00',
+    it('bootstraps staff and client sessions from the backend', async () => {
+        authServiceMock.getStaffMe.mockResolvedValue({
+            id: 'staff-1',
+            name: 'Ana',
+            email: 'ana@example.com',
+            role: 'admin',
+            accountingId: 'acc-1',
+            accountingName: 'TresContas',
+            cnpj: '12345678000199',
+        });
+        authServiceMock.getClientMe.mockResolvedValue({
+            id: 'client-1',
+            name: 'Cliente',
+            cnpj: '12345678000199',
+            email: 'client@example.com',
+            status: 'active',
+            accounting_id: 'acc-1',
         });
 
-        useClientAuthStore.setState({
-            client: {
-                id: 'client-1',
-                name: 'Cliente',
-                cnpj: '12345678000199',
-                email: 'client@example.com',
-            },
-            token: 'client-token',
-            expiresAt: '2026-03-23T12:30:00-03:00',
-        });
+        await bootstrapAuthSessions();
 
-        clearExpiredSessions();
-
-        expect(useAuthStore.getState().token).toBeNull();
-        expect(useAuthStore.getState().user).toBeNull();
-        expect(useClientAuthStore.getState().token).toBe('client-token');
+        expect(useAuthStore.getState().status).toBe('authenticated');
+        expect(useAuthStore.getState().user?.name).toBe('Ana');
+        expect(useClientAuthStore.getState().status).toBe('authenticated');
         expect(useClientAuthStore.getState().client?.name).toBe('Cliente');
     });
 
-    it('clears expired client sessions without touching valid staff sessions', () => {
+    it('clears staff sessions on unauthorized responses', () => {
         useAuthStore.setState({
             user: {
                 id: 'staff-1',
@@ -81,10 +81,16 @@ describe('authSession', () => {
                 accountingName: 'TresContas',
                 cnpj: '12345678000199',
             },
-            token: 'staff-token',
-            expiresAt: '2026-03-23T12:30:00-03:00',
+            status: 'authenticated',
         });
 
+        handleUnauthorizedStaffSession();
+
+        expect(useAuthStore.getState().status).toBe('anonymous');
+        expect(useAuthStore.getState().user).toBeNull();
+    });
+
+    it('clears client sessions on unauthorized responses', () => {
         useClientAuthStore.setState({
             client: {
                 id: 'client-1',
@@ -92,15 +98,12 @@ describe('authSession', () => {
                 cnpj: '12345678000199',
                 email: 'client@example.com',
             },
-            token: 'client-token',
-            expiresAt: '2026-03-23T11:59:59-03:00',
+            status: 'authenticated',
         });
 
-        clearExpiredSessions();
+        handleUnauthorizedClientSession();
 
-        expect(useClientAuthStore.getState().token).toBeNull();
+        expect(useClientAuthStore.getState().status).toBe('anonymous');
         expect(useClientAuthStore.getState().client).toBeNull();
-        expect(useAuthStore.getState().token).toBe('staff-token');
-        expect(useAuthStore.getState().user?.name).toBe('Ana');
     });
 });

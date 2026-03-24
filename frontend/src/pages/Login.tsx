@@ -7,8 +7,7 @@ import { Mail, Lock, ArrowRight, Building2, User, Loader2 } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../stores/useAuthStore';
-import api from '../services/api';
-import type { StaffAuthResponse } from '../services/authTypes';
+import { authService } from '../services/authService';
 
 const loginSchema = z.object({
     email: z.string().email('Email inválido'),
@@ -19,7 +18,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 const Login = () => {
     const navigate = useNavigate();
-    const setAuth = useAuthStore((state) => state.setAuth);
+    const setSession = useAuthStore((state) => state.setSession);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
 
@@ -33,11 +32,10 @@ const Login = () => {
 
     const loginMutation = useMutation({
         mutationFn: async (data: LoginFormData) => {
-            const response = await api.post<StaffAuthResponse>('/auth/login', data);
-            return response.data;
+            return authService.loginStaff(data);
         },
         onSuccess: (data) => {
-            setAuth(data.user, data.token, data.expires_at);
+            setSession(data.user);
             navigate('/dashboard');
         },
         onError: (error: unknown) => {
@@ -143,7 +141,7 @@ const Login = () => {
                         </div>
 
                         <p className="ml-1 text-xs text-slate-500">
-                            A sessão permanece ativa até o vencimento do token da sua conta.
+                            A sessão permanece ativa enquanto os cookies autenticados estiverem válidos.
                         </p>
 
                         <button

@@ -9,8 +9,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/useAuthStore';
 import { formatCNPJ, formatPhone, isValidCNPJ } from '../lib/utils';
 import axios from 'axios';
-import api from '../services/api';
-import type { StaffAuthResponse } from '../services/authTypes';
+import { authService } from '../services/authService';
 
 const registerSchema = z.object({
     name: z.string().min(3, 'Nome deve ter pelo menos 3 caracteres'),
@@ -24,7 +23,7 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 
 const Register = () => {
     const navigate = useNavigate();
-    const setAuth = useAuthStore((state) => state.setAuth);
+    const setSession = useAuthStore((state) => state.setSession);
     const [showPassword, setShowPassword] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -49,11 +48,10 @@ const Register = () => {
 
     const registerMutation = useMutation({
         mutationFn: async (data: RegisterFormData) => {
-            const response = await api.post<StaffAuthResponse>('/auth/register', data);
-            return response.data;
+            return authService.registerStaff(data);
         },
         onSuccess: (data) => {
-            setAuth(data.user, data.token, data.expires_at);
+            setSession(data.user);
             navigate('/dashboard');
         },
         onError: (error: unknown) => {

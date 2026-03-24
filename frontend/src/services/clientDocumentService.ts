@@ -21,11 +21,9 @@ export interface StaffClientDocument extends ClientDocument {
 }
 
 export interface UploadClientDocumentPayload {
-    original_name: string;
+    file: File;
     display_name: string;
     category: string;
-    mime_type: string;
-    content_base64: string;
 }
 
 const downloadBlob = (blob: Blob, fileName: string) => {
@@ -58,7 +56,12 @@ export const clientDocumentService = {
     },
 
     uploadForClient: async (payload: UploadClientDocumentPayload): Promise<ClientDocument> => {
-        const response = await clientApi.post('/client-portal/documents', payload);
+        const formData = new FormData();
+        formData.append('document', payload.file, payload.file.name);
+        formData.append('display_name', payload.display_name);
+        formData.append('category', payload.category);
+
+        const response = await clientApi.post('/client-portal/documents', formData);
         return response.data;
     },
 

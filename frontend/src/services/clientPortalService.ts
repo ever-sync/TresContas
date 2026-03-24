@@ -1,4 +1,5 @@
 import clientApi from './clientApi';
+import { authService } from './authService';
 import type { ClientAuthResponse } from './authTypes';
 
 export interface ClientPortalUser {
@@ -48,22 +49,19 @@ export const clientPortalService = {
     identifier: string;
     password: string;
   }): Promise<ClientAuthResponse> => {
-    const payload: { client_id?: string; email?: string; cnpj?: string; password: string } = {
-      password: data.password,
-    };
-    if (data.client_id) payload.client_id = data.client_id;
-    if (data.identifier.includes('@')) {
-      payload.email = data.identifier.trim();
-    } else {
-      payload.cnpj = data.identifier.replace(/\D/g, '');
-    }
-    const response = await clientApi.post('/auth/client-login', payload);
-    return response.data;
+    return authService.loginClient(data);
   },
 
   getMe: async (): Promise<ClientPortalUser> => {
-    const response = await clientApi.get('/client-portal/me');
-    return response.data;
+    return authService.getClientMe();
+  },
+
+  refresh: async (): Promise<ClientAuthResponse> => {
+    return authService.refreshClientSession();
+  },
+
+  logout: async (): Promise<void> => {
+    await authService.logoutClientSession();
   },
 
   /** Busca tickets de suporte do cliente logado no portal */

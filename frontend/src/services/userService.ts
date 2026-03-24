@@ -21,6 +21,13 @@ export interface CreateUserData {
     phone?: string;
 }
 
+export interface InviteUserData {
+    name: string;
+    email: string;
+    role: 'admin' | 'collaborator';
+    phone?: string;
+}
+
 export interface UpdateUserData {
     name?: string;
     email?: string;
@@ -41,6 +48,10 @@ export const userService = {
     },
     create: async (data: CreateUserData): Promise<User> => {
         const response = await api.post('/users', data);
+        return response.data;
+    },
+    invite: async (data: InviteUserData): Promise<User & { invite_token: string; invite_link: string | null }> => {
+        const response = await api.post('/users/invite', data);
         return response.data;
     },
     update: async (id: string, data: UpdateUserData): Promise<User> => {

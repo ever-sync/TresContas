@@ -14,18 +14,6 @@ const formatFileSize = (sizeBytes: number) => {
     return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const toBase64 = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-            const result = String(reader.result || '');
-            const [, base64 = ''] = result.split(',');
-            resolve(base64);
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-    });
-
 export const ClientDocumentUploadPanel = () => {
     const queryClient = useQueryClient();
     const [fileInputKey, setFileInputKey] = useState(0);
@@ -60,13 +48,10 @@ export const ClientDocumentUploadPanel = () => {
         }
 
         try {
-            const contentBase64 = await toBase64(file);
             await uploadDocumentMutation.mutateAsync({
-                original_name: file.name,
+                file,
                 display_name: displayName.trim(),
                 category: category.trim(),
-                mime_type: file.type || 'application/octet-stream',
-                content_base64: contentBase64,
             });
 
             toast.success('Arquivo enviado com sucesso');

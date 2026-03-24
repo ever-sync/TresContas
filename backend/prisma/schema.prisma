@@ -45,6 +45,83 @@ model User {
   @@index([email])
 }
 
+model AuthSession {
+  id                   String   @id @default(uuid())
+  subject_type         String
+  role                 String
+  user_id              String?
+  client_id            String?
+  accounting_id        String
+  refresh_token_hash   String   @unique
+  expires_at           DateTime
+  revoked_at           DateTime?
+  replaced_by_session_id String?
+  last_used_at         DateTime?
+  ip_address           String?
+  user_agent           String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+
+  @@index([accounting_id])
+  @@index([user_id])
+  @@index([client_id])
+  @@index([subject_type])
+  @@index([expires_at])
+  @@index([revoked_at])
+  @@index([replaced_by_session_id])
+}
+
+model AccountActionToken {
+  id            String   @id @default(uuid())
+  purpose       String
+  subject_type  String
+  accounting_id String?
+  user_id       String?
+  client_id     String?
+  email         String?
+  token_hash    String   @unique
+  expires_at    DateTime
+  used_at       DateTime?
+  metadata      Json?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([purpose])
+  @@index([subject_type])
+  @@index([accounting_id])
+  @@index([user_id])
+  @@index([client_id])
+  @@index([email])
+  @@index([expires_at])
+  @@index([used_at])
+}
+
+model AuditEvent {
+  id            String   @id @default(uuid())
+  actor_type    String?
+  actor_role    String?
+  actor_id      String?
+  accounting_id String?
+  client_id     String?
+  action        String
+  entity_type   String
+  entity_id     String?
+  metadata      Json?
+  request_id    String?
+  ip_address    String?
+  user_agent    String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  @@index([actor_id])
+  @@index([accounting_id])
+  @@index([client_id])
+  @@index([action])
+  @@index([entity_type])
+  @@index([entity_id])
+  @@index([created_at])
+}
+
 model Client {
   id                   String             @id @default(uuid())
   accounting_id        String

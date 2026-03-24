@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && node scripts/build.mjs",
+    "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "postinstall": "node scripts/patch-esbuild.mjs",
     "test": "node ../backend/node_modules/vitest/vitest.mjs run --config vitest.config.mjs tests/categoryConstants.test.ts tests/authSession.test.ts tests/dreCalculationService.test.ts",

@@ -8,7 +8,7 @@ import { useClientAuthStore } from '../stores/useClientAuthStore';
 
 const ClientLogin = () => {
     const navigate = useNavigate();
-    const setClientAuth = useClientAuthStore((state) => state.setAuth);
+    const setClientSession = useClientAuthStore((state) => state.setSession);
     const [loginIdentifier, setLoginIdentifier] = useState('');
     const [loginPassword, setLoginPassword] = useState('');
     const [loginError, setLoginError] = useState<string | null>(null);
@@ -22,15 +22,13 @@ const ClientLogin = () => {
             });
         },
         onSuccess: (result) => {
-            setClientAuth(
+            setClientSession(
                 {
                     id: result.client.id,
                     name: result.client.name,
                     cnpj: result.client.cnpj,
                     email: result.client.email,
                 },
-                result.token,
-                result.expires_at
             );
 
             navigate('/portal');

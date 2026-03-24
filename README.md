@@ -1,19 +1,19 @@
 # TresContas
 
-SaaS de contabilidade com portal de clientes, dashboards internos, suporte, plano de contas, DRE e DFC gerencial.
+SaaS de contabilidade com portal de clientes, dashboards internos, suporte, plano de contas, DRE e DFC.
 
 ## Estrutura
 
-- `frontend/`: aplicação React + Vite.
+- `frontend/`: React + Vite.
 - `backend/`: API Express + Prisma.
 
 ## Comandos
 
-Na raiz do repositório:
+Na raiz:
 
 ```bash
-npm run install:all
 npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```
@@ -25,17 +25,37 @@ npm run dev:frontend
 npm run dev:backend
 ```
 
-## Variáveis de ambiente
+## Variaveis de ambiente
 
-- `backend/.env.example`
-- `frontend/.env.example`
+Backend:
 
-## Armazenamento de documentos
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `ALLOWED_ORIGINS`
+- `PORT`
+- `DOCUMENT_STORAGE_PATH`
+- `AUTH_ACCESS_TTL`
+- `AUTH_REFRESH_TTL`
+- `AUTH_COOKIE_DOMAIN`
+- `AUTH_COOKIE_SECURE`
+- `AUTH_COOKIE_SAME_SITE`
+- `ACCOUNT_ACTION_TTL`
+- `FRONTEND_URL`
+- `GROQ_API_KEY`
 
-Os arquivos de clientes ficam em disco por padrão em `backend/storage/client-documents`.
+Frontend:
+
+- `VITE_API_URL`
+
+## Documentos
+
+Os documentos de clientes ficam em disco por padrao em `backend/storage/client-documents`.
 O caminho pode ser alterado com `DOCUMENT_STORAGE_PATH`.
-Para migrar documentos antigos do banco para o disco, use:
+
+## Migracoes
+
+Para aplicar migracoes em ambiente com banco real:
 
 ```bash
-npm run migrate:client-documents
+npm exec --prefix backend prisma migrate deploy
 ```

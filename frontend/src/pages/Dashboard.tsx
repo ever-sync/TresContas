@@ -31,10 +31,12 @@ import { supportService } from '../services/supportService';
 import type { SupportTicket } from '../services/supportService';
 import { userService } from '../services/userService';
 import type { User as TeamUser } from '../services/userService';
+import { authService } from '../services/authService';
 import { ClientRegistrationModal } from '../components/ClientRegistrationModal';
 import { UserModal } from '../components/UserModal';
 import { ChartOfAccountsManager } from '../components/ChartOfAccountsManager';
 import { StaffClientDocumentsManager } from '../components/StaffClientDocumentsManager';
+import AuditEventsPanel from '../components/AuditEventsPanel';
 import SupportTicketDetailPanel from '../components/support/SupportTicketDetailPanel';
 
 const Dashboard = () => {
@@ -45,7 +47,7 @@ const Dashboard = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
-    const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team'>('dashboard');
+    const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team' | 'audit'>('dashboard');
     const [supportFilter, setSupportFilter] = useState<'open' | 'in_progress' | 'closed' | 'all'>('open');
     const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
     const [supportReplyDraft, setSupportReplyDraft] = useState('');
@@ -119,9 +121,15 @@ const Dashboard = () => {
         }
     };
 
-    const handleLogout = () => {
-        logout();
-        navigate('/login');
+    const handleLogout = async () => {
+        try {
+            await authService.logoutStaffSession();
+        } catch {
+            // Ignore transport errors and clear local session anyway.
+        } finally {
+            logout();
+            navigate('/login');
+        }
     };
 
     const filteredClients = clients.filter(client =>
@@ -277,6 +285,19 @@ const Dashboard = () => {
                             <Shield className="w-5 h-5" />
                         </button>
                     )}
+                    {isAdmin && (
+                        <button
+                            onClick={() => setActiveView('audit')}
+                            title="Auditoria"
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
+                                activeView === 'audit'
+                                    ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
+                                    : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
+                            }`}
+                        >
+                            <Shield className="w-5 h-5" />
+                        </button>
+                    )}
                     <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Relatórios">
                         <BarChart3 className="w-5 h-5" />
                     </button>
@@ -338,6 +359,8 @@ const Dashboard = () => {
                                 ? 'Documentos'
                                 : activeView === 'team'
                                 ? 'Equipe'
+                                : activeView === 'audit'
+                                ? 'Auditoria'
                                 : 'Suporte'}
                         </h1>
                     </div>
@@ -353,6 +376,8 @@ const Dashboard = () => {
                                 ? 'Buscar conta, codigo ou apelido...'
                                 : activeView === 'documents'
                                 ? 'Buscar arquivo, categoria ou cliente...'
+                                : activeView === 'audit'
+                                ? 'Buscar eventos de auditoria...'
                                 : 'Buscar cliente, CNPJ...'}
                             className="w-full bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl py-3 pl-11 pr-20 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
                             value={searchTerm}
@@ -604,6 +629,8 @@ const Dashboard = () => {
                         <ChartOfAccountsManager searchTerm={searchTerm} />
                     ) : activeView === 'documents' ? (
                         <StaffClientDocumentsManager searchTerm={searchTerm} />
+                    ) : activeView === 'audit' ? (
+                        <AuditEventsPanel />
                     ) : activeView === 'support' ? (
                         /* SUPPORT VIEW */
                         <div className="space-y-6 animate-in fade-in duration-300">

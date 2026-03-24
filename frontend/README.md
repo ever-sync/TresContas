@@ -1,6 +1,6 @@
 # Frontend
 
-Aplicação React + TypeScript + Vite do TresContas.
+Aplicacao React + TypeScript + Vite do TresContas.
 
 ## Comandos
 
@@ -8,6 +8,7 @@ Aplicação React + TypeScript + Vite do TresContas.
 npm run dev
 npm run build
 npm run lint
+npm run typecheck
 npm run test
 ```
 
@@ -15,8 +16,10 @@ npm run test
 
 Crie `frontend/.env` a partir de `frontend/.env.example`.
 
-Variáveis usadas:
+Variaveis usadas:
 
 - `VITE_API_URL`
-- `VITE_SUPABASE_URL` opcional
-- `VITE_SUPABASE_ANON_KEY` opcional
+
+## Sessao
+
+O frontend usa cookies `httpOnly` para autenticacao. Nao ha mais persistencia de token em `localStorage` ou `sessionStorage`.

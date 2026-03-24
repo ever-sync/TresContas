@@ -1,31 +1,75 @@
-import axios from 'axios';
-import { getClientTokenForRequest, handleUnauthorizedClientSession } from '../lib/authSession';
+import axios, { type AxiosRequestConfig } from 'axios';
+import { resolveApiBaseUrl } from './baseUrl';
+import { authService } from './authService';
+import { handleUnauthorizedClientSession } from '../lib/authSession';
 
-const rawBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-const normalizedBaseUrl = rawBaseUrl.replace(/\/+$/, '');
-const baseURL = normalizedBaseUrl.endsWith('/api')
-  ? normalizedBaseUrl
-  : `${normalizedBaseUrl}/api`;
-
-const clientApi = axios.create({ baseURL });
-
-clientApi.interceptors.request.use((config) => {
-  const token = getClientTokenForRequest(config.url);
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
+const clientApi = axios.create({
+    baseURL: resolveApiBaseUrl(),
+    withCredentials: true,
 });
 
-clientApi.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      handleUnauthorizedClientSession();
+type RetryableConfig = AxiosRequestConfig & { _retry?: boolean };
+
+const shouldSkipRefresh = (requestUrl?: string) => {
+    if (!requestUrl) return false;
+
+    return [
+        '/auth/login',
+        '/auth/register',
+        '/auth/me',
+        '/auth/refresh',
+        '/auth/logout',
+        '/auth/forgot-password',
+        '/auth/reset-password',
+        '/auth/accept-invite',
+        '/auth/client-login',
+        '/auth/client-refresh',
+        '/auth/client-logout',
+    ].some((path) => requestUrl.includes(path));
+};
+
+let clientRefreshPromise: Promise<boolean> | null = null;
+
+const refreshClientSession = async () => {
+    if (!clientRefreshPromise) {
+        clientRefreshPromise = authService.refreshClientSession()
+            .then(() => true)
+            .catch(() => false)
+            .finally(() => {
+                clientRefreshPromise = null;
+            });
     }
 
-    return Promise.reject(error);
-  }
+    return clientRefreshPromise;
+};
+
+clientApi.interceptors.response.use(
+    (response) => response,
+    async (error: unknown) => {
+        if (!axios.isAxiosError(error)) {
+            return Promise.reject(error);
+        }
+
+        const originalRequest = error.config as RetryableConfig | undefined;
+
+        if (
+            error.response?.status === 401 &&
+            originalRequest &&
+            !originalRequest._retry &&
+            !shouldSkipRefresh(originalRequest.url)
+        ) {
+            originalRequest._retry = true;
+            const refreshed = await refreshClientSession();
+
+            if (refreshed) {
+                return clientApi(originalRequest);
+            }
+
+            handleUnauthorizedClientSession();
+        }
+
+        return Promise.reject(error);
+    }
 );
 
 export default clientApi;

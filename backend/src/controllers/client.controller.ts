@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
 import { AppError, sendErrorResponse } from '../lib/http';
+import { revokeAuthSessionsByClientId } from '../lib/authSessions';
 import {
     assertMinimumLength,
     assertOneOf,
@@ -252,6 +253,10 @@ export const updateClient = async (req: AuthRequest, res: Response) => {
             select: clientSelect,
         });
 
+        if (req.body.password !== undefined || req.body.status !== undefined) {
+            await revokeAuthSessionsByClientId(id);
+        }
+
         res.json(updatedClient);
     } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -279,6 +284,7 @@ export const deleteClient = async (req: AuthRequest, res: Response) => {
             throw new AppError(404, 'Cliente não encontrado ou não autorizado');
         }
 
+        await revokeAuthSessionsByClientId(String(req.params.id));
         res.status(204).send();
     } catch (error) {
         return sendErrorResponse(res, error, 'Erro ao excluir cliente');

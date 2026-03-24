@@ -8,12 +8,14 @@ import clientRoutes from './routes/client.routes';
 import supportRoutes from './routes/support.routes';
 import clientPortalRoutes from './routes/client-portal.routes';
 import userRoutes from './routes/user.routes';
+import auditRoutes from './routes/audit.routes';
 import chartOfAccountsRoutes from './routes/chartOfAccounts.routes';
 import clientDocumentRoutes from './routes/client-document.routes';
 import movementRoutes from './routes/movement.routes';
 import dreMappingRoutes from './routes/dreMapping.routes';
 import dfcRoutes from './routes/dfc.routes';
 import prisma from './lib/prisma';
+import { ensureDocumentStorageRoot } from './lib/documentStorage';
 import { isOriginAllowed, securityConfig } from './config/security';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware';
 
@@ -81,6 +83,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
@@ -93,22 +96,50 @@ app.use('/api/clients', dreMappingRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/client-portal', clientPortalRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/audit-events', auditRoutes);
 
-app.get('/health', async (_req, res, next) => {
+app.get('/livez', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
+
+app.get('/readyz', async (_req, res) => {
     try {
         const hasQueryRaw = typeof (prisma as { $queryRaw?: unknown }).$queryRaw === 'function';
+        let storageStatus: 'up' | 'down' | 'unknown' = 'unknown';
 
         if (!hasQueryRaw) {
-            res.status(200).json({ status: 'ok', database: 'unknown' });
+            try {
+                await ensureDocumentStorageRoot();
+                storageStatus = 'up';
+            } catch {
+                storageStatus = 'down';
+            }
+
+            res.status(200).json({ status: 'ok', database: 'unknown', storage: storageStatus });
             return;
         }
 
         await prisma.$queryRaw`SELECT 1`;
-        res.status(200).json({ status: 'ok', database: 'up' });
+        try {
+            await ensureDocumentStorageRoot();
+            storageStatus = 'up';
+        } catch {
+            storageStatus = 'down';
+        }
+
+        res.status(storageStatus === 'down' ? 503 : 200).json({
+            status: 'ok',
+            database: 'up',
+            storage: storageStatus,
+        });
     } catch (error) {
         console.warn('Health check database query failed', error);
-        res.status(200).json({ status: 'ok', database: 'down' });
+        res.status(503).json({ status: 'ok', database: 'down', storage: 'unknown' });
     }
+});
+
+app.get('/health', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
 });
 
 app.use(notFoundHandler);

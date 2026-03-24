@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Navigate, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
     Download,
     Upload,
@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 import axios from 'axios';
 import api from '../services/api';
+import { authService } from '../services/authService';
 import { clientService } from '../services/clientService';
 import type { Client } from '../services/clientService';
 import { clientPortalService } from '../services/clientPortalService';
@@ -44,7 +45,6 @@ import type { ImportAccount } from '../services/chartOfAccountsService';
 import { movementService } from '../services/movementService';
 import type { MovementRow } from '../services/movementService';
 import toast from 'react-hot-toast';
-import { useAuthStore } from '../stores/useAuthStore';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
 import { TooltipCurrency, TooltipPercent } from '../components/client-dashboard/ChartTooltips';
 import type { DreMonthData } from '../components/client-dashboard/constants';
@@ -281,11 +281,9 @@ const ClientDashboard = () => {
     const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
     const [supportReplyDraft, setSupportReplyDraft] = useState('');
     const [isSubmittingSupportReply, setIsSubmittingSupportReply] = useState(false);
-    const accountingToken = useAuthStore((state) => state.token);
-    const clientToken = useClientAuthStore((state) => state.token);
     const clientLogout = useClientAuthStore((state) => state.logout);
-    const isAccountingView = Boolean(accountingToken);
-    const isClientView = Boolean(clientToken) && !isAccountingView;
+    const isAccountingView = Boolean(clientId);
+    const isClientView = !isAccountingView;
     const isReadOnly = isClientView;
 
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -1528,16 +1526,6 @@ const ClientDashboard = () => {
         }
     };
 
-    // Se nao esta autenticado como staff nem cliente, redireciona
-    if (!isAccountingView && !isClientView) {
-        return <Navigate to="/client-login" replace />;
-    }
-
-    // Se staff acessou /portal sem clientId, redireciona ao dashboard
-    if (isAccountingView && !clientId) {
-        return <Navigate to="/dashboard" replace />;
-    }
-
     return (
         <>
             <div className="min-h-screen text-slate-200 font-sans selection:bg-cyan-500/30 overflow-x-hidden relative" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%)' }}>
@@ -1593,7 +1581,16 @@ const ClientDashboard = () => {
                     </div>
                     {isClientView && (
                         <button
-                            onClick={() => { clientLogout(); navigate('/client-login'); }}
+                            onClick={async () => {
+                                try {
+                                    await authService.logoutClientSession();
+                                } catch {
+                                    // Ignore transport errors and clear local session anyway.
+                                } finally {
+                                    clientLogout();
+                                    navigate('/client-login');
+                                }
+                            }}
                             className="p-4 rounded-2xl text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all relative group"
                         >
                             <LogOut className="w-6 h-6" />
@@ -2038,12 +2035,18 @@ const ClientDashboard = () => {
                                         // Quando contador acessa o dashboard de um cliente, envia clientId no body
                                         if (isAccountingView && clientId) body.clientId = clientId;
                                         try {
-                                            const token = clientToken || accountingToken;
+                                            if (isAccountingView) {
+                                                await authService.getStaffMe();
+                                            } else {
+                                                await authService.getClientMe();
+                                            }
+
                                             const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/+$/, '');
                                             const apiUrl = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
                                             const response = await fetch(`${apiUrl}/client-portal/ai-analysis`, {
                                                 method: 'POST',
-                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                                credentials: 'include',
+                                                headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify(body),
                                             });
                                             if (!response.ok || !response.body) {
