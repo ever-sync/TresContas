@@ -2617,7 +2617,7 @@ const ClientDashboard = () => {
                         </div>
                     )}
                 </div>
-                <div className={`flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto ${isSidebarOpen ? 'items-stretch w-full pr-1' : 'items-center'}`}>
+                <div className={`scrollbar-hide flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto ${isSidebarOpen ? 'items-stretch w-full pr-1' : 'items-center'}`}>
                     {sidebarItems.map((item) => (
                         <button
                             key={item.id}
