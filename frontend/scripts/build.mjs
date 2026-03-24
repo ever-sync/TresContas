@@ -90,6 +90,9 @@ const manualChunks = (id) => {
 
 await build({
   configFile: false,
+  define: {
+    'process.env.NODE_ENV': JSON.stringify('production'),
+  },
   plugins: [react(), tailwindcss()],
   build: {
     minify: false,
