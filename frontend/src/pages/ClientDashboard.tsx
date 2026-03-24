@@ -190,6 +190,7 @@ const DFC_STRUCTURE: { type: 'section' | 'item' | 'result' | 'separator'; label?
 
 type DreSubTab = 'dre' | 'patrimonial' | 'contas' | 'dfc';
 type ReportViewMode = 'lista' | 'graficos' | 'fechado';
+type DashboardOverviewTab = 'inicio' | 'financeiro' | 'contabil' | 'fiscal' | 'servicos';
 
 const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
     { id: 'dre', label: 'DRE', show: true },
@@ -197,8 +198,16 @@ const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
     { id: 'dfc', label: 'DFC', show: true },
 ];
 
+const DASHBOARD_OVERVIEW_TABS: Array<{ id: DashboardOverviewTab; label: string }> = [
+    { id: 'inicio', label: 'INICIO' },
+    { id: 'financeiro', label: 'Financeiro' },
+    { id: 'contabil', label: 'Contábil' },
+    { id: 'fiscal', label: 'Fiscal' },
+    { id: 'servicos', label: 'Serviços' },
+];
+
 const CLIENT_TAB_LABELS: Record<string, string> = {
-    dashboard: 'INICIO',
+    dashboard: 'Dashboard',
     financeiro: 'Financeiro',
     contabil: 'Contábil',
     fiscal: 'Fiscal',
@@ -1215,6 +1224,7 @@ const ClientDashboard = () => {
 
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [dashboardTab, setDashboardTab] = useState<DashboardOverviewTab>('inicio');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
@@ -1322,17 +1332,25 @@ const ClientDashboard = () => {
     }, [activeTab]);
 
     const sidebarItems = [
-        { id: 'dashboard', icon: BarChart3, label: 'INICIO' },
-        { id: 'financeiro', icon: TrendingUp, label: 'Financeiro' },
-        { id: 'contabil', icon: Calculator, label: 'Contábil' },
-        { id: 'fiscal', icon: CalendarDays, label: 'Fiscal' },
+        { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
+        { id: 'movimentacoes', icon: FileSpreadsheet, label: 'Movimentações' },
+        { id: 'fluxoCaixa', icon: TrendingUp, label: 'Fluxo de Caixa' },
+        { id: 'conciliacaoBancaria', icon: RefreshCw, label: 'Conciliação Bancária' },
+        { id: 'dre', icon: Calculator, label: 'DRE' },
+        { id: 'dfc', icon: FileText, label: 'DFC' },
+        { id: 'balancoPatrimonial', icon: FileText, label: 'Balanço Patrimonial' },
+        { id: 'impostos', icon: CalendarDays, label: 'Impostos' },
+        { id: 'guias', icon: FileText, label: 'Guias' },
+        { id: 'folhaPagamento', icon: LayoutList, label: 'Folha de Pagamento' },
+        { id: 'obrigacoes', icon: Sparkles, label: 'Obrigações' },
         { id: 'arquivos', icon: Upload, label: 'Documentos' },
-        { id: 'servicos', icon: Settings2, label: 'Serviços' },
+        { id: 'servicosContratados', icon: Settings2, label: 'Serviços Contratados' },
         { id: 'suporte', icon: Ticket, label: 'Atendimento' },
     ] as const;
 
-    const activeSidebarLabel = CLIENT_TAB_LABELS[activeTab] ?? 'INICIO';
+    const activeSidebarLabel = CLIENT_TAB_LABELS[activeTab] ?? 'Dashboard';
     const moduleMock = CLIENT_MODULE_MOCKS[activeTab];
+    const activeDashboardModule = dashboardTab === 'inicio' ? null : CLIENT_MODULE_MOCKS[dashboardTab];
     const comingSoonCopy = CLIENT_COMING_SOON_COPY[activeTab];
     const isComingSoonTab = Boolean(comingSoonCopy);
     const sidebarWidth = isSidebarOpen ? 256 : 80;
@@ -2762,6 +2780,25 @@ const ClientDashboard = () => {
                     <div className="w-full">
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+                                <div className="flex flex-wrap gap-3 rounded-[24px] border border-white/10 bg-[#0d1829]/80 p-3 backdrop-blur-xl shadow-2xl shadow-black/20">
+                                    {DASHBOARD_OVERVIEW_TABS.map((tab) => (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => setDashboardTab(tab.id)}
+                                            className={`rounded-2xl px-5 py-3 text-sm font-bold transition-all ${
+                                                dashboardTab === tab.id
+                                                    ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20'
+                                                    : 'text-white/45 hover:bg-white/5 hover:text-white'
+                                            }`}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {dashboardTab === 'inicio' ? (
+                                <>
                                 {/* Hero Section: Company & Meeting */}
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mb-8">
                                     <div className="md:col-span-9 bg-[#0d1829]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 flex items-center gap-6 group hover:border-cyan-500/20 transition-all shadow-2xl shadow-black/20">
@@ -3211,6 +3248,10 @@ const ClientDashboard = () => {
                                 </div>
                             )}
                         </div>
+                            </>
+                        ) : activeDashboardModule ? (
+                            <MockModuleSection module={activeDashboardModule} reportRef={reportRef} />
+                        ) : null}
 
                     </div>
                 )}
