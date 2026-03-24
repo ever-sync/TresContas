@@ -2702,11 +2702,11 @@ const ClientDashboard = () => {
 
             {/* Main Content */}
             <div
-                className="relative z-10 h-screen min-w-0 flex flex-col overflow-hidden transition-[margin] duration-300"
+                className="relative z-10 h-screen min-w-0 overflow-y-auto transition-[margin] duration-300"
                 style={{ marginLeft: sidebarWidth }}
             >
                 {/* Modern Header */}
-                <header className="shrink-0 z-40 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300">
+                <header className="sticky top-0 z-40 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             {isAccountingView && (
@@ -2776,7 +2776,7 @@ const ClientDashboard = () => {
                     </div>
                 </header>
 
-                <div className="flex-1 min-h-0 overflow-y-auto py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
+                <div className="py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
                     <div className="w-full">
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in fade-in duration-500 pb-12">
