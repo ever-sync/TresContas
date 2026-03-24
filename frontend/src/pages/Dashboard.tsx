@@ -425,7 +425,7 @@ const Dashboard = () => {
                 </header>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-auto p-8">
+                <div className="flex-1 overflow-auto py-8 pr-8 pl-0">
                     {activeView === 'team' && isAdmin ? (
                         /* TEAM VIEW */
                         <div className="space-y-6 animate-in fade-in duration-300">

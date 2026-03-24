@@ -1712,7 +1712,7 @@ const ClientDashboard = () => {
                     </div>
                 </header>
 
-                <div className="px-4 pt-24 pb-4 relative z-10 transition-all duration-500">
+                <div className="pt-24 pb-4 pr-4 pl-0 relative z-10 transition-all duration-500">
                     <div className="max-w-full mx-auto">
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in fade-in duration-500 pb-12">
