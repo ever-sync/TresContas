@@ -48,6 +48,7 @@ const Dashboard = () => {
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
     const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team' | 'audit'>('dashboard');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [supportFilter, setSupportFilter] = useState<'open' | 'in_progress' | 'closed' | 'all'>('open');
     const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
     const [supportReplyDraft, setSupportReplyDraft] = useState('');
@@ -231,14 +232,31 @@ const Dashboard = () => {
             background: 'linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%)'
         }}>
             {/* Sidebar - Fixed */}
-            <aside className="fixed left-0 top-0 w-20 h-screen bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col items-center py-6 gap-2 z-50">
+            <aside className={`fixed left-0 top-0 h-screen bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col py-6 gap-2 z-50 transition-all duration-300 overflow-hidden relative ${isSidebarOpen ? 'w-64 items-start px-2' : 'w-20 items-center px-0'}`}>
+                <button
+                    type="button"
+                    onClick={() => setIsSidebarOpen((prev) => !prev)}
+                    aria-label={isSidebarOpen ? 'Fechar sidebar' : 'Abrir sidebar'}
+                    title={isSidebarOpen ? 'Fechar sidebar' : 'Abrir sidebar'}
+                    className="absolute -right-3 top-8 z-50 h-8 w-8 rounded-full border border-white/10 bg-[#0d1829] text-slate-300 shadow-lg shadow-black/30 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all"
+                >
+                    <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${isSidebarOpen ? 'rotate-180' : ''}`} />
+                </button>
                 {/* Logo */}
-                <div className="w-12 h-12 bg-linear-to-br from-cyan-400 to-blue-600 rounded-xl flex items-center justify-center mb-8 shadow-lg shadow-cyan-500/20">
-                    <span className="text-white font-bold text-xl">T</span>
+                <div className={`flex items-center gap-3 mb-8 ${isSidebarOpen ? 'w-full px-2 justify-start' : 'w-full justify-center'}`}>
+                    <div className="w-12 h-12 bg-linear-to-br from-cyan-400 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                        <span className="text-white font-bold text-xl">T</span>
+                    </div>
+                    {isSidebarOpen && (
+                        <div className="min-w-0">
+                            <p className="text-sm font-bold text-white leading-none">TresContas</p>
+                            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 mt-1">Contabilidade</p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Nav Icons */}
-                <nav className="flex-1 flex flex-col items-center gap-2">
+                <nav className={`flex-1 flex flex-col gap-2 ${isSidebarOpen ? 'items-start pl-2' : 'items-center'}`}>
                     <button 
                         onClick={() => setActiveView('dashboard')}
                         title="Dashboard"
@@ -329,7 +347,7 @@ const Dashboard = () => {
                 </nav>
 
                 {/* Bottom Icons */}
-                <div className="flex flex-col items-center gap-2">
+                <div className={`flex flex-col gap-2 ${isSidebarOpen ? 'items-start pl-2' : 'items-center'}`}>
                     <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Ajuda">
                         <HelpCircle className="w-5 h-5" />
                     </button>
@@ -344,7 +362,7 @@ const Dashboard = () => {
             </aside>
 
             {/* Main Content */}
-            <main className="ml-20 flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+            <main className={`${isSidebarOpen ? 'ml-64' : 'ml-20'} flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-all duration-300`}>
                 {/* Header - Sticky */}
                 <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-[#0a1628]/60 backdrop-blur-xl sticky top-0 z-40">
                     <div className="flex items-center gap-3">

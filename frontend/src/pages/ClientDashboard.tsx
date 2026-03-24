@@ -216,6 +216,7 @@ const ClientDashboard = () => {
 
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
     const [dreConfigMode, setDreConfigMode] = useState(false);
@@ -1534,12 +1535,29 @@ const ClientDashboard = () => {
             <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
 
             {/* Sidebar Navigation */}
-            <div className="fixed left-0 top-0 h-full w-20 bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col items-center py-8 z-50 transition-all duration-500">
-                <div className="w-12 h-12 bg-linear-to-br from-cyan-400 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-cyan-500/20 mb-12">
-                    <BarChart3 className="w-7 h-7" />
+            <div className={`fixed left-0 top-0 h-full bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col py-8 z-50 transition-all duration-300 overflow-hidden relative ${isSidebarOpen ? 'w-64 items-start px-3' : 'w-20 items-center px-0'}`}>
+                <button
+                    type="button"
+                    onClick={() => setIsSidebarOpen((prev) => !prev)}
+                    aria-label={isSidebarOpen ? 'Fechar sidebar' : 'Abrir sidebar'}
+                    title={isSidebarOpen ? 'Fechar sidebar' : 'Abrir sidebar'}
+                    className="absolute -right-3 top-8 z-50 h-8 w-8 rounded-full border border-white/10 bg-[#0d1829] text-slate-300 shadow-lg shadow-black/30 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all"
+                >
+                    <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${isSidebarOpen ? 'rotate-180' : ''}`} />
+                </button>
+                <div className={`flex items-center gap-3 mb-12 ${isSidebarOpen ? 'w-full px-2 justify-start' : 'w-full justify-center'}`}>
+                    <div className="w-12 h-12 bg-linear-to-br from-cyan-400 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+                        <BarChart3 className="w-7 h-7" />
+                    </div>
+                    {isSidebarOpen && (
+                        <div className="min-w-0">
+                            <p className="text-sm font-bold text-white leading-none">TresContas</p>
+                            <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 mt-1">Portal do Cliente</p>
+                        </div>
+                    )}
                 </div>
 
-                <div className="flex-1 flex flex-col gap-4">
+                <div className={`flex-1 flex flex-col gap-4 ${isSidebarOpen ? 'items-stretch w-full' : 'items-center'}`}>
                     {[ 
                         { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
                         { id: 'dre', icon: Calculator, label: 'DRE' },
@@ -1549,35 +1567,52 @@ const ClientDashboard = () => {
                         <button
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
-                            className={`group relative p-4 rounded-2xl transition-all duration-300 ${activeTab === item.id ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'}`}
+                            className={`group relative transition-all duration-300 ${activeTab === item.id ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'} ${isSidebarOpen ? 'w-full flex items-center gap-3 px-4 py-4 rounded-2xl justify-start' : 'p-4 rounded-2xl'}`}
                         >
-                            <item.icon className="w-6 h-6" />
-                            <span className="absolute left-full ml-4 px-3 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all whitespace-nowrap z-50 border border-white/10">
-                                {item.label}
-                            </span>
+                            <item.icon className="w-6 h-6 shrink-0" />
+                            {isSidebarOpen ? (
+                                <span className="text-sm font-medium truncate">{item.label}</span>
+                            ) : (
+                                <span className="absolute left-full ml-4 px-3 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all whitespace-nowrap z-50 border border-white/10">
+                                    {item.label}
+                                </span>
+                            )}
                         </button>
                     ))}
                 </div>
 
-                <div className="space-y-6">
+                <div className={`space-y-6 ${isSidebarOpen ? 'w-full px-1' : ''}`}>
                     {isClientView && (
                         <button
                             onClick={() => setIsSupportOpen(true)}
-                            className="p-4 rounded-2xl text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all relative group"
+                            className={`text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 transition-all relative group ${isSidebarOpen ? 'w-full flex items-center gap-3 px-4 py-4 rounded-2xl justify-start' : 'p-4 rounded-2xl'}`}
                         >
-                            <MessageSquare className="w-6 h-6" />
-                            <span className="absolute left-full ml-4 px-3 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all whitespace-nowrap z-50 border border-white/10">
-                                Novo Chamado
-                            </span>
+                            <MessageSquare className="w-6 h-6 shrink-0" />
+                            {isSidebarOpen ? (
+                                <span className="text-sm font-medium truncate">Novo Chamado</span>
+                            ) : (
+                                <span className="absolute left-full ml-4 px-3 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all whitespace-nowrap z-50 border border-white/10">
+                                    Novo Chamado
+                                </span>
+                            )}
                         </button>
                     )}
                     {!isAccountingView && (
-                        <button className="p-4 rounded-2xl text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all">
+                        <button className={`text-slate-500 hover:text-slate-300 hover:bg-white/5 transition-all ${isSidebarOpen ? 'w-full flex items-center gap-3 px-4 py-4 rounded-2xl justify-start' : 'p-4 rounded-2xl'}`}>
                             <LifeBuoy className="w-6 h-6" />
+                            {isSidebarOpen && <span className="text-sm font-medium truncate">Ajuda</span>}
                         </button>
                     )}
-                    <div className="w-12 h-12 rounded-full bg-linear-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold shadow-lg">
-                        {client?.name?.charAt(0) || 'U'}
+                    <div className={`flex items-center gap-3 ${isSidebarOpen ? 'w-full px-2 justify-start' : 'w-full justify-center'}`}>
+                        <div className="w-12 h-12 rounded-full bg-linear-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold shadow-lg">
+                            {client?.name?.charAt(0) || 'U'}
+                        </div>
+                        {isSidebarOpen && (
+                            <div className="min-w-0">
+                                <p className="text-sm font-bold text-white leading-none">{client?.name || 'Usuário'}</p>
+                                <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 mt-1">{isReadOnly ? 'Acesso Restrito' : 'Conta Ativa'}</p>
+                            </div>
+                        )}
                     </div>
                     {isClientView && (
                         <button
@@ -1591,21 +1626,25 @@ const ClientDashboard = () => {
                                     navigate('/client-login');
                                 }
                             }}
-                            className="p-4 rounded-2xl text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all relative group"
+                            className={`text-red-400/60 hover:text-red-400 hover:bg-red-500/10 transition-all relative group ${isSidebarOpen ? 'w-full flex items-center gap-3 px-4 py-4 rounded-2xl justify-start' : 'p-4 rounded-2xl'}`}
                         >
-                            <LogOut className="w-6 h-6" />
-                            <span className="absolute left-full ml-4 px-3 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all whitespace-nowrap z-50 border border-white/10">
-                                Sair
-                            </span>
+                            <LogOut className="w-6 h-6 shrink-0" />
+                            {isSidebarOpen ? (
+                                <span className="text-sm font-medium truncate">Sair</span>
+                            ) : (
+                                <span className="absolute left-full ml-4 px-3 py-1 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-all whitespace-nowrap z-50 border border-white/10">
+                                    Sair
+                                </span>
+                            )}
                         </button>
                     )}
                 </div>
             </div>
 
             {/* Main Content */}
-            <div className="ml-20 min-h-screen relative z-10">
+            <div className={`${isSidebarOpen ? 'ml-64' : 'ml-20'} min-h-screen relative z-10 transition-all duration-300`}>
                 {/* Modern Header - Fixed at Top */}
-                <header className="fixed top-0 left-20 right-0 z-50 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between">
+                <header className={`fixed top-0 ${isSidebarOpen ? 'left-64' : 'left-20'} right-0 z-50 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300`}>
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             {isAccountingView && (
