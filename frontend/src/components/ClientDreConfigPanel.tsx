@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Plus, Save, Trash2 } from 'lucide-react';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
 import api from '../services/api';
+import { chartOfAccountsService } from '../services/chartOfAccountsService';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface DREMappingRecord {
@@ -37,6 +38,7 @@ interface Props {
     onSaved?: () => void | Promise<void>;
     scope?: 'client' | 'global';
     sourceClientId?: string;
+    sourceClientName?: string;
 }
 
 // ─── DRE Categories (same order as DRE report) ─────────────────────────────
@@ -98,22 +100,25 @@ const toBackendCategory = (key: string) =>
 // ─── Component ──────────────────────────────────────────────────────────────
 export const ClientDreConfigPanel: React.FC<Props> = ({
     clientId,
-    selectedYear,
+    selectedYear: _selectedYear,
     onSaved,
     scope = 'client',
     sourceClientId,
+    sourceClientName,
 }) => {
     const [saving, setSaving] = useState(false);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [originalMappingCodes, setOriginalMappingCodes] = useState<Set<string>>(new Set());
     const queryClient = useQueryClient();
+    const hasBootstrappedGlobalBase = useRef(false);
     const isGlobalScope = scope === 'global';
     const effectiveClientId = sourceClientId || clientId;
+    const importSourceLabel = sourceClientName?.trim() || 'cliente base';
 
     const dreMappingsQuery = useQuery({
         queryKey: isGlobalScope
             ? ['global-dre-mappings']
-            : ['client-dashboard-dre-mappings', clientId, selectedYear],
+            : ['client-dashboard-dre-mappings', clientId],
         queryFn: async () => {
             const response = await api.get(
                 isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`
@@ -121,17 +126,22 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
             return Array.isArray(response.data) ? (response.data as DREMappingRecord[]) : [];
         },
         enabled: isGlobalScope ? Boolean(effectiveClientId) : Boolean(clientId),
-        staleTime: 30_000,
+        staleTime: 300_000,
     });
 
     const chartAccountsQuery = useQuery({
-        queryKey: ['client-dashboard-chart-accounts', effectiveClientId, selectedYear, isGlobalScope ? 'global' : 'client'],
+        queryKey: isGlobalScope
+            ? ['staff-chart-of-accounts']
+            : ['client-dashboard-chart-accounts', effectiveClientId],
         queryFn: async () => {
+            if (isGlobalScope) {
+                return chartOfAccountsService.getSharedAll() as Promise<DreAccount[]>;
+            }
             const response = await api.get(`/clients/${effectiveClientId}/chart-of-accounts`);
             return Array.isArray(response.data) ? (response.data as DreAccount[]) : [];
         },
         enabled: Boolean(effectiveClientId),
-        staleTime: 30_000,
+        staleTime: 300_000,
     });
 
     useEffect(() => {
@@ -164,9 +174,51 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
         setOriginalMappingCodes(new Set(mappings.map((m) => m.account_code)));
     }, [dreMappingsQuery.data]);
 
+    useEffect(() => {
+        if (!isGlobalScope || !effectiveClientId || hasBootstrappedGlobalBase.current) return;
+        if (dreMappingsQuery.isPending || dreMappingsQuery.isError) return;
+        if ((dreMappingsQuery.data ?? []).length > 0) {
+            hasBootstrappedGlobalBase.current = true;
+            return;
+        }
+
+        hasBootstrappedGlobalBase.current = true;
+
+        void (async () => {
+            try {
+                const response = await api.get(`/clients/${effectiveClientId}/dre-mappings`);
+                const sourceMappings = Array.isArray(response.data) ? (response.data as DREMappingRecord[]) : [];
+                const allowedCategories = new Set(ALL_CATEGORY_KEYS.map(stripAccents));
+                const imported = sourceMappings
+                    .filter((mapping) => allowedCategories.has(stripAccents(mapping.category)))
+                    .map((mapping) => ({
+                        localId: makeLocalId(),
+                        account_code: mapping.account_code,
+                        account_name: mapping.account_name,
+                        category: stripAccents(mapping.category),
+                    }));
+
+                if (imported.length === 0) return;
+
+                setDraftMappings(imported);
+                setOriginalMappingCodes(new Set(imported.map((mapping) => mapping.account_code)));
+                toast.success(`Base inicial carregada de ${importSourceLabel}`);
+            } catch (error) {
+                console.error('Erro ao carregar configuracao inicial global DRE:', error);
+            }
+        })();
+    }, [
+        dreMappingsQuery.data,
+        dreMappingsQuery.isError,
+        dreMappingsQuery.isPending,
+        effectiveClientId,
+        importSourceLabel,
+        isGlobalScope,
+    ]);
+
     const handleImportFromClient = async () => {
         if (!effectiveClientId) {
-            toast.error('Selecione um cliente base');
+            toast.error('Cliente base indisponivel');
             return;
         }
 
@@ -185,10 +237,10 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
 
             setDraftMappings(imported);
             setOriginalMappingCodes(new Set(imported.map((mapping) => mapping.account_code)));
-            toast.success('Configuracao carregada do cliente selecionado');
+            toast.success(`Configuracao carregada de ${importSourceLabel}`);
         } catch (error) {
             console.error('Erro ao importar configuracao base:', error);
-            toast.error('Erro ao importar configuracao do cliente');
+            toast.error(`Erro ao importar configuracao de ${importSourceLabel}`);
         }
     };
 
@@ -208,6 +260,33 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
             (m) => m.code.startsWith('03') || m.code.startsWith('04')
         ),
         [chartAccountsQuery.data]
+    );
+
+    const dreAccountByCode = useMemo(
+        () => new Map(dreAccounts.map((account) => [account.code, account])),
+        [dreAccounts]
+    );
+
+    const dreAccountOptions = useMemo<AccountOption[]>(
+        () => dreAccounts.map((account) => ({
+            id: account.code,
+            code: account.code,
+            name: account.name,
+            reducedCode: account.reduced_code ?? null,
+            accountType: account.is_analytic === true ? 'A' : 'T',
+        })),
+        [dreAccounts]
+    );
+
+    const dreAccountLabelByCode = useMemo(
+        () =>
+            new Map(
+                dreAccounts.map((account) => [
+                    account.code,
+                    `${account.code}${account.reduced_code ? ` - ${account.reduced_code}` : ''} - ${account.name}`,
+                ])
+            ),
+        [dreAccounts]
     );
 
     // Set of already-mapped account codes
@@ -239,7 +318,7 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
     };
 
     const updateMappingAccount = (localId: string, accountCode: string) => {
-        const account = dreAccounts.find((a) => a.code === accountCode);
+        const account = dreAccountByCode.get(accountCode);
         if (!account) return;
         setDraftMappings((prev) =>
             prev.map((m) =>
@@ -399,7 +478,7 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
                             disabled={!effectiveClientId}
                             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300 text-xs font-bold uppercase tracking-[0.15em] disabled:opacity-40"
                         >
-                            Importar do cliente selecionado
+                            Importar base de {importSourceLabel}
                         </button>
                     )}
                     {unmappedAccounts.length > 0 && (
@@ -467,14 +546,6 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
                                             </div>
                                         ) : (
                                             lineMappings.map((mapping) => {
-                                                // Show: all DRE accounts (for search)
-                                                const allOptions: AccountOption[] = dreAccounts.map((a) => ({
-                                                    id: a.code,
-                                                    code: a.code,
-                                                    name: a.name,
-                                                    accountType: a.is_analytic === true ? 'A' : 'T',
-                                                }));
-
                                                 return (
                                                     <div
                                                         key={mapping.localId}
@@ -485,8 +556,9 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
                                                                 Conta
                                                             </label>
                                                             <SearchableAccountSelect
-                                                                options={allOptions}
+                                                                options={dreAccountOptions}
                                                                 value={mapping.account_code}
+                                                                selectedLabel={dreAccountLabelByCode.get(mapping.account_code)}
                                                                 onChange={(code) => updateMappingAccount(mapping.localId, code)}
                                                                 placeholder="Buscar conta DRE..."
                                                             />

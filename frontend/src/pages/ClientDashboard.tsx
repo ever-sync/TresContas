@@ -1386,10 +1386,10 @@ const ClientDashboard = () => {
     const isClientLoading = clientQuery.isPending;
 
     const chartAccountsQuery = useQuery({
-        queryKey: ['client-dashboard-chart-accounts', clientId ?? 'self'],
+        queryKey: isAccountingView ? ['staff-chart-of-accounts'] : ['client-dashboard-chart-accounts', 'self'],
         queryFn: async () => {
             if (isAccountingView && clientId) {
-                return chartOfAccountsService.getAll(clientId);
+                return chartOfAccountsService.getSharedAll();
             }
 
             if (isClientView) {
@@ -1399,11 +1399,11 @@ const ClientDashboard = () => {
             return [];
         },
         enabled: (isAccountingView && Boolean(clientId)) || isClientView,
-        staleTime: 30_000,
+        staleTime: 300_000,
     });
 
     const dreMappingsQuery = useQuery({
-        queryKey: ['accounting-dre-mappings', clientId ?? 'self'],
+        queryKey: ['global-dre-mappings'],
         queryFn: async () => {
             if (!isAccountingView || !clientId) return [];
 
@@ -1411,7 +1411,7 @@ const ClientDashboard = () => {
             return Array.isArray(data) ? data : [];
         },
         enabled: isAccountingView && Boolean(clientId),
-        staleTime: 30_000,
+        staleTime: 300_000,
     });
 
     const dreMovementsQuery = useQuery({
@@ -1766,7 +1766,7 @@ const ClientDashboard = () => {
         { id: 'ebtida',         name: 'RESULTADO EBITDA',                  key: 'ebtida',          type: 'highlight', category: '' },
     ];
 
-    const reportItems = (() => {
+    const reportItems = useMemo(() => {
         const data = calcDreForMonth(selectedMonthIndex);
         const format = (val: number) => {
             const formatted = formatLocaleNumber(val);
@@ -1783,12 +1783,15 @@ const ClientDashboard = () => {
             rawVal: data[line.key as keyof typeof data],
             pct: line.id === 'rec_bruta' ? '100%' : calcPct(data[line.key as keyof typeof data]),
         }));
-    })();
+    }, [selectedMonthIndex, dreMovements, dreMappings, accounts]);
 
     // Dados do DRE para todos os meses (para tabela mês a mês)
-    const allMonthsDre = months.map((_, idx) => calcDreForMonth(idx));
+    const allMonthsDre = useMemo(
+        () => months.map((_, idx) => calcDreForMonth(idx)),
+        [months, dreMovements, dreMappings, accounts]
+    );
 
-    const monthlyReportData = (() => {
+    const monthlyReportData = useMemo(() => {
         const monthsData: Array<DreMonthData & { month: string; lucroLiquido: number }> = allMonthsDre.map((d, i) => ({
             month: months[i].substring(0, 3),
             ...d,
@@ -1819,7 +1822,7 @@ const ClientDashboard = () => {
             resultFin:      mapToChart('resultFin'),
             ebtida:         mapToChart('ebtida'),
         };
-    })();
+    }, [allMonthsDre, months]);
 
     // Factory para criar handler de upload de movimentação (DRE ou Patrimonial)
     const createMovementUploadHandler = (
@@ -2237,7 +2240,7 @@ const ClientDashboard = () => {
     }
 
     // Importar Plano de Contas (CSV com colunas: CLASSIFICADOR, NÍVEL, TIPO, DESCRIÇÃO, Apelido, Relatório, DESCRIÇÃO RELATÓRIO)
-    const patMonthlyDataByGroup = (() => {
+    const patMonthlyDataByGroup = useMemo(() => {
         const mapGroup = (groupLabel: string) =>
             months.map((month, monthIdx) => ({
                 name: month.substring(0, 3),
@@ -2259,7 +2262,7 @@ const ClientDashboard = () => {
                 value: getSumByGroup('PASSIVO CIRCULANTE', monthIdx) + getSumByGroup('PASSIVO NÃO CIRCULANTE', monthIdx) + getSumByGroup('PATRIMÔNIO LÍQUIDO', monthIdx),
             })),
         };
-    })();
+    }, [months, patrimonialMovements, accounts]);
 
     const selectedDashboardDre = allMonthsDre[selectedMonthIndex] ?? EMPTY_DRE_MONTH_DATA;
     const pendingDocumentAlertsCount = documentAlerts.filter((alert) => alert.status === 'Pendente').length;

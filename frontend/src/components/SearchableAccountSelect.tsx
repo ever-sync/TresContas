@@ -1,12 +1,12 @@
-import React, { useMemo, useRef, useState, useEffect } from 'react';
+import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 
 export interface AccountOption {
-    id: string;       // valor usado como value (id ou code)
-    code: string;     // código hierárquico (01.1.01.01.0001)
+    id: string;
+    code: string;
     name: string;
     reducedCode?: string | null;
-    accountType?: string | null; // 'T' = título/sintético, 'A' = analítico
+    accountType?: string | null;
 }
 
 interface Props {
@@ -15,53 +15,54 @@ interface Props {
     onChange: (value: string) => void;
     placeholder?: string;
     className?: string;
+    selectedLabel?: string;
 }
 
-const normalizeSearch = (s: string) =>
-    s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+const normalizeSearch = (value: string) =>
+    value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
-export const SearchableAccountSelect: React.FC<Props> = ({
+const SearchableAccountSelectComponent: React.FC<Props> = ({
     options,
     value,
     onChange,
     placeholder = 'Selecione uma conta...',
     className = '',
+    selectedLabel,
 }) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
     const containerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
-    const listRef = useRef<HTMLDivElement>(null);
 
     const selectedOption = useMemo(
-        () => options.find((o) => o.id === value),
-        [options, value]
+        () => (selectedLabel ? null : options.find((option) => option.id === value)),
+        [options, selectedLabel, value]
     );
 
-    const filtered = useMemo(() => {
+    const filteredOptions = useMemo(() => {
+        if (!open) return [];
         if (!search.trim()) return options;
-        const q = normalizeSearch(search);
-        return options.filter(
-            (o) =>
-                o.code.toLowerCase().includes(q) ||
-                normalizeSearch(o.name).includes(q) ||
-                (o.reducedCode && o.reducedCode.includes(q))
-        );
-    }, [options, search]);
 
-    // Close on click outside
+        const normalizedQuery = normalizeSearch(search);
+        return options.filter((option) =>
+            option.code.toLowerCase().includes(normalizedQuery) ||
+            normalizeSearch(option.name).includes(normalizedQuery) ||
+            (option.reducedCode && option.reducedCode.includes(normalizedQuery))
+        );
+    }, [open, options, search]);
+
     useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        const handler = (event: MouseEvent) => {
+            if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
                 setOpen(false);
                 setSearch('');
             }
         };
+
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, []);
 
-    // Focus input when opening
     useEffect(() => {
         if (open && inputRef.current) {
             inputRef.current.focus();
@@ -74,82 +75,83 @@ export const SearchableAccountSelect: React.FC<Props> = ({
         setSearch('');
     };
 
-    const displayText = selectedOption
-        ? `${selectedOption.code}${selectedOption.reducedCode ? ` • ${selectedOption.reducedCode}` : ''} • ${selectedOption.name}`
-        : placeholder;
+    const displayText =
+        selectedLabel ||
+        (selectedOption
+            ? `${selectedOption.code}${selectedOption.reducedCode ? ` - ${selectedOption.reducedCode}` : ''} - ${selectedOption.name}`
+            : placeholder);
 
     return (
         <div ref={containerRef} className={`relative ${className}`}>
-            {/* Trigger button */}
             <button
                 type="button"
-                onClick={() => setOpen(!open)}
-                className="w-full rounded-xl bg-[#0d1829] border border-white/10 text-white text-sm px-4 py-3 text-left flex items-center gap-2 outline-none hover:border-white/20 transition-colors"
+                onClick={() => setOpen((current) => !current)}
+                className="flex w-full items-center gap-2 rounded-xl border border-white/10 bg-[#0d1829] px-4 py-3 text-left text-sm text-white outline-none transition-colors hover:border-white/20"
             >
                 <span className="flex-1 truncate">{displayText}</span>
-                <ChevronDown className={`w-4 h-4 text-white/40 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 shrink-0 text-white/40 transition-transform ${open ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Dropdown */}
             {open && (
-                <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-xl bg-[#0a1628] border border-white/15 shadow-2xl shadow-black/60 overflow-hidden">
-                    {/* Search input */}
-                    <div className="p-2 border-b border-white/10">
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-white/15 bg-[#0a1628] shadow-2xl shadow-black/60">
+                    <div className="border-b border-white/10 p-2">
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
                             <input
                                 ref={inputRef}
                                 type="text"
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                placeholder="Buscar por código ou nome..."
-                                className="w-full bg-[#0d1829] border border-white/10 rounded-lg text-white text-sm pl-9 pr-8 py-2.5 outline-none placeholder:text-white/25 focus:border-cyan-500/40"
+                                onChange={(event) => setSearch(event.target.value)}
+                                placeholder="Buscar por codigo ou nome..."
+                                className="w-full rounded-lg border border-white/10 bg-[#0d1829] py-2.5 pl-9 pr-8 text-sm text-white outline-none placeholder:text-white/25 focus:border-cyan-500/40"
                             />
                             {search && (
                                 <button
+                                    type="button"
                                     onClick={() => setSearch('')}
                                     className="absolute right-2 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
                                 >
-                                    <X className="w-3.5 h-3.5" />
+                                    <X className="h-3.5 w-3.5" />
                                 </button>
                             )}
                         </div>
                     </div>
 
-                    {/* Options list */}
-                    <div ref={listRef} className="max-h-60 overflow-y-auto">
-                        {filtered.length === 0 ? (
+                    <div className="max-h-60 overflow-y-auto">
+                        {filteredOptions.length === 0 ? (
                             <div className="px-4 py-6 text-center text-sm text-white/30">
                                 Nenhuma conta encontrada
                             </div>
                         ) : (
-                            filtered.map((option) => {
+                            filteredOptions.map((option) => {
                                 const isSelected = option.id === value;
                                 return (
                                     <button
                                         key={option.id}
                                         type="button"
                                         onClick={() => handleSelect(option)}
-                                        className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 transition-colors ${
+                                        className={`flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition-colors ${
                                             isSelected
                                                 ? 'bg-cyan-500/15 text-cyan-300'
                                                 : 'text-white/70 hover:bg-white/5 hover:text-white'
                                         }`}
                                     >
-                                        <span className="font-mono text-xs text-white/45 shrink-0 min-w-[120px]">
+                                        <span className="min-w-[120px] shrink-0 font-mono text-xs text-white/45">
                                             {option.code}
                                         </span>
                                         {option.reducedCode && (
-                                            <span className="font-mono text-xs text-white/25 shrink-0">
+                                            <span className="shrink-0 font-mono text-xs text-white/25">
                                                 {option.reducedCode}
                                             </span>
                                         )}
                                         {option.accountType && (
-                                            <span className={`font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 ${
-                                                option.accountType === 'A'
-                                                    ? 'bg-cyan-500/15 text-cyan-400'
-                                                    : 'bg-amber-500/15 text-amber-400'
-                                            }`}>
+                                            <span
+                                                className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                                                    option.accountType === 'A'
+                                                        ? 'bg-cyan-500/15 text-cyan-400'
+                                                        : 'bg-amber-500/15 text-amber-400'
+                                                }`}
+                                            >
                                                 {option.accountType === 'A' ? 'A' : 'T'}
                                             </span>
                                         )}
@@ -160,14 +162,16 @@ export const SearchableAccountSelect: React.FC<Props> = ({
                         )}
                     </div>
 
-                    {/* Footer count */}
-                    <div className="px-4 py-2 border-t border-white/10 text-[10px] text-white/30 font-bold uppercase tracking-wider">
-                        {filtered.length} de {options.length} contas
+                    <div className="border-t border-white/10 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white/30">
+                        {filteredOptions.length} de {options.length} contas
                     </div>
                 </div>
             )}
         </div>
     );
 };
+
+export const SearchableAccountSelect = memo(SearchableAccountSelectComponent);
+SearchableAccountSelect.displayName = 'SearchableAccountSelect';
 
 export default SearchableAccountSelect;

@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../services/api';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
+import { chartOfAccountsService } from '../services/chartOfAccountsService';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 interface MappingRecord {
@@ -35,6 +36,7 @@ interface Props {
     selectedYear: number;
     scope?: 'client' | 'global';
     sourceClientId?: string;
+    sourceClientName?: string;
 }
 
 // ─── Patrimonial Sections & Categories (mirrors PAT_STRUCTURE) ──────────────
@@ -159,33 +161,29 @@ const inferPatCategory = (code: string): string | null => {
 // ─── Component ──────────────────────────────────────────────────────────────
 export const ClientPatConfigPanel: React.FC<Props> = ({
     clientId,
-    selectedYear,
+    selectedYear: _selectedYear,
     scope = 'client',
     sourceClientId,
+    sourceClientName,
 }) => {
     const [saving, setSaving] = useState(false);
-    const [patAccounts, setPatAccounts] = useState<PatAccount[]>([]);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [originalMappingCodes, setOriginalMappingCodes] = useState<Set<string>>(new Set());
 
     const queryClient = useQueryClient();
     const isGlobalScope = scope === 'global';
     const effectiveClientId = sourceClientId || clientId;
+    const importSourceLabel = sourceClientName?.trim() || 'cliente base';
 
-    const patConfigQuery = useQuery({
+    const patMappingsQuery = useQuery({
         queryKey: isGlobalScope
-            ? ['global-pat-config']
-            : ['client-pat-config', clientId, selectedYear],
+            ? ['global-pat-mappings']
+            : ['client-pat-config', clientId],
         queryFn: async () => {
-            const [mappingsRes, chartRes] = await Promise.all([
-                api.get(isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`),
-                api.get(`/clients/${effectiveClientId}/chart-of-accounts`),
-            ]);
-
+            const mappingsRes = await api.get(
+                isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`
+            );
             const allMappings = Array.isArray(mappingsRes.data) ? (mappingsRes.data as MappingRecord[]) : [];
-            const chart = Array.isArray(chartRes.data) ? (chartRes.data as PatAccount[]) : [];
-
-            const patOnly = chart.filter((m) => m.code.startsWith('01') || m.code.startsWith('02'));
             const patCategoryKeys = new Set(ALL_CATEGORY_KEYS);
             const patMappings = allMappings.filter((m) => patCategoryKeys.has(stripAccents(m.category)));
 
@@ -197,36 +195,56 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
             }));
 
             return {
-                patAccounts: patOnly,
                 drafts,
                 originalCodes: new Set(patMappings.map((m) => m.account_code)),
             };
         },
-        enabled: Boolean(effectiveClientId),
-        staleTime: 30_000,
+        enabled: isGlobalScope ? Boolean(effectiveClientId) : Boolean(clientId),
+        staleTime: 300_000,
     });
 
-    const patConfig = patConfigQuery.data ?? null;
+    const chartAccountsQuery = useQuery({
+        queryKey: isGlobalScope
+            ? ['staff-chart-of-accounts']
+            : ['client-dashboard-chart-accounts', effectiveClientId],
+        queryFn: async () => {
+            if (isGlobalScope) {
+                return chartOfAccountsService.getSharedAll() as Promise<PatAccount[]>;
+            }
+            const response = await api.get(`/clients/${effectiveClientId}/chart-of-accounts`);
+            return Array.isArray(response.data) ? (response.data as PatAccount[]) : [];
+        },
+        enabled: Boolean(effectiveClientId),
+        staleTime: 300_000,
+    });
 
     useEffect(() => {
-        if (!patConfigQuery.isError) return;
+        if (!patMappingsQuery.isError) return;
 
-        const message = patConfigQuery.error instanceof Error
-            ? patConfigQuery.error.message
+        const message = patMappingsQuery.error instanceof Error
+            ? patMappingsQuery.error.message
             : 'Erro ao carregar configuracao Patrimonial';
         toast.error(message);
-    }, [patConfigQuery.error, patConfigQuery.isError]);
+    }, [patMappingsQuery.error, patMappingsQuery.isError]);
 
     useEffect(() => {
-        if (!patConfig) return;
-        setPatAccounts(patConfig.patAccounts);
-        setDraftMappings(patConfig.drafts);
-        setOriginalMappingCodes(patConfig.originalCodes);
-    }, [patConfig]);
+        if (!chartAccountsQuery.isError) return;
+
+        const message = chartAccountsQuery.error instanceof Error
+            ? chartAccountsQuery.error.message
+            : 'Erro ao carregar contas patrimoniais';
+        toast.error(message);
+    }, [chartAccountsQuery.error, chartAccountsQuery.isError]);
+
+    useEffect(() => {
+        if (!patMappingsQuery.data) return;
+        setDraftMappings(patMappingsQuery.data.drafts);
+        setOriginalMappingCodes(patMappingsQuery.data.originalCodes);
+    }, [patMappingsQuery.data]);
 
     const handleImportFromClient = async () => {
         if (!effectiveClientId) {
-            toast.error('Selecione um cliente base');
+            toast.error('Cliente base indisponivel');
             return;
         }
 
@@ -245,14 +263,46 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
 
             setDraftMappings(imported);
             setOriginalMappingCodes(new Set(imported.map((mapping) => mapping.account_code)));
-            toast.success('Configuracao carregada do cliente selecionado');
+            toast.success(`Configuracao carregada de ${importSourceLabel}`);
         } catch (error) {
             console.error('Erro ao importar configuracao base:', error);
-            toast.error('Erro ao importar configuracao do cliente');
+            toast.error(`Erro ao importar configuracao de ${importSourceLabel}`);
         }
     };
 
-    const loading = patConfigQuery.isPending;
+    const patAccounts = useMemo(
+        () => (chartAccountsQuery.data ?? []).filter((account) => account.code.startsWith('01') || account.code.startsWith('02')),
+        [chartAccountsQuery.data]
+    );
+
+    const patAccountByCode = useMemo(
+        () => new Map(patAccounts.map((account) => [account.code, account])),
+        [patAccounts]
+    );
+
+    const patAccountOptions = useMemo<AccountOption[]>(
+        () => patAccounts.map((account) => ({
+            id: account.code,
+            code: account.code,
+            name: account.name,
+            reducedCode: account.reduced_code ?? null,
+            accountType: account.is_analytic === true ? 'A' : 'T',
+        })),
+        [patAccounts]
+    );
+
+    const patAccountLabelByCode = useMemo(
+        () =>
+            new Map(
+                patAccounts.map((account) => [
+                    account.code,
+                    `${account.code}${account.reduced_code ? ` - ${account.reduced_code}` : ''} - ${account.name}`,
+                ])
+            ),
+        [patAccounts]
+    );
+
+    const loading = patMappingsQuery.isPending || chartAccountsQuery.isPending;
 
     const mappingsByCategory = useMemo(() => {
         const map: Record<string, DraftMapping[]> = {};
@@ -291,7 +341,7 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
     };
 
     const updateMappingAccount = (localId: string, accountCode: string) => {
-        const account = patAccounts.find((a) => a.code === accountCode);
+        const account = patAccountByCode.get(accountCode);
         if (!account) return;
         setDraftMappings((prev) =>
             prev.map((m) =>
@@ -342,7 +392,7 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
             await queryClient.invalidateQueries({
-                queryKey: isGlobalScope ? ['global-pat-config'] : ['client-pat-config', clientId, selectedYear],
+                queryKey: isGlobalScope ? ['global-pat-mappings'] : ['client-pat-config', clientId],
             });
             toast.success('Configuracao Patrimonial salva!');
         } catch (error) {
@@ -385,6 +435,23 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
         );
     }
 
+    if (patMappingsQuery.isError || chartAccountsQuery.isError) {
+        return (
+            <div className="p-12 flex flex-col items-center justify-center text-center text-white/40 gap-4">
+                <div>
+                    <p className="text-lg font-bold text-white/70">Nao foi possivel carregar a configuracao Patrimonial</p>
+                    <p className="text-sm text-white/30 mt-2">Tente novamente para recarregar os dados.</p>
+                </div>
+                <button
+                    onClick={() => Promise.all([patMappingsQuery.refetch(), chartAccountsQuery.refetch()])}
+                    className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/70 transition-colors"
+                >
+                    Recarregar
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div className="p-6 md:p-8 space-y-8">
             {/* Header info */}
@@ -409,7 +476,7 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
                             disabled={!effectiveClientId}
                             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300 text-xs font-bold uppercase tracking-[0.15em] disabled:opacity-40"
                         >
-                            Importar do cliente selecionado
+                            Importar base de {importSourceLabel}
                         </button>
                     )}
                     {unmappedAccounts.length > 0 && (
@@ -477,13 +544,6 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
                                             </div>
                                         ) : (
                                             lineMappings.map((mapping) => {
-                                                const allOptions: AccountOption[] = patAccounts.map((a) => ({
-                                                    id: a.code,
-                                                    code: a.code,
-                                                    name: a.name,
-                                                    accountType: a.is_analytic === true ? 'A' : 'T',
-                                                }));
-
                                                 return (
                                                     <div
                                                         key={mapping.localId}
@@ -494,8 +554,9 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
                                                                 Conta
                                                             </label>
                                                             <SearchableAccountSelect
-                                                                options={allOptions}
+                                                                options={patAccountOptions}
                                                                 value={mapping.account_code}
+                                                                selectedLabel={patAccountLabelByCode.get(mapping.account_code)}
                                                                 onChange={(code) => updateMappingAccount(mapping.localId, code)}
                                                                 placeholder="Buscar conta patrimonial..."
                                                             />
