@@ -120,10 +120,19 @@ export const ClientDreConfigPanel: React.FC<Props> = ({
             ? ['global-dre-mappings']
             : ['client-dashboard-dre-mappings', clientId],
         queryFn: async () => {
-            const response = await api.get(
-                isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`
-            );
-            return Array.isArray(response.data) ? (response.data as DREMappingRecord[]) : [];
+            const sourceUrl = `/clients/${effectiveClientId}/dre-mappings`;
+
+            try {
+                const response = await api.get(
+                    isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`
+                );
+                return Array.isArray(response.data) ? (response.data as DREMappingRecord[]) : [];
+            } catch (error) {
+                if (!isGlobalScope) throw error;
+
+                const fallback = await api.get(sourceUrl);
+                return Array.isArray(fallback.data) ? (fallback.data as DREMappingRecord[]) : [];
+            }
         },
         enabled: isGlobalScope ? Boolean(effectiveClientId) : Boolean(clientId),
         staleTime: 300_000,

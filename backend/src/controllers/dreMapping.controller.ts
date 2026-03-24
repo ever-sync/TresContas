@@ -6,6 +6,9 @@ import { getPool } from '../lib/prisma';
 const stripAccents = (s: string) =>
     s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 
+const normalizeCategoryKey = (s: string) =>
+    stripAccents(s).replace(/\s+/g, '');
+
 const VALID_DRE_CATEGORIES = [
     // DRE categories
     'Custos Das Vendas', 'Custos Dos Servicos', 'Deducoes', 'Deducoes De Vendas',
@@ -34,9 +37,12 @@ const VALID_DRE_CATEGORIES = [
     'Reserva De Lucros', 'Resultado Do Exercicio',
 ];
 
-const VALID_DRE_CATEGORIES_NORMALIZED = new Set(VALID_DRE_CATEGORIES.map(stripAccents));
+const VALID_DRE_CATEGORIES_NORMALIZED = new Set(VALID_DRE_CATEGORIES.map(normalizeCategoryKey));
 
-const isValidCategory = (category: string) => VALID_DRE_CATEGORIES_NORMALIZED.has(stripAccents(category));
+const isValidCategory = (category: string) => VALID_DRE_CATEGORIES_NORMALIZED.has(normalizeCategoryKey(category));
+
+const resolveCanonicalCategory = (category: string, allowedCategories: string[]) =>
+    allowedCategories.find((candidate) => normalizeCategoryKey(candidate) === normalizeCategoryKey(category)) || null;
 
 const GLOBAL_DRE_GROUP_CATEGORIES = {
     dre: VALID_DRE_CATEGORIES.slice(0, 15),
@@ -103,13 +109,17 @@ const getClientMappings = async (accountingId: string, clientId: string) => {
 };
 
 const getGlobalMappings = async (accountingId: string) => {
-    return prisma.dREMapping.findMany({
-        where: {
-            accounting_id: accountingId,
-            client_id: null as any,
-        },
-        orderBy: [{ account_code: 'asc' }, { updated_at: 'desc' }],
-    });
+    const pool = getPool();
+    const result = await pool.query(
+        `SELECT id, accounting_id, client_id, account_code, account_name, category, created_at, updated_at
+         FROM "DREMapping"
+         WHERE accounting_id = $1
+           AND client_id IS NULL
+         ORDER BY account_code ASC, updated_at DESC`,
+        [accountingId]
+    );
+
+    return result.rows;
 };
 
 const syncGlobalMappingState = async (
@@ -188,7 +198,7 @@ export const replaceGlobalDREMappings = async (req: AuthRequest, res: Response) 
         }
 
         const allowedCategories = GLOBAL_DRE_GROUP_CATEGORIES[group];
-        const allowedCategoriesNormalized = new Set(allowedCategories.map(stripAccents));
+        const allowedCategoriesNormalized = new Set(allowedCategories.map(normalizeCategoryKey));
 
         const { mappings } = req.body;
         if (!Array.isArray(mappings)) {
@@ -201,6 +211,11 @@ export const replaceGlobalDREMappings = async (req: AuthRequest, res: Response) 
             category: String(mapping.category || '').trim(),
         }));
 
+        const canonicalMappings: Array<{
+            account_code: string;
+            account_name: string;
+            category: string;
+        }> = [];
         const invalidMappings: string[] = [];
         for (const mapping of normalizedMappings) {
             if (!mapping.account_code || !mapping.account_name || !mapping.category) {
@@ -209,9 +224,17 @@ export const replaceGlobalDREMappings = async (req: AuthRequest, res: Response) 
                 });
             }
 
-            if (!allowedCategoriesNormalized.has(stripAccents(mapping.category))) {
+            const canonicalCategory = resolveCanonicalCategory(mapping.category, allowedCategories);
+            if (!canonicalCategory || !allowedCategoriesNormalized.has(normalizeCategoryKey(mapping.category))) {
                 invalidMappings.push(mapping.category);
+                continue;
             }
+
+            canonicalMappings.push({
+                account_code: mapping.account_code,
+                account_name: mapping.account_name,
+                category: canonicalCategory,
+            });
         }
 
         if (invalidMappings.length > 0) {
@@ -226,36 +249,107 @@ export const replaceGlobalDREMappings = async (req: AuthRequest, res: Response) 
             account_name: string;
             category: string;
         }>();
-        for (const mapping of normalizedMappings) {
+        for (const mapping of canonicalMappings) {
             dedupedByAccountCode.set(mapping.account_code, mapping);
         }
         const uniqueMappings = Array.from(dedupedByAccountCode.values());
+        const pool = getPool();
+        const db = await pool.connect();
 
-        await prisma.$transaction(async (tx) => {
-            await tx.dREMapping.deleteMany({
-                where: {
-                    accounting_id: req.accountingId!,
-                    client_id: null as any,
-                    category: { in: allowedCategories },
-                },
-            });
+        try {
+            await db.query('BEGIN');
+
+            const existingMappingsResult = await db.query<{ account_code: string }>(
+                `SELECT account_code
+                 FROM "DREMapping"
+                 WHERE accounting_id = $1
+                   AND client_id IS NULL
+                   AND category = ANY($2::text[])`,
+                [req.accountingId!, allowedCategories]
+            );
+
+            const existingCodes = new Set(existingMappingsResult.rows.map((row) => row.account_code));
+            const nextCodes = new Set(uniqueMappings.map((mapping) => mapping.account_code));
+            const removedCodes = [...existingCodes].filter((code) => !nextCodes.has(code));
+
+            await db.query(
+                `DELETE FROM "DREMapping"
+                 WHERE accounting_id = $1
+                   AND client_id IS NULL
+                   AND category = ANY($2::text[])`,
+                [req.accountingId!, allowedCategories]
+            );
 
             if (uniqueMappings.length > 0) {
-                await tx.dREMapping.createMany({
-                    data: uniqueMappings.map((mapping) => ({
-                        accounting_id: req.accountingId!,
-                        client_id: null as any,
-                        account_code: mapping.account_code,
-                        account_name: mapping.account_name,
-                        category: mapping.category,
-                    })),
-                });
+                const batchSize = 100;
+                for (let i = 0; i < uniqueMappings.length; i += batchSize) {
+                    const batch = uniqueMappings.slice(i, i + batchSize);
+                    const values: any[] = [];
+                    const placeholders: string[] = [];
+
+                    batch.forEach((mapping, index) => {
+                        const offset = index * 4;
+                        placeholders.push(`(gen_random_uuid(), $${offset + 1}, NULL, $${offset + 2}, $${offset + 3}, $${offset + 4}, NOW(), NOW())`);
+                        values.push(req.accountingId!, mapping.account_code, mapping.account_name, mapping.category);
+                    });
+
+                    await db.query(
+                        `INSERT INTO "DREMapping" (id, accounting_id, client_id, account_code, account_name, category, created_at, updated_at)
+                         VALUES ${placeholders.join(', ')}`,
+                        values
+                    );
+                }
             }
 
-            for (const mapping of uniqueMappings) {
-                await syncGlobalMappingState(tx, req.accountingId!, mapping.account_code, mapping.category);
+            if (uniqueMappings.length > 0) {
+                await db.query(
+                    `UPDATE "ChartOfAccounts" ca
+                     SET report_category = dm.category, is_mapped = true
+                     FROM "DREMapping" dm
+                     WHERE ca.accounting_id = $1
+                       AND dm.accounting_id = $1
+                       AND dm.client_id IS NULL
+                       AND ca.code = dm.account_code`,
+                    [req.accountingId!]
+                );
+
+                await db.query(
+                    `UPDATE "MonthlyMovement" mm
+                     SET category = dm.category, is_mapped = true
+                     FROM "DREMapping" dm
+                     WHERE mm.accounting_id = $1
+                       AND dm.accounting_id = $1
+                       AND dm.client_id IS NULL
+                       AND mm.code = dm.account_code`,
+                    [req.accountingId!]
+                );
             }
-        });
+
+            if (removedCodes.length > 0) {
+                await db.query(
+                    `UPDATE "ChartOfAccounts"
+                     SET report_category = NULL, is_mapped = false
+                     WHERE accounting_id = $1
+                       AND code = ANY($2::text[])`,
+                    [req.accountingId!, removedCodes]
+                );
+
+                await db.query(
+                    `UPDATE "MonthlyMovement"
+                     SET category = NULL, is_mapped = false
+                     WHERE accounting_id = $1
+                       AND code = ANY($2::text[])`,
+                    [req.accountingId!, removedCodes]
+                );
+            }
+
+            await db.query('COMMIT');
+        } catch (error) {
+            await db.query('ROLLBACK');
+            throw error;
+        } finally {
+            db.release();
+        }
 
         res.json({
             message: 'Parametrizacao global salva com sucesso',

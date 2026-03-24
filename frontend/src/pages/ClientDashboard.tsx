@@ -1021,7 +1021,7 @@ const MockModuleSection = ({
                                 </div>
                             </div>
                             <div className="h-72 -mx-3">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <LineChart data={lineChart.data}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff08" />
                                         <XAxis
@@ -1072,7 +1072,7 @@ const MockModuleSection = ({
                                 <p className="text-white/40 text-sm mt-1">{pieChart.description}</p>
                             </div>
                             <div className="h-64">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <RechartsPie>
                                         <Pie
                                             data={pieChart.data}

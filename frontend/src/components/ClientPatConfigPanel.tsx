@@ -180,9 +180,18 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
             ? ['global-pat-mappings']
             : ['client-pat-config', clientId],
         queryFn: async () => {
-            const mappingsRes = await api.get(
-                isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`
-            );
+            const sourceUrl = `/clients/${effectiveClientId}/dre-mappings`;
+
+            let mappingsRes;
+            try {
+                mappingsRes = await api.get(
+                    isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`
+                );
+            } catch (error) {
+                if (!isGlobalScope) throw error;
+                mappingsRes = await api.get(sourceUrl);
+            }
+
             const allMappings = Array.isArray(mappingsRes.data) ? (mappingsRes.data as MappingRecord[]) : [];
             const patCategoryKeys = new Set(ALL_CATEGORY_KEYS);
             const patMappings = allMappings.filter((m) => patCategoryKeys.has(stripAccents(m.category)));
