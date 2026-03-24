@@ -188,17 +188,16 @@ const DFC_STRUCTURE: { type: 'section' | 'item' | 'result' | 'separator'; label?
     { type: 'result',  label: 'RESULTADO GERAÇÃO DE CAIXA',           key: 'resultadoGeracaoCaixa' },
 ];
 
-type DreSubTab = 'dre' | 'patrimonial' | 'contas' | 'dfc';
 type ReportViewMode = 'lista' | 'graficos' | 'fechado';
 
-const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
-    { id: 'dre', label: 'DRE', show: true },
-    { id: 'patrimonial', label: 'Patrimonial', show: true },
-    { id: 'dfc', label: 'DFC', show: true },
-];
-
 const CLIENT_TAB_LABELS: Record<string, string> = {
-    dashboard: 'Dashboard',
+    dashboard: 'INICIO',
+    financeiro: 'Financeiro',
+    contabil: 'Contábil',
+    fiscal: 'Fiscal',
+    arquivos: 'Documentos',
+    servicos: 'Serviços',
+    suporte: 'Atendimento',
     movimentacoes: 'Movimentações',
     fluxoCaixa: 'Fluxo de Caixa',
     conciliacaoBancaria: 'Conciliação Bancária',
@@ -209,45 +208,10 @@ const CLIENT_TAB_LABELS: Record<string, string> = {
     guias: 'Guias',
     folhaPagamento: 'Folha de Pagamento',
     obrigacoes: 'Obrigações',
-    arquivos: 'Documentos',
     servicosContratados: 'Serviços Contratados',
-    suporte: 'Atendimento',
 };
 
-const CLIENT_COMING_SOON_COPY: Record<string, { title: string; description: string }> = {
-    movimentacoes: {
-        title: 'Movimentações',
-        description: 'Central de lançamentos, filtros e histórico das movimentações do cliente.',
-    },
-    fluxoCaixa: {
-        title: 'Fluxo de Caixa',
-        description: 'Visão consolidada de entradas, saídas e projeções de caixa.',
-    },
-    conciliacaoBancaria: {
-        title: 'Conciliação Bancária',
-        description: 'Conferência entre extratos bancários e lançamentos contábeis.',
-    },
-    impostos: {
-        title: 'Impostos',
-        description: 'Acompanhamento de tributos, apurações e vencimentos fiscais.',
-    },
-    guias: {
-        title: 'Guias',
-        description: 'Emissão, controle e acompanhamento de guias do cliente.',
-    },
-    folhaPagamento: {
-        title: 'Folha de Pagamento',
-        description: 'Operação e acompanhamento da folha, pró-labore e encargos.',
-    },
-    obrigacoes: {
-        title: 'Obrigações',
-        description: 'Painel de obrigações acessórias, prazos e pendências recorrentes.',
-    },
-    servicosContratados: {
-        title: 'Serviços Contratados',
-        description: 'Escopo contratado, entregas recorrentes e status dos serviços do cliente.',
-    },
-};
+const CLIENT_COMING_SOON_COPY: Record<string, { title: string; description: string }> = {};
 
 const LazySectionFallback = ({ label }: { label: string }) => (
     <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-10 flex items-center justify-center">
@@ -312,12 +276,25 @@ type MockModuleAction = {
     detail: string;
 };
 
+type MockModuleSectionGroup = {
+    title: string;
+    items: MockModuleAction[];
+};
+
+type MockModuleInsight = {
+    title: string;
+    detail: string;
+    tone: ModuleTone;
+};
+
 type MockModule = {
     title: string;
     description: string;
     cards: MockModuleCard[];
     statuses: MockModuleStatus[];
     actions: MockModuleAction[];
+    sections?: MockModuleSectionGroup[];
+    insights?: MockModuleInsight[];
     note: string;
 };
 
@@ -338,6 +315,219 @@ const STATUS_TONES: Record<StatusTone, string> = {
 };
 
 const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
+    financeiro: {
+        title: 'Financeiro',
+        description: 'Visão consolidada do dinheiro da operação, com foco em fluxo de caixa, contas do ciclo e conciliação.',
+        cards: [
+            { label: 'Saldo consolidado', value: 'R$ 1,84 mi', hint: 'caixa disponível entre bancos e conta principal', tone: 'cyan' },
+            { label: 'Entradas do período', value: 'R$ 2,20 mi', hint: 'recebimentos previstos e confirmados', tone: 'emerald' },
+            { label: 'Saídas do período', value: 'R$ 1,91 mi', hint: 'fornecedores, folha e tributos', tone: 'rose' },
+            { label: 'Fluxo projetado', value: '+R$ 290 mil', hint: 'estimativa até o fechamento do mês', tone: 'amber' },
+        ],
+        statuses: [
+            { label: 'Conciliação bancária', value: 'Pendente', tone: 'warn' },
+            { label: 'Contas a pagar', value: '18 títulos', tone: 'info' },
+            { label: 'Contas a receber', value: '12 títulos', tone: 'ok' },
+            { label: 'Distribuição de despesas', value: 'Atualizada', tone: 'ok' },
+        ],
+        actions: [
+            { label: 'Maior saída prevista', detail: 'Folha, fornecedores e impostos concentram 61% das saídas dos próximos 10 dias.' },
+            { label: 'Maior entrada prevista', detail: 'Contrato recorrente principal liquida no fim do mês e reforça o caixa.' },
+            { label: 'Ponto de atenção', detail: 'Dois pagamentos relevantes vencem antes da baixa de um recebível estratégico.' },
+        ],
+        sections: [
+            {
+                title: 'Fluxo de caixa',
+                items: [
+                    { label: 'Saldo inicial', detail: 'R$ 1,55 mi no primeiro dia útil do mês.' },
+                    { label: 'Pico de entrada', detail: 'Dia 28 com liquidação de contratos recorrentes.' },
+                    { label: 'Pico de saída', detail: 'Dia 05 com folha, aluguel e tributos em sequência.' },
+                ],
+            },
+            {
+                title: 'Contas do ciclo',
+                items: [
+                    { label: 'A pagar', detail: '7 vencimentos críticos nos próximos 10 dias.' },
+                    { label: 'A receber', detail: 'Carteira saudável com inadimplência estimada abaixo de 2%.' },
+                    { label: 'Conciliação', detail: '7 lançamentos aguardam validação do cliente.' },
+                ],
+            },
+            {
+                title: 'Leitura operacional',
+                items: [
+                    { label: 'Despesas mais pesadas', detail: 'Folha, frete e serviços de terceiros lideram a distribuição.' },
+                    { label: 'Caixa disponível', detail: 'Cobre 22 dias de operação sem novas entradas.' },
+                    { label: 'Evolução do caixa', detail: 'Trajetória estável nas três últimas semanas.' },
+                ],
+            },
+        ],
+        insights: [
+            { title: 'Resumo executivo', detail: 'O caixa segue positivo, mas a folga depende da cadência de recebimentos no fim do mês.', tone: 'cyan' },
+            { title: 'Alerta', detail: 'Despesas administrativas cresceram 12% frente ao mês anterior.', tone: 'rose' },
+            { title: 'Recomendação', detail: 'Antecipar aprovações de pagamentos e revisar o cronograma dos recebíveis de maior valor.', tone: 'emerald' },
+        ],
+        note: 'A aba Financeiro já prepara o terreno para evoluir sem retrabalho para movimentações, fluxo de caixa, contas do ciclo e conciliação bancária.',
+    },
+    contabil: {
+        title: 'Contábil',
+        description: 'Fotografia contábil do negócio com foco em DRE, DFC, balanço patrimonial, balancete e indicadores técnicos.',
+        cards: [
+            { label: 'DRE do mês', value: 'R$ 428 mil', hint: 'resultado líquido simulado do período', tone: 'emerald' },
+            { label: 'EBITDA', value: '18,4%', hint: 'margem operacional antes de efeitos financeiros', tone: 'cyan' },
+            { label: 'Patrimônio líquido', value: 'R$ 6,9 mi', hint: 'posição consolidada do balanço', tone: 'violet' },
+            { label: 'Balancete fechado', value: '97%', hint: 'lançamentos revisados até agora', tone: 'amber' },
+        ],
+        statuses: [
+            { label: 'DRE', value: 'Atualizada', tone: 'ok' },
+            { label: 'DFC', value: 'Em revisão', tone: 'warn' },
+            { label: 'Balanço patrimonial', value: 'Pré-fechado', tone: 'info' },
+            { label: 'Balancete', value: 'Disponível', tone: 'ok' },
+        ],
+        actions: [
+            { label: 'Fechamento do mês', detail: 'Conferência final concentrada em provisões e lançamentos de competência.' },
+            { label: 'Ajuste em aberto', detail: 'Duas classificações patrimoniais aguardam validação da contabilidade.' },
+            { label: 'Próximo marco', detail: 'Publicar pacote contábil consolidado até o terceiro dia útil.' },
+        ],
+        sections: [
+            {
+                title: 'Relatórios disponíveis',
+                items: [
+                    { label: 'DRE consolidado', detail: 'Versão mensal pronta para leitura executiva.' },
+                    { label: 'DFC', detail: 'Estrutura preparada para análise de geração de caixa.' },
+                    { label: 'Balanço e balancete', detail: 'Base técnica pronta para aprofundar a leitura patrimonial.' },
+                ],
+            },
+            {
+                title: 'Indicadores contábeis',
+                items: [
+                    { label: 'Margem líquida', detail: '9,8% no fechamento simulado do período.' },
+                    { label: 'Endividamento', detail: 'Alavancagem controlada, mas com pressão no curto prazo.' },
+                    { label: 'Liquidez corrente', detail: '1,42x na fotografia patrimonial mais recente.' },
+                ],
+            },
+            {
+                title: 'Histórico mensal',
+                items: [
+                    { label: 'Janeiro', detail: 'Fechado e conciliado sem ressalvas.' },
+                    { label: 'Fevereiro', detail: 'Fechado com ajuste de provisão comercial.' },
+                    { label: 'Março', detail: 'Em consolidação com foco no fechamento técnico.' },
+                ],
+            },
+        ],
+        insights: [
+            { title: 'Resumo executivo', detail: 'A operação mantém resultado líquido positivo e patrimônio saudável.', tone: 'emerald' },
+            { title: 'Alerta', detail: 'A fotografia patrimonial pede atenção na concentração de passivos de curto prazo.', tone: 'amber' },
+            { title: 'Recomendação', detail: 'Cruzar DRE, DFC e balanço na mesma rotina mensal para reduzir interpretações isoladas.', tone: 'cyan' },
+        ],
+        note: 'Essa aba consolida a visão técnica do negócio e pode virar a casa natural de DRE, DFC, balanço patrimonial, balancete e razão/diário no futuro.',
+    },
+    fiscal: {
+        title: 'Fiscal',
+        description: 'Controle dos tributos do mês, guias emitidas, obrigações entregues e alertas do calendário fiscal.',
+        cards: [
+            { label: 'Impostos do período', value: 'R$ 156 mil', hint: 'estimativa consolidada do mês', tone: 'amber' },
+            { label: 'Guias emitidas', value: '12', hint: 'documentos prontos para pagamento', tone: 'cyan' },
+            { label: 'Impostos pagos', value: '9', hint: 'liquidados sem divergência', tone: 'emerald' },
+            { label: 'Pendências fiscais', value: '3', hint: 'dependem de documento ou aprovação', tone: 'rose' },
+        ],
+        statuses: [
+            { label: 'Apuração fiscal', value: 'Concluída', tone: 'ok' },
+            { label: 'Calendário fiscal', value: '2 prazos próximos', tone: 'warn' },
+            { label: 'Obrigações acessórias', value: 'Em dia', tone: 'ok' },
+            { label: 'Alertas fiscais', value: '1 ponto crítico', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Próximo vencimento', detail: 'DARF principal previsto para o dia 20 deste mês.' },
+            { label: 'Pendência principal', detail: 'Falta anexar uma NF de serviço para fechar a apuração sem ressalva.' },
+            { label: 'Risco mapeado', detail: 'Sem multa atual, mas com um prazo apertado na próxima semana.' },
+        ],
+        sections: [
+            {
+                title: 'Calendário fiscal',
+                items: [
+                    { label: 'Dia 20', detail: 'Pagamento da guia principal do período.' },
+                    { label: 'Dia 25', detail: 'Prazo de envio de documentos complementares.' },
+                    { label: 'Dia 30', detail: 'Fechamento final das obrigações do mês.' },
+                ],
+            },
+            {
+                title: 'Obrigações entregues',
+                items: [
+                    { label: 'SPED / obrigação mensal', detail: 'Protocolada dentro do prazo.' },
+                    { label: 'Guias recorrentes', detail: 'Emitidas e encaminhadas ao cliente.' },
+                    { label: 'Histórico do período', detail: 'Sem rejeições ou retorno de malha até agora.' },
+                ],
+            },
+            {
+                title: 'Alertas e atenção',
+                items: [
+                    { label: 'Documento pendente', detail: 'Extrato complementar ainda não foi anexado.' },
+                    { label: 'Imposto mais relevante', detail: 'ICMS e retenções representam o maior bloco financeiro.' },
+                    { label: 'Ação prática', detail: 'Priorizar a aprovação das guias antes do fechamento da semana.' },
+                ],
+            },
+        ],
+        insights: [
+            { title: 'Resumo executivo', detail: 'O mês está bem encaminhado no fiscal, com apuração concluída e baixa taxa de pendência.', tone: 'emerald' },
+            { title: 'Alerta', detail: 'A proximidade de vencimentos exige resposta rápida do cliente em um documento específico.', tone: 'rose' },
+            { title: 'Recomendação', detail: 'Usar esta área como central única de impostos, guias, obrigações e calendário.', tone: 'cyan' },
+        ],
+        note: 'A aba Fiscal já nasce alinhada ao que mais gera valor percebido para o cliente: o que está pago, o que vence agora e o que ainda depende de ação.',
+    },
+    servicos: {
+        title: 'Serviços',
+        description: 'Visão da contabilidade como prestadora, com status do fechamento, documentos solicitados, execução e atendimento.',
+        cards: [
+            { label: 'Serviços ativos', value: '7', hint: 'escopo contratado no plano atual', tone: 'cyan' },
+            { label: 'Fechamento do mês', value: 'Em andamento', hint: 'rotina central da operação', tone: 'amber' },
+            { label: 'Documentos solicitados', value: '4', hint: 'itens aguardando envio do cliente', tone: 'rose' },
+            { label: 'Chamados em aberto', value: '2', hint: 'atendimento ativo no período', tone: 'violet' },
+        ],
+        statuses: [
+            { label: 'Fechamento contábil', value: 'Em andamento', tone: 'warn' },
+            { label: 'Conciliação bancária', value: 'Pendente', tone: 'warn' },
+            { label: 'Apuração fiscal', value: 'Concluída', tone: 'ok' },
+            { label: 'Folha de pagamento', value: 'Concluída', tone: 'ok' },
+            { label: 'SLA geral', value: '96%', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Documento crítico', detail: 'Extrato bancário de janeiro ainda é a principal pendência do cliente.' },
+            { label: 'Entrega seguinte', detail: 'Pacote mensal consolidado previsto para envio após o fechamento técnico.' },
+            { label: 'Atendimento', detail: 'Equipe já sinalizou dúvidas em um chamado sobre pró-labore.' },
+        ],
+        sections: [
+            {
+                title: 'Serviços contratados',
+                items: [
+                    { label: 'Escrituração contábil', detail: 'Rotina principal com fechamento mensal em andamento.' },
+                    { label: 'Apuração fiscal', detail: 'Fluxo operacional concluído no período atual.' },
+                    { label: 'Suporte consultivo', detail: 'Acompanhamento recorrente com reuniões mensais.' },
+                ],
+            },
+            {
+                title: 'Documentos solicitados',
+                items: [
+                    { label: 'Extrato bancário de janeiro', detail: 'Necessário para finalizar a conciliação.' },
+                    { label: 'Nota fiscal de serviço', detail: 'Falta anexar um documento para completar o fechamento.' },
+                    { label: 'Aprovação de pró-labore', detail: 'Validação pendente para concluir a folha societária.' },
+                ],
+            },
+            {
+                title: 'Histórico de atendimento',
+                items: [
+                    { label: 'Reunião mensal', detail: 'Agendada para o dia 27 às 10h25.' },
+                    { label: 'Último chamado', detail: 'Solicitação sobre calendário fiscal respondida em 4h.' },
+                    { label: 'Próximo contato', detail: 'Follow-up automático após a entrega do fechamento.' },
+                ],
+            },
+        ],
+        insights: [
+            { title: 'Resumo executivo', detail: 'A operação contábil está ativa e com boa percepção de serviço, mas depende de poucos itens do cliente para finalizar.', tone: 'cyan' },
+            { title: 'Alerta', detail: 'A ausência de documentos trava a conciliação e pode atrasar o pacote mensal.', tone: 'rose' },
+            { title: 'Recomendação', detail: 'Concentrar aqui status operacionais, documentos, SLA e histórico de atendimento.', tone: 'emerald' },
+        ],
+        note: 'Essa aba deixa claro o que a contabilidade está fazendo agora e ajuda a transformar serviço percebido em produto visível.',
+    },
     movimentacoes: {
         title: 'Movimentações',
         description: 'Resumo operacional dos lançamentos e da fila de tratamento contábil.',
@@ -508,79 +698,138 @@ const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
     },
 };
 
-const MockModuleSection = ({ module }: { module: MockModule }) => (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
-        <div className="flex items-start justify-between gap-4">
-            <div>
-                <h3 className="text-3xl font-bold text-white tracking-tight">{module.title}</h3>
-                <p className="text-white/40 text-sm mt-2 max-w-2xl">{module.description}</p>
-            </div>
-            <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40">
-                <Sparkles className="w-4 h-4 text-cyan-400" />
-                <span className="text-xs font-bold uppercase tracking-[0.2em]">Mockado</span>
-            </div>
-        </div>
+const MockModuleSection = ({
+    module,
+    reportRef,
+}: {
+    module: MockModule;
+    reportRef?: React.RefObject<HTMLDivElement | null>;
+}) => {
+    const sectionsGridClass =
+        !module.sections || module.sections.length <= 1
+            ? 'grid-cols-1'
+            : module.sections.length === 2
+                ? 'grid-cols-1 xl:grid-cols-2'
+                : 'grid-cols-1 xl:grid-cols-3';
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-            {module.cards.map((card) => (
-                <div key={card.label} className={`bg-linear-to-br ${MODULE_CARD_TONES[card.tone]} backdrop-blur-xl border rounded-2xl p-5`}>
-                    <p className="text-white/60 text-xs font-black uppercase tracking-widest mb-2">{card.label}</p>
-                    <h4 className="text-white text-2xl font-black tracking-tight">{card.value}</h4>
-                    <p className="text-white/45 text-xs mt-2">{card.hint}</p>
+    return (
+        <div ref={reportRef} className="space-y-6 animate-in fade-in duration-500 pb-12">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <h3 className="text-3xl font-bold text-white tracking-tight">{module.title}</h3>
+                    <p className="text-white/40 text-sm mt-2 max-w-2xl">{module.description}</p>
                 </div>
-            ))}
-        </div>
+                <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-bold uppercase tracking-[0.2em]">Mockado</span>
+                </div>
+            </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2 bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-5">
-                    <h4 className="text-white font-bold text-lg">Situação do módulo</h4>
-                    <span className="text-xs text-white/30 uppercase tracking-[0.2em] font-black">Atualização fictícia</span>
-                </div>
-                <div className="space-y-3">
-                    {module.statuses.map((status) => (
-                        <div key={status.label} className="flex items-center justify-between gap-4 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
-                            <div>
-                                <p className="text-white font-semibold">{status.label}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                {module.cards.map((card) => (
+                    <div key={card.label} className={`bg-linear-to-br ${MODULE_CARD_TONES[card.tone]} backdrop-blur-xl border rounded-2xl p-5`}>
+                        <p className="text-white/60 text-xs font-black uppercase tracking-widest mb-2">{card.label}</p>
+                        <h4 className="text-white text-2xl font-black tracking-tight">{card.value}</h4>
+                        <p className="text-white/45 text-xs mt-2">{card.hint}</p>
+                    </div>
+                ))}
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div className="xl:col-span-2 bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-5">
+                        <h4 className="text-white font-bold text-lg">Situação do mês</h4>
+                        <span className="text-xs text-white/30 uppercase tracking-[0.2em] font-black">Dados simulados</span>
+                    </div>
+                    <div className="space-y-3">
+                        {module.statuses.map((status) => (
+                            <div key={status.label} className="flex items-center justify-between gap-4 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
+                                <div>
+                                    <p className="text-white font-semibold">{status.label}</p>
+                                </div>
+                                <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${STATUS_TONES[status.tone]}`}>
+                                    {status.value}
+                                </span>
                             </div>
-                            <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${STATUS_TONES[status.tone]}`}>
-                                {status.value}
-                            </span>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-5">
+                        <h4 className="text-white font-bold text-lg">Pendências e próximos passos</h4>
+                        <LifeBuoy className="w-4 h-4 text-cyan-400" />
+                    </div>
+                    <div className="space-y-4">
+                        {module.actions.map((action) => (
+                            <div key={action.label} className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                                <p className="text-white font-semibold text-sm">{action.label}</p>
+                                <p className="text-white/40 text-xs mt-1 leading-relaxed">{action.detail}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {module.sections?.length ? (
+                <div className={`grid ${sectionsGridClass} gap-6`}>
+                    {module.sections.map((section) => (
+                        <div key={section.title} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                            <div className="flex items-center justify-between mb-5">
+                                <h4 className="text-white font-bold text-lg">{section.title}</h4>
+                                <div className="w-2 h-2 rounded-full bg-cyan-400/70" />
+                            </div>
+                            <div className="space-y-4">
+                                {section.items.map((item) => (
+                                    <div key={`${section.title}-${item.label}`} className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                                        <p className="text-white font-semibold text-sm">{item.label}</p>
+                                        <p className="text-white/40 text-xs mt-1 leading-relaxed">{item.detail}</p>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     ))}
                 </div>
-            </div>
+            ) : null}
+
+            {module.insights?.length ? (
+                <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                    <div className="flex items-center justify-between gap-4 mb-5">
+                        <div>
+                            <p className="text-white/40 text-xs font-black uppercase tracking-widest">Análise inteligente</p>
+                            <p className="text-white text-lg font-bold mt-2">Resumo executivo, alertas e recomendações</p>
+                        </div>
+                        <div className="hidden lg:flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-[0.2em]">
+                            <Sparkles className="w-4 h-4" />
+                            Simulado
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {module.insights.map((insight) => (
+                            <div key={insight.title} className={`bg-linear-to-br ${MODULE_CARD_TONES[insight.tone]} backdrop-blur-xl border rounded-2xl p-5`}>
+                                <p className="text-white/60 text-xs font-black uppercase tracking-widest mb-2">{insight.title}</p>
+                                <p className="text-white text-sm leading-relaxed">{insight.detail}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : null}
 
             <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-5">
-                    <h4 className="text-white font-bold text-lg">Próximas ações</h4>
-                    <LifeBuoy className="w-4 h-4 text-cyan-400" />
-                </div>
-                <div className="space-y-4">
-                    {module.actions.map((action) => (
-                        <div key={action.label} className="rounded-2xl border border-white/5 bg-white/5 p-4">
-                            <p className="text-white font-semibold text-sm">{action.label}</p>
-                            <p className="text-white/40 text-xs mt-1 leading-relaxed">{action.detail}</p>
-                        </div>
-                    ))}
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <p className="text-white/40 text-xs font-black uppercase tracking-widest">Nota de produto</p>
+                        <p className="text-white text-sm mt-2">{module.note}</p>
+                    </div>
+                    <div className="hidden lg:flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-[0.2em]">
+                        <Sparkles className="w-4 h-4" />
+                        Prova de conceito
+                    </div>
                 </div>
             </div>
         </div>
-
-        <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
-            <div className="flex items-center justify-between gap-4">
-                <div>
-                    <p className="text-white/40 text-xs font-black uppercase tracking-widest">Nota de produto</p>
-                    <p className="text-white text-sm mt-2">{module.note}</p>
-                </div>
-                <div className="hidden lg:flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-[0.2em]">
-                    <Sparkles className="w-4 h-4" />
-                    Prova de conceito
-                </div>
-            </div>
-        </div>
-    </div>
-);
+    );
+};
 
 const ClientDashboard = () => {
     const { id: clientId } = useParams();
@@ -590,7 +839,7 @@ const ClientDashboard = () => {
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
+    const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'dfc'>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
     const [dreConfigMode, setDreConfigMode] = useState(false);
     const [dreMappings, setDreMappings] = useState<Array<{ account_code: string; category: string }>>([]);
@@ -698,27 +947,28 @@ const ClientDashboard = () => {
     }, [activeTab]);
 
     const sidebarItems = [
-        { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
-        { id: 'movimentacoes', icon: FileSpreadsheet, label: 'Movimentações' },
-        { id: 'fluxoCaixa', icon: TrendingUp, label: 'Fluxo de Caixa' },
-        { id: 'conciliacaoBancaria', icon: RefreshCw, label: 'Conciliação Bancária' },
-        { id: 'dre', icon: Calculator, label: 'DRE' },
-        { id: 'dfc', icon: FileText, label: 'DFC' },
-        { id: 'balancoPatrimonial', icon: FileText, label: 'Balanço Patrimonial' },
-        { id: 'impostos', icon: CalendarDays, label: 'Impostos' },
-        { id: 'guias', icon: FileText, label: 'Guias' },
-        { id: 'folhaPagamento', icon: LayoutList, label: 'Folha de Pagamento' },
-        { id: 'obrigacoes', icon: Sparkles, label: 'Obrigações' },
+        { id: 'dashboard', icon: BarChart3, label: 'INICIO' },
+        { id: 'financeiro', icon: TrendingUp, label: 'Financeiro' },
+        { id: 'contabil', icon: Calculator, label: 'Contábil' },
+        { id: 'fiscal', icon: CalendarDays, label: 'Fiscal' },
         { id: 'arquivos', icon: Upload, label: 'Documentos' },
-        { id: 'servicosContratados', icon: Settings2, label: 'Serviços Contratados' },
+        { id: 'servicos', icon: Settings2, label: 'Serviços' },
         { id: 'suporte', icon: Ticket, label: 'Atendimento' },
     ] as const;
 
-    const activeSidebarLabel = CLIENT_TAB_LABELS[activeTab] ?? 'Dashboard';
+    const activeSidebarLabel = CLIENT_TAB_LABELS[activeTab] ?? 'INICIO';
     const moduleMock = CLIENT_MODULE_MOCKS[activeTab];
     const comingSoonCopy = CLIENT_COMING_SOON_COPY[activeTab];
     const isComingSoonTab = Boolean(comingSoonCopy);
-    const sidebarOffsetClass = isSidebarOpen ? 'ml-64 w-[calc(100vw-16rem)]' : 'ml-20 w-[calc(100vw-5rem)]';
+    const sidebarWidth = isSidebarOpen ? 256 : 80;
+    const isReportTab = activeTab === 'dre' || activeTab === 'dfc' || activeTab === 'balancoPatrimonial';
+    const exportLabel = activeTab === 'dre'
+        ? 'DRE'
+        : activeTab === 'dfc'
+            ? 'DFC'
+            : activeTab === 'balancoPatrimonial'
+                ? 'Balanco_Patrimonial'
+                : 'Relatorio';
 
     const openImportModal = (type: ImportModalType) => {
         setImportModal({ type, year: selectedYear });
@@ -2086,11 +2336,11 @@ const ClientDashboard = () => {
 
             {/* Main Content */}
             <div
-                className={`min-w-0 min-h-screen relative z-10 flex flex-col transition-all duration-300 ${sidebarOffsetClass}`}
-                style={{ width: isSidebarOpen ? 'calc(100vw - 16rem)' : 'calc(100vw - 5rem)' }}
+                className="relative z-10 min-h-screen min-w-0 flex flex-col transition-[margin] duration-300"
+                style={{ marginLeft: sidebarWidth }}
             >
                 {/* Modern Header */}
-                <header className="shrink-0 z-50 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300">
+                <header className="sticky top-0 shrink-0 z-40 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             {isAccountingView && (
@@ -2150,15 +2400,17 @@ const ClientDashboard = () => {
                                 <Bell className="w-5 h-5" />
                                 <div className="absolute top-3 right-3 w-2 h-2 bg-cyan-500 rounded-full border-2 border-[#0a1628]" />
                             </button>
-                            <button onClick={() => handleExportPDF(dreSubTab?.toUpperCase() || 'Relatorio')} className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-cyan-500/20 hover:opacity-90 transition-all group">
-                                <Download className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
-                                <span className="hidden md:inline">Exportar PDF</span>
-                            </button>
+                            {isReportTab && (
+                                <button onClick={() => handleExportPDF(exportLabel)} className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 text-white px-5 py-3 rounded-xl text-sm font-bold shadow-lg shadow-cyan-500/20 hover:opacity-90 transition-all group">
+                                    <Download className="w-4 h-4 group-hover:translate-y-0.5 transition-transform" />
+                                    <span className="hidden md:inline">Exportar PDF</span>
+                                </button>
+                            )}
                         </div>
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-auto py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
+                <div className="flex-1 py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
                     <div className="w-full">
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in fade-in duration-500 pb-12">
@@ -2617,20 +2869,8 @@ const ClientDashboard = () => {
 
                 {(activeTab === 'dre' || activeTab === 'dfc' || activeTab === 'balancoPatrimonial') && (
                     <div className="space-y-2 animate-in fade-in duration-500 pb-2">
-                        <div className="flex gap-4 p-2 bg-white/5 backdrop-blur-xl border border-white/10 w-fit rounded-[20px]">
-                            {DRE_TABS.filter((tab) => tab.show).map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    onClick={() => setDreSubTab(tab.id)}
-                                    className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all ${dreSubTab === tab.id ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
-                                >
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </div>
-
                         {dreSubTab === 'dre' ? (
-                            <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden">
+                        <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden">
                                 <div className="p-8 border-b border-white/5 flex flex-wrap justify-between items-center gap-4 bg-white/5">
                                     <div>
                                         <h3 className="text-2xl font-bold text-white tracking-tight">Relatório Gerencial DRE</h3>
@@ -3036,25 +3276,14 @@ const ClientDashboard = () => {
                                             )}
                                         </div>
                                         {!patConfigMode && !isReadOnly && (
-                                            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold text-white/70">
-                                                Ano do arquivo
-                                                <select
-                                                    className="bg-transparent outline-none cursor-pointer text-sm font-black text-cyan-300"
-                                                    value={selectedYear}
-                                                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                                                >
-                                                    {availableYears.map((year) => (
-                                                        <option key={year} value={year} className="bg-[#0d1829]">{year}</option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                        )}
-                                        {!patConfigMode && !isReadOnly && (
-                                            <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
+                                            <button
+                                                type="button"
+                                                onClick={() => openImportModal('patrimonial')}
+                                                className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl transition-all font-bold shadow-lg shadow-cyan-500/20"
+                                            >
                                                 <Upload className="w-5 h-5" />
-                                                Importar Saldo {selectedYear}
-                                                <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handlePatrimonialRawFileUpload} />
-                                            </label>
+                                                Importar Saldo
+                                            </button>
                                         )}
                                         {!patConfigMode && (
                                             <button onClick={() => handleExportPDF('Balanco_Patrimonial')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
@@ -3530,7 +3759,7 @@ const ClientDashboard = () => {
 
                 {/* Aba de Suporte - visível apenas para clientes */}
                 {moduleMock ? (
-                    <MockModuleSection module={moduleMock} />
+                    <MockModuleSection module={moduleMock} reportRef={reportRef} />
                 ) : isComingSoonTab ? (
                     <ComingSoonSection
                         title={comingSoonCopy?.title ?? activeSidebarLabel}
@@ -3647,6 +3876,60 @@ const ClientDashboard = () => {
         </div>
     </div>
 </div>
+
+            {importModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a1628]/80 p-4 backdrop-blur-md">
+                    <div className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#0d1829]/95 shadow-2xl">
+                        <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-8 py-6">
+                            <div>
+                                <h3 className="text-xl font-bold text-white">
+                                    {importModal.type === 'dre' ? 'Importar Balancete' : 'Importar Saldo Patrimonial'}
+                                </h3>
+                                <p className="text-sm text-white/40">Escolha o ano que receberá esta importação.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeImportModal}
+                                className="rounded-2xl bg-white/5 p-3 text-white/40 transition-all hover:bg-white/10 hover:text-white"
+                            >
+                                <PlusIcon className="h-5 w-5 rotate-45" />
+                            </button>
+                        </div>
+                        <div className="space-y-6 p-8">
+                            <label className="block space-y-2">
+                                <span className="ml-1 text-sm font-bold text-white/60">Ano da importação</span>
+                                <select
+                                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-white outline-none transition-all focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/30"
+                                    value={importModal.year}
+                                    onChange={(e) => setImportModal((current) => current ? { ...current, year: parseInt(e.target.value, 10) } : current)}
+                                >
+                                    {availableYears.map((year) => (
+                                        <option key={year} value={year} className="bg-[#0d1829]">
+                                            {year}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <div className="flex gap-4">
+                                <button
+                                    type="button"
+                                    onClick={closeImportModal}
+                                    className="flex-1 rounded-2xl border border-white/10 px-6 py-4 font-bold text-white/60 transition-all hover:bg-white/5"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleImportModalConfirm}
+                                    className="flex-1 rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 px-6 py-4 font-bold text-white shadow-lg shadow-cyan-500/20 transition-all hover:opacity-90"
+                                >
+                                    Selecionar Arquivo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Support Modal (Dark Glass) */}
             {isSupportOpen && (
