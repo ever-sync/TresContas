@@ -1,4 +1,6 @@
 import { createRequire } from 'module';
+import { readdir, readFile, writeFile } from 'fs/promises';
+import path from 'path';
 
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -88,6 +90,32 @@ const manualChunks = (id) => {
   return 'vendor-misc';
 };
 
+const replaceProcessEnvInFile = async (filePath) => {
+  const source = await readFile(filePath, 'utf8');
+  const transformed = source.replaceAll('process.env.NODE_ENV', '"production"');
+
+  if (transformed !== source) {
+    await writeFile(filePath, transformed, 'utf8');
+  }
+};
+
+const replaceProcessEnvInDist = async (distDir) => {
+  const entries = await readdir(distDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const fullPath = path.join(distDir, entry.name);
+
+    if (entry.isDirectory()) {
+      await replaceProcessEnvInDist(fullPath);
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith('.js')) {
+      await replaceProcessEnvInFile(fullPath);
+    }
+  }
+};
+
 await build({
   configFile: false,
   define: {
@@ -104,3 +132,5 @@ await build({
     },
   },
 });
+
+await replaceProcessEnvInDist(path.resolve('dist'));
