@@ -2590,7 +2590,7 @@ const ClientDashboard = () => {
 
     return (
         <>
-            <div className="min-h-screen text-slate-200 font-sans selection:bg-cyan-500/30 overflow-x-hidden relative" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%)' }}>
+            <div className="h-screen text-slate-200 font-sans selection:bg-cyan-500/30 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%)' }}>
             {/* Ambient Background Glows */}
             <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-600/5 rounded-full blur-[120px] pointer-events-none" />
             <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
@@ -2702,11 +2702,11 @@ const ClientDashboard = () => {
 
             {/* Main Content */}
             <div
-                className="relative z-10 min-h-screen min-w-0 flex flex-col transition-[margin] duration-300"
+                className="relative z-10 h-screen min-w-0 flex flex-col overflow-hidden transition-[margin] duration-300"
                 style={{ marginLeft: sidebarWidth }}
             >
                 {/* Modern Header */}
-                <header className="sticky top-0 shrink-0 z-40 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300">
+                <header className="shrink-0 z-40 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             {isAccountingView && (
@@ -2776,7 +2776,7 @@ const ClientDashboard = () => {
                     </div>
                 </header>
 
-                <div className="flex-1 py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
+                <div className="flex-1 min-h-0 overflow-y-auto py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
                     <div className="w-full">
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in fade-in duration-500 pb-12">
