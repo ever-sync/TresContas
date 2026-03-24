@@ -1251,6 +1251,7 @@ const ClientDashboard = () => {
     const [searchTerm] = useState('');
     const tableContainerRef = useRef<HTMLDivElement>(null);
     const reportRef = useRef<HTMLDivElement>(null);
+    const sidebarScrollRef = useRef<HTMLDivElement>(null);
     const dreImportInputRef = useRef<HTMLInputElement>(null);
     const patrimonialImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -1330,6 +1331,12 @@ const ClientDashboard = () => {
             setDreSubTab('dre');
         }
     }, [activeTab]);
+
+    useEffect(() => {
+        if (sidebarScrollRef.current) {
+            sidebarScrollRef.current.scrollTop = 0;
+        }
+    }, []);
 
     const sidebarItems = [
         { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
@@ -2617,7 +2624,7 @@ const ClientDashboard = () => {
                         </div>
                     )}
                 </div>
-                <div className={`scrollbar-hide flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto ${isSidebarOpen ? 'items-stretch w-full pr-1' : 'items-center'}`}>
+                <div ref={sidebarScrollRef} className={`scrollbar-hide flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto ${isSidebarOpen ? 'items-stretch w-full pr-1' : 'items-center'}`}>
                     {sidebarItems.map((item) => (
                         <button
                             key={item.id}
