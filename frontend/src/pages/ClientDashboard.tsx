@@ -188,7 +188,14 @@ const DFC_STRUCTURE: { type: 'section' | 'item' | 'result' | 'separator'; label?
     { type: 'result',  label: 'RESULTADO GERAÇÃO DE CAIXA',           key: 'resultadoGeracaoCaixa' },
 ];
 
+type DreSubTab = 'dre' | 'patrimonial' | 'contas' | 'dfc';
 type ReportViewMode = 'lista' | 'graficos' | 'fechado';
+
+const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
+    { id: 'dre', label: 'DRE', show: true },
+    { id: 'patrimonial', label: 'Patrimonial', show: true },
+    { id: 'dfc', label: 'DFC', show: true },
+];
 
 const CLIENT_TAB_LABELS: Record<string, string> = {
     dashboard: 'INICIO',
@@ -297,8 +304,6 @@ type MockModule = {
     insights?: MockModuleInsight[];
     note: string;
 };
-
-type ImportModalType = 'dre' | 'patrimonial';
 
 const MODULE_CARD_TONES: Record<ModuleTone, string> = {
     cyan: 'from-cyan-500/20 to-blue-600/20 border-cyan-500/20',
@@ -839,7 +844,7 @@ const ClientDashboard = () => {
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-    const [dreSubTab, setDreSubTab] = useState<'dre' | 'patrimonial' | 'dfc'>('dre');
+    const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
     const [dreConfigMode, setDreConfigMode] = useState(false);
     const [dreMappings, setDreMappings] = useState<Array<{ account_code: string; category: string }>>([]);
@@ -861,13 +866,11 @@ const ClientDashboard = () => {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSupportOpen, setIsSupportOpen] = useState(false);
-    const [importModal, setImportModal] = useState<{ type: ImportModalType; year: number } | null>(null);
     const [searchTerm] = useState('');
     const tableContainerRef = useRef<HTMLDivElement>(null);
     const reportRef = useRef<HTMLDivElement>(null);
     const dreImportInputRef = useRef<HTMLInputElement>(null);
     const patrimonialImportInputRef = useRef<HTMLInputElement>(null);
-    const importYearRef = useRef<number | null>(null);
 
     // Estado do card de IA
     const [aiText, setAiText] = useState('');
@@ -969,29 +972,6 @@ const ClientDashboard = () => {
             : activeTab === 'balancoPatrimonial'
                 ? 'Balanco_Patrimonial'
                 : 'Relatorio';
-
-    const openImportModal = (type: ImportModalType) => {
-        setImportModal({ type, year: selectedYear });
-    };
-
-    const closeImportModal = () => {
-        setImportModal(null);
-        importYearRef.current = null;
-    };
-
-    const handleImportModalConfirm = () => {
-        if (!importModal) return;
-
-        importYearRef.current = importModal.year;
-        setImportModal(null);
-
-        if (importModal.type === 'dre') {
-            dreImportInputRef.current?.click();
-            return;
-        }
-
-        patrimonialImportInputRef.current?.click();
-    };
 
     const clientQuery = useQuery<ClientDashboardProfile>({
         queryKey: ['client-dashboard-client', clientId ?? 'self'],
@@ -1450,9 +1430,7 @@ const ClientDashboard = () => {
         setMovFn: React.Dispatch<React.SetStateAction<MovementRow[]>>
     ) => {
         return async (e: React.ChangeEvent<HTMLInputElement>) => {
-            const chosenImportYear = importYearRef.current ?? selectedYear;
-            importYearRef.current = null;
-            setImportModal(null);
+            const chosenImportYear = selectedYear;
             const file = e.target.files?.[0];
             if (!file) return;
             // Reset input para permitir re-upload do mesmo arquivo
@@ -1654,9 +1632,7 @@ const ClientDashboard = () => {
     const handleDreFileUpload = createMovementUploadHandler('dre', setDreMovements);
 
     const handlePatrimonialRawFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const chosenImportYear = importYearRef.current ?? selectedYear;
-        importYearRef.current = null;
-        setImportModal(null);
+        const chosenImportYear = selectedYear;
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
@@ -2869,8 +2845,20 @@ const ClientDashboard = () => {
 
                 {(activeTab === 'dre' || activeTab === 'dfc' || activeTab === 'balancoPatrimonial') && (
                     <div className="space-y-2 animate-in fade-in duration-500 pb-2">
+                        <div className="flex gap-4 p-2 bg-white/5 backdrop-blur-xl border border-white/10 w-fit rounded-[20px]">
+                            {DRE_TABS.filter((tab) => tab.show).map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setDreSubTab(tab.id)}
+                                    className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all ${dreSubTab === tab.id ? 'bg-linear-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/20' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
                         {dreSubTab === 'dre' ? (
-                        <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden">
+                            <div ref={reportRef} className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl overflow-hidden">
                                 <div className="p-8 border-b border-white/5 flex flex-wrap justify-between items-center gap-4 bg-white/5">
                                     <div>
                                         <h3 className="text-2xl font-bold text-white tracking-tight">Relatório Gerencial DRE</h3>
@@ -2903,14 +2891,11 @@ const ClientDashboard = () => {
                                             )}
                                         </div>
                                         {!dreConfigMode && !isReadOnly && (
-                                            <button
-                                                type="button"
-                                                onClick={() => openImportModal('dre')}
-                                                className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl transition-all font-bold shadow-lg shadow-cyan-500/20"
-                                            >
+                                            <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
-                                                Importar Balancete
-                                            </button>
+                                                Importar Balancete {selectedYear}
+                                                <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleDreFileUpload} />
+                                            </label>
                                         )}
                                         {!dreConfigMode && (
                                             <button onClick={() => handleExportPDF('DRE')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
@@ -3276,14 +3261,11 @@ const ClientDashboard = () => {
                                             )}
                                         </div>
                                         {!patConfigMode && !isReadOnly && (
-                                            <button
-                                                type="button"
-                                                onClick={() => openImportModal('patrimonial')}
-                                                className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl transition-all font-bold shadow-lg shadow-cyan-500/20"
-                                            >
+                                            <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
                                                 <Upload className="w-5 h-5" />
-                                                Importar Saldo
-                                            </button>
+                                                Importar Saldo {selectedYear}
+                                                <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handlePatrimonialRawFileUpload} />
+                                            </label>
                                         )}
                                         {!patConfigMode && (
                                             <button onClick={() => handleExportPDF('Balanco_Patrimonial')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
@@ -3876,60 +3858,6 @@ const ClientDashboard = () => {
         </div>
     </div>
 </div>
-
-            {importModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a1628]/80 p-4 backdrop-blur-md">
-                    <div className="w-full max-w-md overflow-hidden rounded-3xl border border-white/10 bg-[#0d1829]/95 shadow-2xl">
-                        <div className="flex items-center justify-between border-b border-white/5 bg-white/5 px-8 py-6">
-                            <div>
-                                <h3 className="text-xl font-bold text-white">
-                                    {importModal.type === 'dre' ? 'Importar Balancete' : 'Importar Saldo Patrimonial'}
-                                </h3>
-                                <p className="text-sm text-white/40">Escolha o ano que receberá esta importação.</p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={closeImportModal}
-                                className="rounded-2xl bg-white/5 p-3 text-white/40 transition-all hover:bg-white/10 hover:text-white"
-                            >
-                                <PlusIcon className="h-5 w-5 rotate-45" />
-                            </button>
-                        </div>
-                        <div className="space-y-6 p-8">
-                            <label className="block space-y-2">
-                                <span className="ml-1 text-sm font-bold text-white/60">Ano da importação</span>
-                                <select
-                                    className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-white outline-none transition-all focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/30"
-                                    value={importModal.year}
-                                    onChange={(e) => setImportModal((current) => current ? { ...current, year: parseInt(e.target.value, 10) } : current)}
-                                >
-                                    {availableYears.map((year) => (
-                                        <option key={year} value={year} className="bg-[#0d1829]">
-                                            {year}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <div className="flex gap-4">
-                                <button
-                                    type="button"
-                                    onClick={closeImportModal}
-                                    className="flex-1 rounded-2xl border border-white/10 px-6 py-4 font-bold text-white/60 transition-all hover:bg-white/5"
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleImportModalConfirm}
-                                    className="flex-1 rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 px-6 py-4 font-bold text-white shadow-lg shadow-cyan-500/20 transition-all hover:opacity-90"
-                                >
-                                    Selecionar Arquivo
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Support Modal (Dark Glass) */}
             {isSupportOpen && (
