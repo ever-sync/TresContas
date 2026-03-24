@@ -294,6 +294,40 @@ type MockModuleInsight = {
     tone: ModuleTone;
 };
 
+type MockChartFormat = 'currency' | 'number' | 'percent';
+
+type MockModuleChartMetric = {
+    dataKey: string;
+    label: string;
+    color: string;
+    strokeWidth?: number;
+};
+
+type MockModuleLineChart = {
+    type: 'line';
+    title: string;
+    description: string;
+    format: MockChartFormat;
+    data: Array<Record<string, string | number>>;
+    metrics: MockModuleChartMetric[];
+};
+
+type MockModulePieSlice = {
+    name: string;
+    value: number;
+    color: string;
+};
+
+type MockModulePieChart = {
+    type: 'pie';
+    title: string;
+    description: string;
+    format: MockChartFormat;
+    data: MockModulePieSlice[];
+};
+
+type MockModuleChart = MockModuleLineChart | MockModulePieChart;
+
 type MockModule = {
     title: string;
     description: string;
@@ -302,6 +336,7 @@ type MockModule = {
     actions: MockModuleAction[];
     sections?: MockModuleSectionGroup[];
     insights?: MockModuleInsight[];
+    charts?: MockModuleChart[];
     note: string;
 };
 
@@ -317,6 +352,23 @@ const STATUS_TONES: Record<StatusTone, string> = {
     ok: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
     warn: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
     info: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
+};
+
+const formatMockChartValue = (value: number, format: MockChartFormat) => {
+    switch (format) {
+        case 'currency':
+            return value.toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0,
+            });
+        case 'percent':
+            return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 })}%`;
+        case 'number':
+        default:
+            return value.toLocaleString('pt-BR');
+    }
 };
 
 const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
@@ -339,6 +391,38 @@ const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
             { label: 'Maior saída prevista', detail: 'Folha, fornecedores e impostos concentram 61% das saídas dos próximos 10 dias.' },
             { label: 'Maior entrada prevista', detail: 'Contrato recorrente principal liquida no fim do mês e reforça o caixa.' },
             { label: 'Ponto de atenção', detail: 'Dois pagamentos relevantes vencem antes da baixa de um recebível estratégico.' },
+        ],
+        charts: [
+            {
+                type: 'line',
+                title: 'Fluxo de caixa do mês',
+                description: 'Entradas, saídas e saldo líquido por semana.',
+                format: 'currency',
+                data: [
+                    { name: 'Sem 1', entradas: 420000, saidas: 310000, saldo: 110000 },
+                    { name: 'Sem 2', entradas: 510000, saidas: 455000, saldo: 55000 },
+                    { name: 'Sem 3', entradas: 580000, saidas: 490000, saldo: 90000 },
+                    { name: 'Sem 4', entradas: 690000, saidas: 655000, saldo: 35000 },
+                ],
+                metrics: [
+                    { dataKey: 'entradas', label: 'Entradas', color: '#22c55e' },
+                    { dataKey: 'saidas', label: 'Saídas', color: '#fb7185' },
+                    { dataKey: 'saldo', label: 'Saldo líquido', color: '#38bdf8', strokeWidth: 2 },
+                ],
+            },
+            {
+                type: 'pie',
+                title: 'Distribuição das despesas',
+                description: 'Composição simulada dos gastos do período.',
+                format: 'percent',
+                data: [
+                    { name: 'Folha', value: 32, color: '#38bdf8' },
+                    { name: 'Fornecedores', value: 24, color: '#22c55e' },
+                    { name: 'Tributos', value: 18, color: '#f59e0b' },
+                    { name: 'Fretes', value: 14, color: '#fb7185' },
+                    { name: 'Operação', value: 12, color: '#a78bfa' },
+                ],
+            },
         ],
         sections: [
             {
@@ -393,6 +477,38 @@ const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
             { label: 'Ajuste em aberto', detail: 'Duas classificações patrimoniais aguardam validação da contabilidade.' },
             { label: 'Próximo marco', detail: 'Publicar pacote contábil consolidado até o terceiro dia útil.' },
         ],
+        charts: [
+            {
+                type: 'line',
+                title: 'Evolução contábil recente',
+                description: 'Receita líquida, despesas e resultado nos últimos meses.',
+                format: 'currency',
+                data: [
+                    { name: 'Jan', receita: 3580000, despesas: 3010000, resultado: 365000 },
+                    { name: 'Fev', receita: 3720000, despesas: 3095000, resultado: 401000 },
+                    { name: 'Mar', receita: 3890000, despesas: 3180000, resultado: 428000 },
+                    { name: 'Abr', receita: 4010000, despesas: 3270000, resultado: 446000 },
+                ],
+                metrics: [
+                    { dataKey: 'receita', label: 'Receita líquida', color: '#38bdf8' },
+                    { dataKey: 'despesas', label: 'Despesas', color: '#fb7185' },
+                    { dataKey: 'resultado', label: 'Resultado líquido', color: '#22c55e', strokeWidth: 2 },
+                ],
+            },
+            {
+                type: 'pie',
+                title: 'Estrutura patrimonial',
+                description: 'Fotografia resumida da composição do balanço.',
+                format: 'percent',
+                data: [
+                    { name: 'Ativo circulante', value: 41, color: '#38bdf8' },
+                    { name: 'Ativo não circulante', value: 29, color: '#6366f1' },
+                    { name: 'Passivo CP', value: 14, color: '#f59e0b' },
+                    { name: 'Passivo LP', value: 6, color: '#fb7185' },
+                    { name: 'Patrimônio líquido', value: 10, color: '#22c55e' },
+                ],
+            },
+        ],
         sections: [
             {
                 title: 'Relatórios disponíveis',
@@ -445,6 +561,38 @@ const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
             { label: 'Próximo vencimento', detail: 'DARF principal previsto para o dia 20 deste mês.' },
             { label: 'Pendência principal', detail: 'Falta anexar uma NF de serviço para fechar a apuração sem ressalva.' },
             { label: 'Risco mapeado', detail: 'Sem multa atual, mas com um prazo apertado na próxima semana.' },
+        ],
+        charts: [
+            {
+                type: 'line',
+                title: 'Ritmo fiscal do período',
+                description: 'Guias emitidas, pagas e pendentes ao longo do mês.',
+                format: 'number',
+                data: [
+                    { name: 'Sem 1', emitidas: 3, pagas: 2, pendentes: 1 },
+                    { name: 'Sem 2', emitidas: 4, pagas: 3, pendentes: 1 },
+                    { name: 'Sem 3', emitidas: 2, pagas: 2, pendentes: 1 },
+                    { name: 'Sem 4', emitidas: 3, pagas: 2, pendentes: 1 },
+                ],
+                metrics: [
+                    { dataKey: 'emitidas', label: 'Emitidas', color: '#38bdf8' },
+                    { dataKey: 'pagas', label: 'Pagas', color: '#22c55e' },
+                    { dataKey: 'pendentes', label: 'Pendentes', color: '#fb7185', strokeWidth: 2 },
+                ],
+            },
+            {
+                type: 'pie',
+                title: 'Carga tributária simulada',
+                description: 'Distribuição estimada dos tributos do mês.',
+                format: 'currency',
+                data: [
+                    { name: 'ICMS', value: 52000, color: '#38bdf8' },
+                    { name: 'Retenções', value: 34000, color: '#f59e0b' },
+                    { name: 'Folha', value: 28000, color: '#22c55e' },
+                    { name: 'IRPJ/CSLL', value: 24000, color: '#a78bfa' },
+                    { name: 'Outros', value: 18000, color: '#fb7185' },
+                ],
+            },
         ],
         sections: [
             {
@@ -499,6 +647,37 @@ const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
             { label: 'Documento crítico', detail: 'Extrato bancário de janeiro ainda é a principal pendência do cliente.' },
             { label: 'Entrega seguinte', detail: 'Pacote mensal consolidado previsto para envio após o fechamento técnico.' },
             { label: 'Atendimento', detail: 'Equipe já sinalizou dúvidas em um chamado sobre pró-labore.' },
+        ],
+        charts: [
+            {
+                type: 'line',
+                title: 'Operação de atendimento',
+                description: 'Chamados, documentos e entregas acompanhados por semana.',
+                format: 'number',
+                data: [
+                    { name: 'Sem 1', chamados: 3, documentos: 5, entregas: 2 },
+                    { name: 'Sem 2', chamados: 2, documentos: 4, entregas: 3 },
+                    { name: 'Sem 3', chamados: 4, documentos: 3, entregas: 4 },
+                    { name: 'Sem 4', chamados: 2, documentos: 2, entregas: 5 },
+                ],
+                metrics: [
+                    { dataKey: 'chamados', label: 'Chamados', color: '#a78bfa' },
+                    { dataKey: 'documentos', label: 'Documentos', color: '#fb7185' },
+                    { dataKey: 'entregas', label: 'Entregas', color: '#22c55e', strokeWidth: 2 },
+                ],
+            },
+            {
+                type: 'pie',
+                title: 'Pipeline dos serviços',
+                description: 'Status atual da operação simulada do cliente.',
+                format: 'percent',
+                data: [
+                    { name: 'Concluído', value: 44, color: '#22c55e' },
+                    { name: 'Em andamento', value: 27, color: '#38bdf8' },
+                    { name: 'Aguardando cliente', value: 18, color: '#f59e0b' },
+                    { name: 'Agendado', value: 11, color: '#a78bfa' },
+                ],
+            },
         ],
         sections: [
             {
@@ -716,6 +895,8 @@ const MockModuleSection = ({
             : module.sections.length === 2
                 ? 'grid-cols-1 xl:grid-cols-2'
                 : 'grid-cols-1 xl:grid-cols-3';
+    const lineChart = module.charts?.find((chart): chart is MockModuleLineChart => chart.type === 'line');
+    const pieChart = module.charts?.find((chart): chart is MockModulePieChart => chart.type === 'pie');
 
     return (
         <div ref={reportRef} className="space-y-6 animate-in fade-in duration-500 pb-12">
@@ -739,6 +920,125 @@ const MockModuleSection = ({
                     </div>
                 ))}
             </div>
+
+            {(lineChart || pieChart) ? (
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    {lineChart ? (
+                        <div className={`${pieChart ? 'xl:col-span-2' : 'xl:col-span-3'} bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6`}>
+                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between mb-5">
+                                <div>
+                                    <h4 className="text-white font-bold text-lg">{lineChart.title}</h4>
+                                    <p className="text-white/40 text-sm mt-1">{lineChart.description}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-3">
+                                    {lineChart.metrics.map((metric) => (
+                                        <div key={metric.dataKey} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: metric.color }} />
+                                            <span className="text-xs font-bold text-white/60">{metric.label}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="h-72 -mx-3">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={lineChart.data}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff08" />
+                                        <XAxis
+                                            dataKey="name"
+                                            axisLine={false}
+                                            tickLine={false}
+                                            tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 700 }}
+                                        />
+                                        <YAxis hide />
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#0f172a',
+                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                borderRadius: '16px',
+                                                boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)',
+                                                backdropFilter: 'blur(12px)',
+                                            }}
+                                            itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
+                                            labelStyle={{ color: '#ffffff70', fontSize: '10px', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'black' }}
+                                            formatter={(value, name) => {
+                                                const numericValue = typeof value === 'string' ? Number(value) : value ?? 0;
+                                                const metricName = typeof name === 'string' ? name : '';
+                                                const metric = lineChart.metrics.find((item) => item.dataKey === metricName);
+                                                return [formatMockChartValue(Number(numericValue), lineChart.format), metric?.label ?? metricName];
+                                            }}
+                                        />
+                                        {lineChart.metrics.map((metric) => (
+                                            <Line
+                                                key={metric.dataKey}
+                                                type="monotone"
+                                                dataKey={metric.dataKey}
+                                                stroke={metric.color}
+                                                strokeWidth={metric.strokeWidth ?? 3}
+                                                dot={false}
+                                                activeDot={{ r: 4, stroke: metric.color, strokeWidth: 2, fill: '#0d1829' }}
+                                            />
+                                        ))}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {pieChart ? (
+                        <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                            <div className="mb-5">
+                                <h4 className="text-white font-bold text-lg">{pieChart.title}</h4>
+                                <p className="text-white/40 text-sm mt-1">{pieChart.description}</p>
+                            </div>
+                            <div className="h-64">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <RechartsPie>
+                                        <Pie
+                                            data={pieChart.data}
+                                            dataKey="value"
+                                            nameKey="name"
+                                            innerRadius={58}
+                                            outerRadius={92}
+                                            paddingAngle={3}
+                                            stroke="transparent"
+                                        >
+                                            {pieChart.data.map((slice) => (
+                                                <Cell key={slice.name} fill={slice.color} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip
+                                            contentStyle={{
+                                                backgroundColor: '#0f172a',
+                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                borderRadius: '16px',
+                                                boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.2)',
+                                                backdropFilter: 'blur(12px)',
+                                            }}
+                                            itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: 'bold' }}
+                                            labelStyle={{ color: '#ffffff70', fontSize: '10px', marginBottom: '4px', textTransform: 'uppercase', fontWeight: 'black' }}
+                                            formatter={(value) => {
+                                                const numericValue = typeof value === 'string' ? Number(value) : value ?? 0;
+                                                return [formatMockChartValue(Number(numericValue), pieChart.format), 'Valor'];
+                                            }}
+                                        />
+                                    </RechartsPie>
+                                </ResponsiveContainer>
+                            </div>
+                            <div className="mt-4 space-y-3">
+                                {pieChart.data.map((slice) => (
+                                    <div key={slice.name} className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
+                                        <div className="flex items-center gap-3">
+                                            <span className="h-3 w-3 rounded-full" style={{ backgroundColor: slice.color }} />
+                                            <span className="text-sm font-semibold text-white">{slice.name}</span>
+                                        </div>
+                                        <span className="text-xs font-bold text-white/60">{formatMockChartValue(slice.value, pieChart.format)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                 <div className="xl:col-span-2 bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
