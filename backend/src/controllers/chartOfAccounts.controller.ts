@@ -191,7 +191,10 @@ export const bulkImport = async (req: AuthRequest, res: Response) => {
                 });
 
                 await tx.dREMapping.deleteMany({
-                    where: { accounting_id: req.accountingId! },
+                    where: {
+                        accounting_id: req.accountingId!,
+                        client_id: { not: null } as any,
+                    },
                 });
 
                 await tx.chartOfAccounts.deleteMany({

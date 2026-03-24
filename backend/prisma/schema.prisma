@@ -352,14 +352,14 @@ model MonthlyMovement {
 model DREMapping {
   id            String     @id @default(uuid())
   accounting_id String
-  client_id     String
+  client_id     String?
   account_code  String
   account_name  String
   category      String
   created_at    DateTime   @default(now())
   updated_at    DateTime   @updatedAt
   accounting    Accounting @relation(fields: [accounting_id], references: [id])
-  client        Client     @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  client        Client?    @relation(fields: [client_id], references: [id], onDelete: Cascade)
 
   @@unique([client_id, account_code], name: "client_id_account_code")
   @@index([accounting_id])

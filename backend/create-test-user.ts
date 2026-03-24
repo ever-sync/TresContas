@@ -20,8 +20,26 @@ const prisma = new PrismaClient({ adapter });
 
 async function createTestUser() {
     try {
+        // Check if accounting already exists
+        let accounting = await prisma.accounting.findUnique({
+            where: { email: 'contato@escritorioteste.com' }
+        });
+
+        if (!accounting) {
+            accounting = await prisma.accounting.create({
+                data: {
+                    name: 'Escritório Teste',
+                    cnpj: '12.345.678/0001-90',
+                    email: 'contato@escritorioteste.com',
+                    phone: '11999999999',
+                    plan: 'premium',
+                },
+            });
+            console.log('✅ Escritório de teste criado!');
+        }
+
         // Check if user already exists
-        const existingUser = await prisma.accounting.findUnique({
+        const existingUser = await prisma.user.findUnique({
             where: { email: 'teste@teste.com' }
         });
 
@@ -29,8 +47,6 @@ async function createTestUser() {
             console.log('✅ Usuário de teste já existe!');
             console.log('📧 Email: teste@teste.com');
             console.log('🔑 Senha: teste123456');
-            await prisma.$disconnect();
-            await pool.end();
             return;
         }
 
@@ -38,14 +54,14 @@ async function createTestUser() {
         const hashedPassword = await bcrypt.hash('teste123456', 12);
 
         // Create test user
-        const user = await prisma.accounting.create({
+        const user = await prisma.user.create({
             data: {
-                name: 'Escritório Teste',
-                cnpj: '12.345.678/0001-90',
+                accounting_id: accounting.id,
+                name: 'Usuário Teste',
                 email: 'teste@teste.com',
-                phone: '11999999999',
                 password_hash: hashedPassword,
-                plan: 'premium',
+                role: 'admin',
+                status: 'active',
             },
         });
 

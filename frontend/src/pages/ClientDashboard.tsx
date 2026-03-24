@@ -197,6 +197,58 @@ const DRE_TABS: Array<{ id: DreSubTab; label: string; show: boolean }> = [
     { id: 'dfc', label: 'DFC', show: true },
 ];
 
+const CLIENT_TAB_LABELS: Record<string, string> = {
+    dashboard: 'Dashboard',
+    movimentacoes: 'Movimentações',
+    fluxoCaixa: 'Fluxo de Caixa',
+    conciliacaoBancaria: 'Conciliação Bancária',
+    dre: 'DRE',
+    dfc: 'DFC',
+    balancoPatrimonial: 'Balanço Patrimonial',
+    impostos: 'Impostos',
+    guias: 'Guias',
+    folhaPagamento: 'Folha de Pagamento',
+    obrigacoes: 'Obrigações',
+    arquivos: 'Documentos',
+    servicosContratados: 'Serviços Contratados',
+    suporte: 'Atendimento',
+};
+
+const CLIENT_COMING_SOON_COPY: Record<string, { title: string; description: string }> = {
+    movimentacoes: {
+        title: 'Movimentações',
+        description: 'Central de lançamentos, filtros e histórico das movimentações do cliente.',
+    },
+    fluxoCaixa: {
+        title: 'Fluxo de Caixa',
+        description: 'Visão consolidada de entradas, saídas e projeções de caixa.',
+    },
+    conciliacaoBancaria: {
+        title: 'Conciliação Bancária',
+        description: 'Conferência entre extratos bancários e lançamentos contábeis.',
+    },
+    impostos: {
+        title: 'Impostos',
+        description: 'Acompanhamento de tributos, apurações e vencimentos fiscais.',
+    },
+    guias: {
+        title: 'Guias',
+        description: 'Emissão, controle e acompanhamento de guias do cliente.',
+    },
+    folhaPagamento: {
+        title: 'Folha de Pagamento',
+        description: 'Operação e acompanhamento da folha, pró-labore e encargos.',
+    },
+    obrigacoes: {
+        title: 'Obrigações',
+        description: 'Painel de obrigações acessórias, prazos e pendências recorrentes.',
+    },
+    servicosContratados: {
+        title: 'Serviços Contratados',
+        description: 'Escopo contratado, entregas recorrentes e status dos serviços do cliente.',
+    },
+};
+
 const LazySectionFallback = ({ label }: { label: string }) => (
     <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-10 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
@@ -204,6 +256,327 @@ const LazySectionFallback = ({ label }: { label: string }) => (
             <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-400/70">{label}</p>
                 <p className="text-sm text-white/30 mt-1">Carregando modulo sob demanda.</p>
+            </div>
+        </div>
+    </div>
+);
+
+const ComingSoonSection = ({ title, description }: { title: string; description: string }) => (
+    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+        <div className="flex items-start justify-between gap-4">
+            <div>
+                <h3 className="text-3xl font-bold text-white tracking-tight">{title}</h3>
+                <p className="text-white/40 text-sm mt-2 max-w-2xl">{description}</p>
+            </div>
+            <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold uppercase tracking-[0.2em]">Em breve</span>
+            </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                <p className="text-white/40 text-xs font-black uppercase tracking-widest">Status</p>
+                <p className="text-white text-2xl font-bold mt-2">Em construção</p>
+            </div>
+            <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                <p className="text-white/40 text-xs font-black uppercase tracking-widest">Escopo</p>
+                <p className="text-white text-2xl font-bold mt-2">Navegação pronta</p>
+            </div>
+            <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                <p className="text-white/40 text-xs font-black uppercase tracking-widest">Próximo passo</p>
+                <p className="text-white text-2xl font-bold mt-2">Implementação</p>
+            </div>
+        </div>
+    </div>
+);
+
+type ModuleTone = 'cyan' | 'emerald' | 'amber' | 'rose' | 'violet';
+type StatusTone = 'ok' | 'warn' | 'info';
+
+type MockModuleCard = {
+    label: string;
+    value: string;
+    hint: string;
+    tone: ModuleTone;
+};
+
+type MockModuleStatus = {
+    label: string;
+    value: string;
+    tone: StatusTone;
+};
+
+type MockModuleAction = {
+    label: string;
+    detail: string;
+};
+
+type MockModule = {
+    title: string;
+    description: string;
+    cards: MockModuleCard[];
+    statuses: MockModuleStatus[];
+    actions: MockModuleAction[];
+    note: string;
+};
+
+type ImportModalType = 'dre' | 'patrimonial';
+
+const MODULE_CARD_TONES: Record<ModuleTone, string> = {
+    cyan: 'from-cyan-500/20 to-blue-600/20 border-cyan-500/20',
+    emerald: 'from-emerald-500/20 to-green-600/20 border-emerald-500/20',
+    amber: 'from-amber-500/20 to-orange-600/20 border-amber-500/20',
+    rose: 'from-rose-500/20 to-red-600/20 border-rose-500/20',
+    violet: 'from-violet-500/20 to-fuchsia-600/20 border-violet-500/20',
+};
+
+const STATUS_TONES: Record<StatusTone, string> = {
+    ok: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+    warn: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
+    info: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
+};
+
+const CLIENT_MODULE_MOCKS: Record<string, MockModule> = {
+    movimentacoes: {
+        title: 'Movimentações',
+        description: 'Resumo operacional dos lançamentos e da fila de tratamento contábil.',
+        cards: [
+            { label: 'Lançamentos do mês', value: '384', hint: '+12% vs mês anterior', tone: 'cyan' },
+            { label: 'Débitos', value: 'R$ 4,8 mi', hint: 'parcelas, impostos e despesas', tone: 'rose' },
+            { label: 'Créditos', value: 'R$ 5,3 mi', hint: 'receitas e estornos', tone: 'emerald' },
+            { label: 'Pendentes', value: '17', hint: 'aguardando conciliação', tone: 'amber' },
+        ],
+        statuses: [
+            { label: 'Importação bancária', value: 'Concluída', tone: 'ok' },
+            { label: 'Classificação contábil', value: 'Em revisão', tone: 'warn' },
+            { label: 'Lançamentos sem centro de custo', value: '4', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Ultima importação', detail: 'Extrato OFX de janeiro processado há 2 dias.' },
+            { label: 'Movimentações sem categoria', detail: '7 itens aguardando tratamento manual.' },
+            { label: 'Histórico recente', detail: 'Concentração maior em folha, fornecedores e tributos.' },
+        ],
+        note: 'O módulo de movimentações aqui é o ponto de entrada para conciliação e classificação futura.',
+    },
+    fluxoCaixa: {
+        title: 'Fluxo de Caixa',
+        description: 'Visão de entradas, saídas e projeção para os próximos dias.',
+        cards: [
+            { label: 'Saldo consolidado', value: 'R$ 1,84 mi', hint: 'disponível em caixa e bancos', tone: 'cyan' },
+            { label: 'Entradas previstas', value: 'R$ 2,20 mi', hint: 'recebimentos e antecipações', tone: 'emerald' },
+            { label: 'Saídas previstas', value: 'R$ 1,91 mi', hint: 'pagamentos e impostos', tone: 'rose' },
+            { label: 'Janela crítica', value: '7 dias', hint: 'maior volume de saídas', tone: 'amber' },
+        ],
+        statuses: [
+            { label: 'Caixa projetado', value: 'Positivo', tone: 'ok' },
+            { label: 'Cobertura de despesas', value: '22 dias', tone: 'info' },
+            { label: 'Alertas de caixa', value: '2', tone: 'warn' },
+        ],
+        actions: [
+            { label: 'Maior saída prevista', detail: 'Folha e tributos concentram 48% das saídas do mês.' },
+            { label: 'Maior entrada prevista', detail: 'Recebimentos recorrentes do contrato principal.' },
+            { label: 'Ponto de atenção', detail: 'Revisar saldo mínimo antes do quinto dia útil.' },
+        ],
+        note: 'Esse painel ajuda a responder se o caixa do cliente aguenta a operação sem susto.',
+    },
+    conciliacaoBancaria: {
+        title: 'Conciliação Bancária',
+        description: 'Acompanhamento do que já foi batido e do que ainda precisa ser reconciliado.',
+        cards: [
+            { label: 'Extratos processados', value: '6', hint: 'bancos ativos no período', tone: 'cyan' },
+            { label: 'Itens conciliados', value: '342', hint: 'movimentos batidos', tone: 'emerald' },
+            { label: 'Itens pendentes', value: '18', hint: 'diferenças e divergências', tone: 'rose' },
+            { label: 'Alertas', value: '3', hint: 'transações fora do padrão', tone: 'amber' },
+        ],
+        statuses: [
+            { label: 'Banco principal', value: '96% conciliado', tone: 'ok' },
+            { label: 'Conta secundária', value: 'Em validação', tone: 'warn' },
+            { label: 'Diferenças antigas', value: '2 lançamentos', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Último ajuste', detail: 'Diferença de tarifa bancária ajustada manualmente.' },
+            { label: 'Transação crítica', detail: 'PIX duplicado em análise para reversão.' },
+            { label: 'Fila de revisão', detail: '5 itens precisam de conferência do cliente.' },
+        ],
+        note: 'Quando essa tela virar real, ela deve reduzir retrabalho no fechamento mensal.',
+    },
+    impostos: {
+        title: 'Impostos',
+        description: 'Painel de apuração, vencimento e acompanhamento fiscal do período.',
+        cards: [
+            { label: 'Impostos estimados', value: 'R$ 156 mil', hint: 'projeção do mês', tone: 'amber' },
+            { label: 'Guias emitidas', value: '12', hint: 'documentos prontos', tone: 'cyan' },
+            { label: 'Vencidos', value: '1', hint: 'aguardando regularização', tone: 'rose' },
+            { label: 'Pagos', value: '9', hint: 'liquidados no período', tone: 'emerald' },
+        ],
+        statuses: [
+            { label: 'Apuração fiscal', value: 'Concluída', tone: 'ok' },
+            { label: 'Pendências de documentação', value: '3', tone: 'warn' },
+            { label: 'Alertas de vencimento', value: '2', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Próximo vencimento', detail: 'IRPJ previsto para o dia 20.' },
+            { label: 'Maior tributo', detail: 'ICMS e retenções representam o maior bloco do mês.' },
+            { label: 'Situação', detail: 'Sem alerta de multa, mas com documentos pendentes.' },
+        ],
+        note: 'Essa área deve virar o centro de controle fiscal do cliente.',
+    },
+    guias: {
+        title: 'Guias',
+        description: 'Emissão, conferência e histórico de guias tributárias e trabalhistas.',
+        cards: [
+            { label: 'Guias emitidas', value: '14', hint: 'no mês atual', tone: 'cyan' },
+            { label: 'Pagas', value: '11', hint: 'liquidadas com sucesso', tone: 'emerald' },
+            { label: 'Aguardando assinatura', value: '2', hint: 'cliente precisa aprovar', tone: 'amber' },
+            { label: 'Atrasadas', value: '1', hint: 'em acompanhamento', tone: 'rose' },
+        ],
+        statuses: [
+            { label: 'INSS / FGTS', value: 'Em dia', tone: 'ok' },
+            { label: 'Guias de imposto', value: '2 pendentes', tone: 'warn' },
+            { label: 'Histórico de emissão', value: 'Completo', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Última guia emitida', detail: 'DARF de retenções liberado ontem.' },
+            { label: 'Pendência', detail: 'Uma guia depende de aprovação do cliente.' },
+            { label: 'Controle', detail: 'Reemissão disponível caso haja divergência.' },
+        ],
+        note: 'Útil para o cliente entender o que já saiu e o que ainda depende de ação.',
+    },
+    folhaPagamento: {
+        title: 'Folha de Pagamento',
+        description: 'Visão de folha, pró-labore, encargos e status da rotina trabalhista.',
+        cards: [
+            { label: 'Colaboradores', value: '84', hint: 'ativos no período', tone: 'cyan' },
+            { label: 'Folha total', value: 'R$ 1,2 mi', hint: 'bruto estimado', tone: 'emerald' },
+            { label: 'Pró-labore', value: 'R$ 48 mil', hint: 'sócios e administradores', tone: 'amber' },
+            { label: 'Pendências', value: '3', hint: 'documentos ou aprovações', tone: 'rose' },
+        ],
+        statuses: [
+            { label: 'Processamento', value: 'Concluído', tone: 'ok' },
+            { label: 'Encargos', value: 'Em apuração', tone: 'warn' },
+            { label: 'Aprovação do cliente', value: '1 pendente', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Fechamento da folha', detail: 'Programado para o quinto dia útil.' },
+            { label: 'Encargo relevante', detail: 'INSS e FGTS concentram o maior impacto.' },
+            { label: 'Ação pendente', detail: 'Aprovar pró-labore do sócio principal.' },
+        ],
+        note: 'Quando virar real, essa área pode reduzir muito o vai-e-volta com o cliente.',
+    },
+    obrigacoes: {
+        title: 'Obrigações',
+        description: 'Calendário de obrigações acessórias, entregas e documentos pendentes.',
+        cards: [
+            { label: 'Obrigações do mês', value: '11', hint: 'entregas previstas', tone: 'cyan' },
+            { label: 'Entregues', value: '8', hint: 'já protocoladas', tone: 'emerald' },
+            { label: 'Pendentes', value: '3', hint: 'em preparação', tone: 'amber' },
+            { label: 'Alertas', value: '2', hint: 'prazo próximo', tone: 'rose' },
+        ],
+        statuses: [
+            { label: 'SPED', value: 'Concluído', tone: 'ok' },
+            { label: 'Documentos faltantes', value: '5 itens', tone: 'warn' },
+            { label: 'Entrega crítica', value: 'Próxima semana', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Obrigação mais próxima', detail: 'EFD/ECF dependendo do regime do cliente.' },
+            { label: 'Regra de negócio', detail: 'Sem documento, a obrigação fica em aguardando.' },
+            { label: 'Status geral', detail: 'Fechamento operacional em andamento.' },
+        ],
+        note: 'Esse módulo funciona bem como checklist operacional da contabilidade.',
+    },
+    servicosContratados: {
+        title: 'Serviços Contratados',
+        description: 'Escopo contratado, entregas recorrentes e status da operação contábil.',
+        cards: [
+            { label: 'Serviços ativos', value: '7', hint: 'no contrato atual', tone: 'cyan' },
+            { label: 'Em execução', value: '3', hint: 'em andamento nesta semana', tone: 'amber' },
+            { label: 'SLA', value: '96%', hint: 'cumprimento estimado', tone: 'emerald' },
+            { label: 'Reuniões', value: '2', hint: 'agendadas no mês', tone: 'violet' },
+        ],
+        statuses: [
+            { label: 'Fechamento contábil', value: 'Em andamento', tone: 'warn' },
+            { label: 'Revisão de documentos', value: 'Concluída', tone: 'ok' },
+            { label: 'Entregas recorrentes', value: 'Prontas', tone: 'info' },
+        ],
+        actions: [
+            { label: 'Serviço principal', detail: 'Escrituração e fechamento mensal seguem como prioridade.' },
+            { label: 'Ação em curso', detail: 'Validação de documentos e ajustes de relatórios.' },
+            { label: 'Próxima entrega', detail: 'Pacote mensal consolidado para o cliente.' },
+        ],
+        note: 'Esse bloco ajuda a explicar o que a contabilidade está entregando agora.',
+    },
+};
+
+const MockModuleSection = ({ module }: { module: MockModule }) => (
+    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+        <div className="flex items-start justify-between gap-4">
+            <div>
+                <h3 className="text-3xl font-bold text-white tracking-tight">{module.title}</h3>
+                <p className="text-white/40 text-sm mt-2 max-w-2xl">{module.description}</p>
+            </div>
+            <div className="hidden md:flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 border border-white/10 text-white/40">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold uppercase tracking-[0.2em]">Mockado</span>
+            </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+            {module.cards.map((card) => (
+                <div key={card.label} className={`bg-linear-to-br ${MODULE_CARD_TONES[card.tone]} backdrop-blur-xl border rounded-2xl p-5`}>
+                    <p className="text-white/60 text-xs font-black uppercase tracking-widest mb-2">{card.label}</p>
+                    <h4 className="text-white text-2xl font-black tracking-tight">{card.value}</h4>
+                    <p className="text-white/45 text-xs mt-2">{card.hint}</p>
+                </div>
+            ))}
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+            <div className="xl:col-span-2 bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-5">
+                    <h4 className="text-white font-bold text-lg">Situação do módulo</h4>
+                    <span className="text-xs text-white/30 uppercase tracking-[0.2em] font-black">Atualização fictícia</span>
+                </div>
+                <div className="space-y-3">
+                    {module.statuses.map((status) => (
+                        <div key={status.label} className="flex items-center justify-between gap-4 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
+                            <div>
+                                <p className="text-white font-semibold">{status.label}</p>
+                            </div>
+                            <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${STATUS_TONES[status.tone]}`}>
+                                {status.value}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-5">
+                    <h4 className="text-white font-bold text-lg">Próximas ações</h4>
+                    <LifeBuoy className="w-4 h-4 text-cyan-400" />
+                </div>
+                <div className="space-y-4">
+                    {module.actions.map((action) => (
+                        <div key={action.label} className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                            <p className="text-white font-semibold text-sm">{action.label}</p>
+                            <p className="text-white/40 text-xs mt-1 leading-relaxed">{action.detail}</p>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+
+        <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-6">
+            <div className="flex items-center justify-between gap-4">
+                <div>
+                    <p className="text-white/40 text-xs font-black uppercase tracking-widest">Nota de produto</p>
+                    <p className="text-white text-sm mt-2">{module.note}</p>
+                </div>
+                <div className="hidden lg:flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-[0.2em]">
+                    <Sparkles className="w-4 h-4" />
+                    Prova de conceito
+                </div>
             </div>
         </div>
     </div>
@@ -239,9 +612,13 @@ const ClientDashboard = () => {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isSupportOpen, setIsSupportOpen] = useState(false);
+    const [importModal, setImportModal] = useState<{ type: ImportModalType; year: number } | null>(null);
     const [searchTerm] = useState('');
     const tableContainerRef = useRef<HTMLDivElement>(null);
     const reportRef = useRef<HTMLDivElement>(null);
+    const dreImportInputRef = useRef<HTMLInputElement>(null);
+    const patrimonialImportInputRef = useRef<HTMLInputElement>(null);
+    const importYearRef = useRef<number | null>(null);
 
     // Estado do card de IA
     const [aiText, setAiText] = useState('');
@@ -286,6 +663,7 @@ const ClientDashboard = () => {
     const isAccountingView = Boolean(clientId);
     const isClientView = !isAccountingView;
     const isReadOnly = isClientView;
+    const showDrePatConfigButtons = Date.now() < 0;
 
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [dreMovements, setDreMovements] = useState<MovementRow[]>([]); // balancete DRE (resultado)
@@ -308,6 +686,62 @@ const ClientDashboard = () => {
         return Array.from({ length: 8 }, (_, index) => currentYear + 1 - index);
     }, []);
     const showLegacyDfc = false;
+
+    useEffect(() => {
+        if (activeTab === 'dfc') {
+            setDreSubTab('dfc');
+        } else if (activeTab === 'balancoPatrimonial') {
+            setDreSubTab('patrimonial');
+        } else if (activeTab === 'dre') {
+            setDreSubTab('dre');
+        }
+    }, [activeTab]);
+
+    const sidebarItems = [
+        { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
+        { id: 'movimentacoes', icon: FileSpreadsheet, label: 'Movimentações' },
+        { id: 'fluxoCaixa', icon: TrendingUp, label: 'Fluxo de Caixa' },
+        { id: 'conciliacaoBancaria', icon: RefreshCw, label: 'Conciliação Bancária' },
+        { id: 'dre', icon: Calculator, label: 'DRE' },
+        { id: 'dfc', icon: FileText, label: 'DFC' },
+        { id: 'balancoPatrimonial', icon: FileText, label: 'Balanço Patrimonial' },
+        { id: 'impostos', icon: CalendarDays, label: 'Impostos' },
+        { id: 'guias', icon: FileText, label: 'Guias' },
+        { id: 'folhaPagamento', icon: LayoutList, label: 'Folha de Pagamento' },
+        { id: 'obrigacoes', icon: Sparkles, label: 'Obrigações' },
+        { id: 'arquivos', icon: Upload, label: 'Documentos' },
+        { id: 'servicosContratados', icon: Settings2, label: 'Serviços Contratados' },
+        { id: 'suporte', icon: Ticket, label: 'Atendimento' },
+    ] as const;
+
+    const activeSidebarLabel = CLIENT_TAB_LABELS[activeTab] ?? 'Dashboard';
+    const moduleMock = CLIENT_MODULE_MOCKS[activeTab];
+    const comingSoonCopy = CLIENT_COMING_SOON_COPY[activeTab];
+    const isComingSoonTab = Boolean(comingSoonCopy);
+    const sidebarOffsetClass = isSidebarOpen ? 'ml-64 w-[calc(100vw-16rem)]' : 'ml-20 w-[calc(100vw-5rem)]';
+
+    const openImportModal = (type: ImportModalType) => {
+        setImportModal({ type, year: selectedYear });
+    };
+
+    const closeImportModal = () => {
+        setImportModal(null);
+        importYearRef.current = null;
+    };
+
+    const handleImportModalConfirm = () => {
+        if (!importModal) return;
+
+        importYearRef.current = importModal.year;
+        setImportModal(null);
+
+        if (importModal.type === 'dre') {
+            dreImportInputRef.current?.click();
+            return;
+        }
+
+        patrimonialImportInputRef.current?.click();
+    };
 
     const clientQuery = useQuery<ClientDashboardProfile>({
         queryKey: ['client-dashboard-client', clientId ?? 'self'],
@@ -342,11 +776,11 @@ const ClientDashboard = () => {
     });
 
     const dreMappingsQuery = useQuery({
-        queryKey: ['client-dashboard-dre-mappings', clientId ?? 'self'],
+        queryKey: ['accounting-dre-mappings', clientId ?? 'self'],
         queryFn: async () => {
             if (!isAccountingView || !clientId) return [];
 
-            const { data } = await api.get(`/clients/${clientId}/dre-mappings`);
+            const { data } = await api.get('/accounting/dre-mappings');
             return Array.isArray(data) ? data : [];
         },
         enabled: isAccountingView && Boolean(clientId),
@@ -766,6 +1200,9 @@ const ClientDashboard = () => {
         setMovFn: React.Dispatch<React.SetStateAction<MovementRow[]>>
     ) => {
         return async (e: React.ChangeEvent<HTMLInputElement>) => {
+            const chosenImportYear = importYearRef.current ?? selectedYear;
+            importYearRef.current = null;
+            setImportModal(null);
             const file = e.target.files?.[0];
             if (!file) return;
             // Reset input para permitir re-upload do mesmo arquivo
@@ -796,19 +1233,20 @@ const ClientDashboard = () => {
 
                     // Auto-detectar ano a partir dos cabeçalhos (ex: "01/2025", "02/2025")
                     const headerRow = data[0] || [];
-                    const importYear = (() => {
+                    const detectedYear = (() => {
                         for (let ci = 2; ci <= 13 && ci < headerRow.length; ci++) {
                             const colHeader = String(headerRow[ci] || '').trim();
                             const yearMatch = colHeader.match(/(\d{1,2})\/(\d{4})/);
                             if (yearMatch) return parseInt(yearMatch[2], 10);
                         }
-                        return selectedYear;
+                        return null;
                     })();
-                    // Avisa o usuário sobre o ano detectado (sem alterar o estado ainda
-                    // — o setSelectedYear acontece após o save para evitar race condition
-                    // com o useEffect que refaz o fetch ao mudar de ano)
-                    if (importYear !== selectedYear) {
-                        toast(`Ano detectado no arquivo: ${importYear}`, { icon: 'ℹ️', duration: 4000 });
+                    const importYear = chosenImportYear;
+                    if (detectedYear && detectedYear !== chosenImportYear) {
+                        toast(`Arquivo indica ${detectedYear}, mas a importação será feita em ${chosenImportYear}.`, {
+                            icon: 'ℹ️',
+                            duration: 5000,
+                        });
                     }
 
                     // Col 0 = Classificação, Col 1 = Nome, Cols 2-13 = Jan-Dez
@@ -966,6 +1404,9 @@ const ClientDashboard = () => {
     const handleDreFileUpload = createMovementUploadHandler('dre', setDreMovements);
 
     const handlePatrimonialRawFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const chosenImportYear = importYearRef.current ?? selectedYear;
+        importYearRef.current = null;
+        setImportModal(null);
         const file = e.target.files?.[0];
         if (!file) return;
         e.target.value = '';
@@ -1009,17 +1450,20 @@ const ClientDashboard = () => {
 
                 // Auto-detectar ano a partir dos cabeçalhos (ex: "01/2025", "02/2025")
                 const patHeaderRow = rows[0] || [];
-                const patImportYear = (() => {
+                const detectedPatImportYear = (() => {
                     for (let ci = 2; ci <= 13 && ci < patHeaderRow.length; ci++) {
                         const colHeader = String(patHeaderRow[ci] || '').trim();
                         const yearMatch = colHeader.match(/(\d{1,2})\/(\d{4})/);
                         if (yearMatch) return parseInt(yearMatch[2], 10);
                     }
-                    return selectedYear;
+                    return null;
                 })();
-                if (patImportYear !== selectedYear) {
-                    setSelectedYear(patImportYear);
-                    toast(`Ano detectado no arquivo: ${patImportYear}`, { icon: 'ℹ️', duration: 4000 });
+                const patImportYear = chosenImportYear;
+                if (detectedPatImportYear && detectedPatImportYear !== chosenImportYear) {
+                    toast(`Arquivo indica ${detectedPatImportYear}, mas a importação será feita em ${chosenImportYear}.`, {
+                        icon: 'ℹ️',
+                        duration: 5000,
+                    });
                 }
 
                 const reducedCodeByClassification = new Map(
@@ -1067,6 +1511,7 @@ const ClientDashboard = () => {
                 }
 
                 setPatrimonialMovements(movements);
+                if (patImportYear !== selectedYear) setSelectedYear(patImportYear);
                 await queryClient.invalidateQueries({ queryKey: ['client-dashboard-patrimonial-movements', clientId ?? 'self'] });
             } catch (error) {
                 console.error('Erro ao importar Patrimonial bruto:', error);
@@ -1446,7 +1891,7 @@ const ClientDashboard = () => {
                 setAccounts(mapped);
                 await Promise.all([
                     queryClient.invalidateQueries({ queryKey: ['client-dashboard-chart-accounts', targetClientId] }),
-                    queryClient.invalidateQueries({ queryKey: ['client-dashboard-dre-mappings', targetClientId] }),
+                    queryClient.invalidateQueries({ queryKey: ['accounting-dre-mappings', targetClientId] }),
                 ]);
             } catch (error) {
                 console.error('Erro ao importar plano de contas:', error);
@@ -1535,7 +1980,7 @@ const ClientDashboard = () => {
             <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
 
             {/* Sidebar Navigation */}
-            <div className={`fixed left-0 top-0 h-full bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col py-8 z-50 transition-all duration-300 overflow-hidden relative ${isSidebarOpen ? 'w-64 items-start px-3' : 'w-20 items-center px-0'}`}>
+            <div className={`fixed top-0 left-0 shrink-0 h-screen bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col py-8 z-50 transition-all duration-300 overflow-hidden relative ${isSidebarOpen ? 'w-64 items-start px-3' : 'w-20 items-center px-0'}`}>
                 <button
                     type="button"
                     onClick={() => setIsSidebarOpen((prev) => !prev)}
@@ -1545,7 +1990,7 @@ const ClientDashboard = () => {
                 >
                     <ChevronRight className={`w-4 h-4 transition-transform duration-300 ${isSidebarOpen ? 'rotate-180' : ''}`} />
                 </button>
-                <div className={`flex items-center gap-3 mb-12 ${isSidebarOpen ? 'w-full px-2 justify-start' : 'w-full justify-center'}`}>
+                <div className={`flex items-center gap-3 mb-8 mt-2 ${isSidebarOpen ? 'w-full px-2 justify-start' : 'w-full justify-center'}`}>
                     <div className="w-12 h-12 bg-linear-to-br from-cyan-400 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
                         <BarChart3 className="w-7 h-7" />
                     </div>
@@ -1556,14 +2001,8 @@ const ClientDashboard = () => {
                         </div>
                     )}
                 </div>
-
-                <div className={`flex-1 flex flex-col gap-4 ${isSidebarOpen ? 'items-stretch w-full' : 'items-center'}`}>
-                    {[ 
-                        { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
-                        { id: 'dre', icon: Calculator, label: 'DRE' },
-                        ...(isClientView ? [{ id: 'arquivos', icon: Upload, label: 'Arquivos' }] : []),
-                        ...(isClientView ? [{ id: 'suporte', icon: Ticket, label: 'Suporte' }] : []),
-                    ].map((item) => (
+                <div className={`flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto ${isSidebarOpen ? 'items-stretch w-full pr-1' : 'items-center'}`}>
+                    {sidebarItems.map((item) => (
                         <button
                             key={item.id}
                             onClick={() => setActiveTab(item.id)}
@@ -1603,17 +2042,6 @@ const ClientDashboard = () => {
                             {isSidebarOpen && <span className="text-sm font-medium truncate">Ajuda</span>}
                         </button>
                     )}
-                    <div className={`flex items-center gap-3 ${isSidebarOpen ? 'w-full px-2 justify-start' : 'w-full justify-center'}`}>
-                        <div className="w-12 h-12 rounded-full bg-linear-to-br from-cyan-400 to-blue-600 flex items-center justify-center text-white font-bold shadow-lg">
-                            {client?.name?.charAt(0) || 'U'}
-                        </div>
-                        {isSidebarOpen && (
-                            <div className="min-w-0">
-                                <p className="text-sm font-bold text-white leading-none">{client?.name || 'Usuário'}</p>
-                                <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500 mt-1">{isReadOnly ? 'Acesso Restrito' : 'Conta Ativa'}</p>
-                            </div>
-                        )}
-                    </div>
                     {isClientView && (
                         <button
                             onClick={async () => {
@@ -1641,10 +2069,28 @@ const ClientDashboard = () => {
                 </div>
             </div>
 
+            <input
+                ref={dreImportInputRef}
+                type="file"
+                className="hidden"
+                accept=".xlsx, .xls, .csv"
+                onChange={handleDreFileUpload}
+            />
+            <input
+                ref={patrimonialImportInputRef}
+                type="file"
+                className="hidden"
+                accept=".xlsx, .xls, .csv"
+                onChange={handlePatrimonialRawFileUpload}
+            />
+
             {/* Main Content */}
-            <div className={`${isSidebarOpen ? 'ml-64' : 'ml-20'} min-h-screen relative z-10 transition-all duration-300`}>
-                {/* Modern Header - Fixed at Top */}
-                <header className={`fixed top-0 ${isSidebarOpen ? 'left-64' : 'left-20'} right-0 z-50 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300`}>
+            <div
+                className={`min-w-0 min-h-screen relative z-10 flex flex-col transition-all duration-300 ${sidebarOffsetClass}`}
+                style={{ width: isSidebarOpen ? 'calc(100vw - 16rem)' : 'calc(100vw - 5rem)' }}
+            >
+                {/* Modern Header */}
+                <header className="shrink-0 z-50 bg-[#0a1628]/80 backdrop-blur-2xl border-b border-white/5 px-4 md:px-12 h-20 flex items-center justify-between transition-all duration-300">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             {isAccountingView && (
@@ -1659,7 +2105,7 @@ const ClientDashboard = () => {
                                 {isClientLoading ? (
                                     <div className="w-48 h-8 bg-white/5 animate-pulse rounded-lg" />
                                 ) : (
-                                    <>TresContas <span className="text-cyan-400">{activeTab === 'suporte' ? 'Suporte' : activeTab}</span></>
+                                    <>TresContas <span className="text-cyan-400">{activeSidebarLabel}</span></>
                                 )}
                             </h2>
                             {isReadOnly && (
@@ -1712,8 +2158,8 @@ const ClientDashboard = () => {
                     </div>
                 </header>
 
-                <div className="pt-24 pb-4 pr-4 pl-0 relative z-10 transition-all duration-500">
-                    <div className="max-w-full mx-auto">
+                <div className="flex-1 overflow-auto py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
+                    <div className="w-full">
                         {activeTab === 'dashboard' && (
                             <div className="space-y-6 animate-in fade-in duration-500 pb-12">
                                 {/* Hero Section: Company & Meeting */}
@@ -2169,7 +2615,7 @@ const ClientDashboard = () => {
                     </div>
                 )}
 
-                {activeTab === 'dre' && (
+                {(activeTab === 'dre' || activeTab === 'dfc' || activeTab === 'balancoPatrimonial') && (
                     <div className="space-y-2 animate-in fade-in duration-500 pb-2">
                         <div className="flex gap-4 p-2 bg-white/5 backdrop-blur-xl border border-white/10 w-fit rounded-[20px]">
                             {DRE_TABS.filter((tab) => tab.show).map((tab) => (
@@ -2206,7 +2652,7 @@ const ClientDashboard = () => {
                                                     {mode.label}
                                                 </button>
                                             ))}
-                                            {!isReadOnly && (
+                                            {showDrePatConfigButtons && !isReadOnly && (
                                                 <button
                                                     onClick={() => setDreConfigMode(!dreConfigMode)}
                                                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${dreConfigMode ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
@@ -2217,25 +2663,14 @@ const ClientDashboard = () => {
                                             )}
                                         </div>
                                         {!dreConfigMode && !isReadOnly && (
-                                            <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold text-white/70">
-                                                Ano do arquivo
-                                                <select
-                                                    className="bg-transparent outline-none cursor-pointer text-sm font-black text-cyan-300"
-                                                    value={selectedYear}
-                                                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                                                >
-                                                    {availableYears.map((year) => (
-                                                        <option key={year} value={year} className="bg-[#0d1829]">{year}</option>
-                                                    ))}
-                                                </select>
-                                            </label>
-                                        )}
-                                        {!dreConfigMode && !isReadOnly && (
-                                            <label className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl cursor-pointer transition-all font-bold shadow-lg shadow-cyan-500/20">
+                                            <button
+                                                type="button"
+                                                onClick={() => openImportModal('dre')}
+                                                className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 text-white px-6 py-3 rounded-2xl transition-all font-bold shadow-lg shadow-cyan-500/20"
+                                            >
                                                 <Upload className="w-5 h-5" />
-                                                Importar Balancete {selectedYear}
-                                                <input type="file" className="hidden" accept=".xlsx, .xls, .csv" onChange={handleDreFileUpload} />
-                                            </label>
+                                                Importar Balancete
+                                            </button>
                                         )}
                                         {!dreConfigMode && (
                                             <button onClick={() => handleExportPDF('DRE')} className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white" title="Exportar PDF">
@@ -2253,7 +2688,7 @@ const ClientDashboard = () => {
                                             onSaved={async () => {
                                                 await Promise.all([
                                                     queryClient.invalidateQueries({ queryKey: ['client-dashboard-chart-accounts', clientId ?? 'self'] }),
-                                                    queryClient.invalidateQueries({ queryKey: ['client-dashboard-dre-mappings', clientId ?? 'self'] }),
+                                                    queryClient.invalidateQueries({ queryKey: ['accounting-dre-mappings', clientId ?? 'self'] }),
                                                 ]);
                                             }}
                                         />
@@ -2590,7 +3025,7 @@ const ClientDashboard = () => {
                                                     {mode.label}
                                                 </button>
                                             ))}
-                                            {!isReadOnly && (
+                                            {showDrePatConfigButtons && !isReadOnly && (
                                                 <button
                                                     onClick={() => setPatConfigMode(!patConfigMode)}
                                                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${patConfigMode ? 'bg-slate-800 text-white shadow-lg' : 'text-white/40 hover:text-white'}`}
@@ -3094,6 +3529,15 @@ const ClientDashboard = () => {
                 )}
 
                 {/* Aba de Suporte - visível apenas para clientes */}
+                {moduleMock ? (
+                    <MockModuleSection module={moduleMock} />
+                ) : isComingSoonTab ? (
+                    <ComingSoonSection
+                        title={comingSoonCopy?.title ?? activeSidebarLabel}
+                        description={comingSoonCopy?.description ?? 'Conteúdo em preparação.'}
+                    />
+                ) : null}
+
                 {activeTab === 'arquivos' && isClientView && (
                     <Suspense fallback={<LazySectionFallback label="Documentos do cliente" />}>
                         <ClientDocumentUploadPanel />

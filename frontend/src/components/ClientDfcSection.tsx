@@ -45,6 +45,7 @@ interface ClientDfcSectionProps {
     months: string[];
     reportRef: React.RefObject<HTMLDivElement | null>;
     onExport: () => void;
+    initialMode?: 'view' | 'config';
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -86,13 +87,18 @@ export const ClientDfcSection = ({
     months,
     reportRef,
     onExport,
+    initialMode = 'view',
 }: ClientDfcSectionProps) => {
-    const [mode, setMode] = useState<'view' | 'config'>('view');
+    const [mode, setMode] = useState<'view' | 'config'>(initialMode);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [savingConfig, setSavingConfig] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
     const queryClient = useQueryClient();
+
+    useEffect(() => {
+        setMode(initialMode);
+    }, [initialMode]);
 
     const reportQuery = useQuery({
         queryKey: ['client-dashboard-dfc-report', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client'],

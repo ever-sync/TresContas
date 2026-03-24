@@ -109,7 +109,7 @@ export interface SecurityConfig {
 export const resolveSecurityConfig = (env: NodeJS.ProcessEnv = process.env): SecurityConfig => {
     const nodeEnv = String(env.NODE_ENV || 'development').trim().toLowerCase();
     const isProduction = nodeEnv === 'production';
-    const configuredOrigins = parseAllowedOrigins(env.ALLOWED_ORIGINS);
+    const configuredOrigins = parseAllowedOrigins(env.ALLOWED_ORIGINS || env.CORS_ORIGIN);
     const allowedOrigins = isProduction
         ? configuredOrigins
         : Array.from(new Set([...configuredOrigins, ...LOCAL_DEVELOPMENT_ORIGINS]));

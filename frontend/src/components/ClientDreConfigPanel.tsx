@@ -35,6 +35,8 @@ interface Props {
     clientId: string;
     selectedYear: number;
     onSaved?: () => void | Promise<void>;
+    scope?: 'client' | 'global';
+    sourceClientId?: string;
 }
 
 // ─── DRE Categories (same order as DRE report) ─────────────────────────────
@@ -94,29 +96,41 @@ const toBackendCategory = (key: string) =>
     key.replace(/\b\w/g, (c) => c.toUpperCase());
 
 // ─── Component ──────────────────────────────────────────────────────────────
-export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, onSaved }) => {
+export const ClientDreConfigPanel: React.FC<Props> = ({
+    clientId,
+    selectedYear,
+    onSaved,
+    scope = 'client',
+    sourceClientId,
+}) => {
     const [saving, setSaving] = useState(false);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [originalMappingCodes, setOriginalMappingCodes] = useState<Set<string>>(new Set());
     const queryClient = useQueryClient();
+    const isGlobalScope = scope === 'global';
+    const effectiveClientId = sourceClientId || clientId;
 
     const dreMappingsQuery = useQuery({
-        queryKey: ['client-dashboard-dre-mappings', clientId, selectedYear],
+        queryKey: isGlobalScope
+            ? ['global-dre-mappings']
+            : ['client-dashboard-dre-mappings', clientId, selectedYear],
         queryFn: async () => {
-            const response = await api.get(`/clients/${clientId}/dre-mappings`);
+            const response = await api.get(
+                isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`
+            );
             return Array.isArray(response.data) ? (response.data as DREMappingRecord[]) : [];
         },
-        enabled: Boolean(clientId),
+        enabled: isGlobalScope ? Boolean(effectiveClientId) : Boolean(clientId),
         staleTime: 30_000,
     });
 
     const chartAccountsQuery = useQuery({
-        queryKey: ['client-dashboard-chart-accounts', clientId, selectedYear],
+        queryKey: ['client-dashboard-chart-accounts', effectiveClientId, selectedYear, isGlobalScope ? 'global' : 'client'],
         queryFn: async () => {
-            const response = await api.get(`/clients/${clientId}/chart-of-accounts`);
+            const response = await api.get(`/clients/${effectiveClientId}/chart-of-accounts`);
             return Array.isArray(response.data) ? (response.data as DreAccount[]) : [];
         },
-        enabled: Boolean(clientId),
+        enabled: Boolean(effectiveClientId),
         staleTime: 30_000,
     });
 
@@ -149,6 +163,34 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, 
         setDraftMappings(drafts);
         setOriginalMappingCodes(new Set(mappings.map((m) => m.account_code)));
     }, [dreMappingsQuery.data]);
+
+    const handleImportFromClient = async () => {
+        if (!effectiveClientId) {
+            toast.error('Selecione um cliente base');
+            return;
+        }
+
+        try {
+            const response = await api.get(`/clients/${effectiveClientId}/dre-mappings`);
+            const sourceMappings = Array.isArray(response.data) ? (response.data as DREMappingRecord[]) : [];
+            const allowedCategories = new Set(ALL_CATEGORY_KEYS.map(stripAccents));
+            const imported = sourceMappings
+                .filter((mapping) => allowedCategories.has(stripAccents(mapping.category)))
+                .map((mapping) => ({
+                    localId: makeLocalId(),
+                    account_code: mapping.account_code,
+                    account_name: mapping.account_name,
+                    category: stripAccents(mapping.category),
+                }));
+
+            setDraftMappings(imported);
+            setOriginalMappingCodes(new Set(imported.map((mapping) => mapping.account_code)));
+            toast.success('Configuracao carregada do cliente selecionado');
+        } catch (error) {
+            console.error('Erro ao importar configuracao base:', error);
+            toast.error('Erro ao importar configuracao do cliente');
+        }
+    };
 
     // Accounts mapped per category
     const mappingsByCategory = useMemo(() => {
@@ -216,26 +258,39 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, 
         try {
             setSaving(true);
 
-            // Delete mappings that were removed
-            const currentCodes = new Set(draftMappings.map((m) => m.account_code));
-            const removedCodes = [...originalMappingCodes].filter((code) => !currentCodes.has(code));
-            for (const code of removedCodes) {
-                await api.delete(`/clients/${clientId}/dre-mappings/${encodeURIComponent(code)}`);
-            }
-
-            // Upsert all current mappings
-            if (draftMappings.length > 0) {
-                await api.post(`/clients/${clientId}/bulk-dre-mappings`, {
+            if (isGlobalScope) {
+                await api.post('/accounting/dre-mappings/bulk', {
+                    group: 'dre',
                     mappings: draftMappings.map((m) => ({
                         account_code: m.account_code,
                         account_name: m.account_name,
                         category: toBackendCategory(m.category),
                     })),
                 });
+            } else {
+                // Delete mappings that were removed
+                const currentCodes = new Set(draftMappings.map((m) => m.account_code));
+                const removedCodes = [...originalMappingCodes].filter((code) => !currentCodes.has(code));
+                for (const code of removedCodes) {
+                    await api.delete(`/clients/${clientId}/dre-mappings/${encodeURIComponent(code)}`);
+                }
+
+                // Upsert all current mappings
+                if (draftMappings.length > 0) {
+                    await api.post(`/clients/${clientId}/bulk-dre-mappings`, {
+                        mappings: draftMappings.map((m) => ({
+                            account_code: m.account_code,
+                            account_name: m.account_name,
+                            category: toBackendCategory(m.category),
+                        })),
+                    });
+                }
             }
 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
-            await queryClient.invalidateQueries({ queryKey: ['client-dashboard-dre-mappings', clientId] });
+            await queryClient.invalidateQueries({
+                queryKey: isGlobalScope ? ['global-dre-mappings'] : ['client-dashboard-dre-mappings', clientId],
+            });
             await onSaved?.();
             toast.success('Configuração DRE salva!');
         } catch (error: unknown) {
@@ -338,6 +393,15 @@ export const ClientDreConfigPanel: React.FC<Props> = ({ clientId, selectedYear, 
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
+                    {isGlobalScope && (
+                        <button
+                            onClick={handleImportFromClient}
+                            disabled={!effectiveClientId}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300 text-xs font-bold uppercase tracking-[0.15em] disabled:opacity-40"
+                        >
+                            Importar do cliente selecionado
+                        </button>
+                    )}
                     {unmappedAccounts.length > 0 && (
                         <button
                             onClick={handleAutoClassify}

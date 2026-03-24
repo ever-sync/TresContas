@@ -161,14 +161,32 @@ export const importMovements = async (req: AuthRequest, res: Response) => {
             }
         }
 
-        const dreMappings = await prisma.dREMapping.findMany({
-            where: { client_id: clientId },
+        const globalDreMappings = await prisma.dREMapping.findMany({
+            where: {
+                accounting_id: req.accountingId,
+                client_id: null as any,
+            },
             select: { account_code: true, category: true },
         });
 
-        const dreMappingByCode = new Map(
-            dreMappings.map((mapping) => [mapping.account_code.trim(), mapping.category])
-        );
+        const clientDreMappings = await prisma.dREMapping.findMany({
+            where: {
+                accounting_id: req.accountingId,
+                client_id: clientId,
+            },
+            select: { account_code: true, category: true },
+        });
+
+        const dreMappingByCode = new Map<string, string>();
+        for (const mapping of globalDreMappings) {
+            dreMappingByCode.set(mapping.account_code.trim(), mapping.category);
+        }
+        for (const mapping of clientDreMappings) {
+            const code = mapping.account_code.trim();
+            if (!dreMappingByCode.has(code)) {
+                dreMappingByCode.set(code, mapping.category);
+            }
+        }
 
         const inferDreCategoryFromCode = (code: string): string | null => {
             if (code.startsWith('03.1.01')) return 'receita bruta';

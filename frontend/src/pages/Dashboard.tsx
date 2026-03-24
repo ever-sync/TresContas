@@ -35,6 +35,7 @@ import { authService } from '../services/authService';
 import { ClientRegistrationModal } from '../components/ClientRegistrationModal';
 import { UserModal } from '../components/UserModal';
 import { ChartOfAccountsManager } from '../components/ChartOfAccountsManager';
+import { AccountingParametrizacaoPanel } from '../components/AccountingParametrizacaoPanel';
 import { StaffClientDocumentsManager } from '../components/StaffClientDocumentsManager';
 import AuditEventsPanel from '../components/AuditEventsPanel';
 import SupportTicketDetailPanel from '../components/support/SupportTicketDetailPanel';
@@ -47,8 +48,9 @@ const Dashboard = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
-    const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team' | 'audit'>('dashboard');
+    const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team' | 'audit' | 'parametrizacao'>('dashboard');
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+    const [isConfigOpen, setIsConfigOpen] = useState(true);
     const [supportFilter, setSupportFilter] = useState<'open' | 'in_progress' | 'closed' | 'all'>('open');
     const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
     const [supportReplyDraft, setSupportReplyDraft] = useState('');
@@ -102,6 +104,12 @@ const Dashboard = () => {
         setIsModalOpen(false);
         setEditingClient(null);
     };
+
+    useEffect(() => {
+        if (activeView === 'team' || activeView === 'audit') {
+            setIsConfigOpen(true);
+        }
+    }, [activeView]);
 
     const supportTicketsQuery = useQuery({
         queryKey: ['support-tickets'],
@@ -244,8 +252,8 @@ const Dashboard = () => {
         <div className="h-screen bg-[#0a1628] flex overflow-hidden" style={{
             background: 'linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%)'
         }}>
-            {/* Sidebar - Fixed */}
-            <aside className={`fixed left-0 top-0 h-screen bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col py-6 gap-2 z-50 transition-all duration-300 overflow-hidden relative ${isSidebarOpen ? 'w-64 items-start px-2' : 'w-20 items-center px-0'}`}>
+            {/* Sidebar */}
+            <aside className={`shrink-0 h-screen bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col py-6 gap-2 z-50 transition-all duration-300 overflow-hidden relative ${isSidebarOpen ? 'w-64 items-start px-2' : 'w-20 items-center px-0'}`}>
                 <button
                     type="button"
                     onClick={() => setIsSidebarOpen((prev) => !prev)}
@@ -286,34 +294,6 @@ const Dashboard = () => {
                         <Users className="w-5 h-5 shrink-0" />
                         {isSidebarOpen ? <span className="text-sm font-medium truncate">Clientes</span> : null}
                     </button>
-                    <button
-                        onClick={() => setActiveView('support')}
-                        title="Suporte"
-                        className={sidebarButtonClass(activeView === 'support')}
-                    >
-                        <LifeBuoy className="w-5 h-5 shrink-0" />
-                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Suporte</span> : null}
-                    </button>
-                    {isAdmin && (
-                        <button
-                            onClick={() => setActiveView('team')}
-                            title="Equipe"
-                            className={sidebarButtonClass(activeView === 'team')}
-                        >
-                            <Shield className="w-5 h-5 shrink-0" />
-                            {isSidebarOpen ? <span className="text-sm font-medium truncate">Equipe</span> : null}
-                        </button>
-                    )}
-                    {isAdmin && (
-                        <button
-                            onClick={() => setActiveView('audit')}
-                            title="Auditoria"
-                            className={sidebarButtonClass(activeView === 'audit')}
-                        >
-                            <Shield className="w-5 h-5 shrink-0" />
-                            {isSidebarOpen ? <span className="text-sm font-medium truncate">Auditoria</span> : null}
-                        </button>
-                    )}
                     <button className={sidebarActionClass()} title="Relat?rios">
                         <BarChart3 className="w-5 h-5 shrink-0" />
                         {isSidebarOpen ? <span className="text-sm font-medium truncate">Relat?rios</span> : null}
@@ -334,14 +314,63 @@ const Dashboard = () => {
                         <FileText className="w-5 h-5 shrink-0" />
                         {isSidebarOpen ? <span className="text-sm font-medium truncate">Documentos</span> : null}
                     </button>
-                    <button className={sidebarActionClass()} title="Configura??es">
+                    <button
+                        onClick={() => setActiveView('parametrizacao')}
+                        className={sidebarButtonClass(activeView === 'parametrizacao')}
+                        title="Parametrização"
+                    >
                         <Settings className="w-5 h-5 shrink-0" />
-                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Configura??es</span> : null}
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Parametrização</span> : null}
                     </button>
                 </nav>
 
                 {/* Bottom Icons */}
-                <div className={`flex flex-col gap-2 ${isSidebarOpen ? 'items-start pl-2' : 'items-center'}`}>
+                <div className={`mt-auto flex flex-col gap-2 ${isSidebarOpen ? 'items-start pl-2' : 'items-center'}`}>
+                    <button
+                        onClick={() => setActiveView('support')}
+                        title="Suporte"
+                        className={sidebarButtonClass(activeView === 'support')}
+                    >
+                        <LifeBuoy className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Suporte</span> : null}
+                    </button>
+                    {isAdmin && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={() => setIsConfigOpen((prev) => !prev)}
+                                title="Configuração"
+                                aria-expanded={isSidebarOpen ? isConfigOpen : undefined}
+                                className={sidebarButtonClass(activeView === 'team' || activeView === 'audit')}
+                            >
+                                <Settings className="w-5 h-5 shrink-0" />
+                                {isSidebarOpen ? <span className="text-sm font-medium truncate">Configuração</span> : null}
+                                {isSidebarOpen ? (
+                                    <ChevronRight className={`ml-auto w-4 h-4 shrink-0 transition-transform duration-300 ${isConfigOpen ? 'rotate-90' : ''}`} />
+                                ) : null}
+                            </button>
+                            {isSidebarOpen && isConfigOpen && (
+                                <div className="w-full flex flex-col gap-2 pl-4 pr-1 border-l border-white/5 ml-4">
+                                    <button
+                                        onClick={() => setActiveView('team')}
+                                        title="Equipe"
+                                        className={sidebarButtonClass(activeView === 'team')}
+                                    >
+                                        <Shield className="w-5 h-5 shrink-0" />
+                                        <span className="text-sm font-medium truncate">Equipe</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveView('audit')}
+                                        title="Auditoria"
+                                        className={sidebarButtonClass(activeView === 'audit')}
+                                    >
+                                        <Shield className="w-5 h-5 shrink-0" />
+                                        <span className="text-sm font-medium truncate">Auditoria</span>
+                                    </button>
+                                </div>
+                            )}
+                        </>
+                    )}
                     <button className={sidebarActionClass()} title="Ajuda">
                         <HelpCircle className="w-5 h-5 shrink-0" />
                         {isSidebarOpen ? <span className="text-sm font-medium truncate">Ajuda</span> : null}
@@ -354,9 +383,9 @@ const Dashboard = () => {
             </aside>
 
             {/* Main Content */}
-            <main className={`${isSidebarOpen ? 'ml-64' : 'ml-20'} flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-all duration-300`}>
-                {/* Header - Sticky */}
-                <header className="h-20 flex items-center justify-between px-8 border-b border-white/5 bg-[#0a1628]/60 backdrop-blur-xl sticky top-0 z-40">
+            <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-all duration-300">
+                {/* Header */}
+                <header className="shrink-0 h-20 flex items-center justify-between px-8 border-b border-white/5 bg-[#0a1628]/60 backdrop-blur-xl z-40">
                     <div className="flex items-center gap-3">
                         <h1 className="text-2xl font-bold text-white">
                             {activeView === 'dashboard'
@@ -371,6 +400,8 @@ const Dashboard = () => {
                                 ? 'Equipe'
                                 : activeView === 'audit'
                                 ? 'Auditoria'
+                                : activeView === 'parametrizacao'
+                                ? 'Parametrização'
                                 : 'Suporte'}
                         </h1>
                     </div>
@@ -388,6 +419,8 @@ const Dashboard = () => {
                                 ? 'Buscar arquivo, categoria ou cliente...'
                                 : activeView === 'audit'
                                 ? 'Buscar eventos de auditoria...'
+                                : activeView === 'parametrizacao'
+                                ? 'Buscar parâmetro, padrão ou atalho...'
                                 : 'Buscar cliente, CNPJ...'}
                             className="w-full bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl py-3 pl-11 pr-20 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all"
                             value={searchTerm}
@@ -425,7 +458,7 @@ const Dashboard = () => {
                 </header>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-auto py-8 pr-8 pl-0">
+                <div className="flex-1 overflow-auto py-8 px-8">
                     {activeView === 'team' && isAdmin ? (
                         /* TEAM VIEW */
                         <div className="space-y-6 animate-in fade-in duration-300">
@@ -639,6 +672,8 @@ const Dashboard = () => {
                         <ChartOfAccountsManager searchTerm={searchTerm} />
                     ) : activeView === 'documents' ? (
                         <StaffClientDocumentsManager searchTerm={searchTerm} />
+                    ) : activeView === 'parametrizacao' ? (
+                        <AccountingParametrizacaoPanel clients={clients} />
                     ) : activeView === 'audit' ? (
                         <AuditEventsPanel />
                     ) : activeView === 'support' ? (

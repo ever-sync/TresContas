@@ -33,6 +33,8 @@ interface PatAccount {
 interface Props {
     clientId: string;
     selectedYear: number;
+    scope?: 'client' | 'global';
+    sourceClientId?: string;
 }
 
 // ─── Patrimonial Sections & Categories (mirrors PAT_STRUCTURE) ──────────────
@@ -155,20 +157,29 @@ const inferPatCategory = (code: string): string | null => {
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────
-export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }) => {
+export const ClientPatConfigPanel: React.FC<Props> = ({
+    clientId,
+    selectedYear,
+    scope = 'client',
+    sourceClientId,
+}) => {
     const [saving, setSaving] = useState(false);
     const [patAccounts, setPatAccounts] = useState<PatAccount[]>([]);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [originalMappingCodes, setOriginalMappingCodes] = useState<Set<string>>(new Set());
 
     const queryClient = useQueryClient();
+    const isGlobalScope = scope === 'global';
+    const effectiveClientId = sourceClientId || clientId;
 
     const patConfigQuery = useQuery({
-        queryKey: ['client-pat-config', clientId, selectedYear],
+        queryKey: isGlobalScope
+            ? ['global-pat-config']
+            : ['client-pat-config', clientId, selectedYear],
         queryFn: async () => {
             const [mappingsRes, chartRes] = await Promise.all([
-                api.get(`/clients/${clientId}/dre-mappings`),
-                api.get(`/clients/${clientId}/chart-of-accounts`),
+                api.get(isGlobalScope ? '/accounting/dre-mappings' : `/clients/${clientId}/dre-mappings`),
+                api.get(`/clients/${effectiveClientId}/chart-of-accounts`),
             ]);
 
             const allMappings = Array.isArray(mappingsRes.data) ? (mappingsRes.data as MappingRecord[]) : [];
@@ -191,7 +202,7 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                 originalCodes: new Set(patMappings.map((m) => m.account_code)),
             };
         },
-        enabled: Boolean(clientId),
+        enabled: Boolean(effectiveClientId),
         staleTime: 30_000,
     });
 
@@ -212,6 +223,34 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
         setDraftMappings(patConfig.drafts);
         setOriginalMappingCodes(patConfig.originalCodes);
     }, [patConfig]);
+
+    const handleImportFromClient = async () => {
+        if (!effectiveClientId) {
+            toast.error('Selecione um cliente base');
+            return;
+        }
+
+        try {
+            const response = await api.get(`/clients/${effectiveClientId}/dre-mappings`);
+            const sourceMappings = Array.isArray(response.data) ? (response.data as MappingRecord[]) : [];
+            const patCategoryKeys = new Set(ALL_CATEGORY_KEYS.map(stripAccents));
+            const imported = sourceMappings
+                .filter((mapping) => patCategoryKeys.has(stripAccents(mapping.category)))
+                .map((mapping) => ({
+                    localId: makeLocalId(),
+                    account_code: mapping.account_code,
+                    account_name: mapping.account_name,
+                    category: stripAccents(mapping.category),
+                }));
+
+            setDraftMappings(imported);
+            setOriginalMappingCodes(new Set(imported.map((mapping) => mapping.account_code)));
+            toast.success('Configuracao carregada do cliente selecionado');
+        } catch (error) {
+            console.error('Erro ao importar configuracao base:', error);
+            toast.error('Erro ao importar configuracao do cliente');
+        }
+    };
 
     const loading = patConfigQuery.isPending;
 
@@ -274,24 +313,37 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
         try {
             setSaving(true);
 
-            const currentCodes = new Set(draftMappings.map((m) => m.account_code));
-            const removedCodes = [...originalMappingCodes].filter((code) => !currentCodes.has(code));
-            for (const code of removedCodes) {
-                await api.delete(`/clients/${clientId}/dre-mappings/${encodeURIComponent(code)}`);
-            }
-
-            if (draftMappings.length > 0) {
-                await api.post(`/clients/${clientId}/bulk-dre-mappings`, {
+            if (isGlobalScope) {
+                await api.post('/accounting/dre-mappings/bulk', {
+                    group: 'patrimonial',
                     mappings: draftMappings.map((m) => ({
                         account_code: m.account_code,
                         account_name: m.account_name,
                         category: categoryLabel(m.category),
                     })),
                 });
+            } else {
+                const currentCodes = new Set(draftMappings.map((m) => m.account_code));
+                const removedCodes = [...originalMappingCodes].filter((code) => !currentCodes.has(code));
+                for (const code of removedCodes) {
+                    await api.delete(`/clients/${clientId}/dre-mappings/${encodeURIComponent(code)}`);
+                }
+
+                if (draftMappings.length > 0) {
+                    await api.post(`/clients/${clientId}/bulk-dre-mappings`, {
+                        mappings: draftMappings.map((m) => ({
+                            account_code: m.account_code,
+                            account_name: m.account_name,
+                            category: categoryLabel(m.category),
+                        })),
+                    });
+                }
             }
 
             setOriginalMappingCodes(new Set(draftMappings.map((m) => m.account_code)));
-            await queryClient.invalidateQueries({ queryKey: ['client-pat-config', clientId, selectedYear] });
+            await queryClient.invalidateQueries({
+                queryKey: isGlobalScope ? ['global-pat-config'] : ['client-pat-config', clientId, selectedYear],
+            });
             toast.success('Configuracao Patrimonial salva!');
         } catch (error) {
             console.error('Erro ao salvar config Patrimonial:', error);
@@ -351,6 +403,15 @@ export const ClientPatConfigPanel: React.FC<Props> = ({ clientId, selectedYear }
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
+                    {isGlobalScope && (
+                        <button
+                            onClick={handleImportFromClient}
+                            disabled={!effectiveClientId}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-cyan-500/20 bg-cyan-500/10 text-cyan-300 text-xs font-bold uppercase tracking-[0.15em] disabled:opacity-40"
+                        >
+                            Importar do cliente selecionado
+                        </button>
+                    )}
                     {unmappedAccounts.length > 0 && (
                         <button
                             onClick={handleAutoClassify}

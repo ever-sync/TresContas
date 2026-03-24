@@ -38,6 +38,16 @@ const VALID_DRE_CATEGORIES_NORMALIZED = new Set(VALID_DRE_CATEGORIES.map(stripAc
 
 const isValidCategory = (category: string) => VALID_DRE_CATEGORIES_NORMALIZED.has(stripAccents(category));
 
+const GLOBAL_DRE_GROUP_CATEGORIES = {
+    dre: VALID_DRE_CATEGORIES.slice(0, 15),
+    patrimonial: VALID_DRE_CATEGORIES.slice(15),
+} as const;
+
+type GlobalDreGroup = keyof typeof GLOBAL_DRE_GROUP_CATEGORIES;
+
+const isGlobalDreGroup = (value: unknown): value is GlobalDreGroup =>
+    value === 'dre' || value === 'patrimonial';
+
 const verifyClientOwnership = async (clientId: string, accountingId: string) => {
     const client = await prisma.client.findFirst({
         where: { id: clientId, accounting_id: accountingId },
@@ -92,6 +102,45 @@ const getClientMappings = async (accountingId: string, clientId: string) => {
     return mappings;
 };
 
+const getGlobalMappings = async (accountingId: string) => {
+    return prisma.dREMapping.findMany({
+        where: {
+            accounting_id: accountingId,
+            client_id: null as any,
+        },
+        orderBy: [{ account_code: 'asc' }, { updated_at: 'desc' }],
+    });
+};
+
+const syncGlobalMappingState = async (
+    tx: MappingSyncClient,
+    accountingId: string,
+    accountCode: string,
+    category: string | null
+) => {
+    await tx.chartOfAccounts.updateMany({
+        where: {
+            accounting_id: accountingId,
+            code: accountCode,
+        },
+        data: {
+            report_category: category,
+            is_mapped: category !== null,
+        },
+    });
+
+    await tx.monthlyMovement.updateMany({
+        where: {
+            accounting_id: accountingId,
+            code: accountCode,
+        },
+        data: {
+            category,
+            is_mapped: category !== null,
+        },
+    });
+};
+
 export const getDREMappings = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
@@ -107,6 +156,116 @@ export const getDREMappings = async (req: AuthRequest, res: Response) => {
         console.error('Erro ao buscar mapeamentos DRE compartilhados:', error);
         res.status(500).json({
             message: 'Erro ao buscar mapeamentos DRE',
+            detail: error?.message || String(error),
+        });
+    }
+};
+
+export const getAccountingDREMappings = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
+
+        const mappings = await getGlobalMappings(req.accountingId);
+        res.json(mappings);
+    } catch (error: any) {
+        console.error('Erro ao buscar parametrizacao global DRE:', error);
+        res.status(500).json({
+            message: 'Erro ao buscar parametrizacao global DRE',
+            detail: error?.message || String(error),
+        });
+    }
+};
+
+export const replaceGlobalDREMappings = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
+
+        const group: GlobalDreGroup | null = isGlobalDreGroup(req.body?.group)
+            ? (req.body.group as GlobalDreGroup)
+            : null;
+        if (!group) {
+            return res.status(400).json({ message: 'group deve ser dre ou patrimonial' });
+        }
+
+        const allowedCategories = GLOBAL_DRE_GROUP_CATEGORIES[group];
+        const allowedCategoriesNormalized = new Set(allowedCategories.map(stripAccents));
+
+        const { mappings } = req.body;
+        if (!Array.isArray(mappings)) {
+            return res.status(400).json({ message: 'mappings deve ser um array' });
+        }
+
+        const normalizedMappings = mappings.map((mapping: any) => ({
+            account_code: String(mapping.account_code || '').trim(),
+            account_name: String(mapping.account_name || '').trim(),
+            category: String(mapping.category || '').trim(),
+        }));
+
+        const invalidMappings: string[] = [];
+        for (const mapping of normalizedMappings) {
+            if (!mapping.account_code || !mapping.account_name || !mapping.category) {
+                return res.status(400).json({
+                    message: 'Cada mapeamento deve ter account_code, account_name e category',
+                });
+            }
+
+            if (!allowedCategoriesNormalized.has(stripAccents(mapping.category))) {
+                invalidMappings.push(mapping.category);
+            }
+        }
+
+        if (invalidMappings.length > 0) {
+            return res.status(400).json({
+                message: `Categorias invalidas para ${group}: ${[...new Set(invalidMappings)].join(', ')}`,
+                valid_categories: allowedCategories,
+            });
+        }
+
+        const dedupedByAccountCode = new Map<string, {
+            account_code: string;
+            account_name: string;
+            category: string;
+        }>();
+        for (const mapping of normalizedMappings) {
+            dedupedByAccountCode.set(mapping.account_code, mapping);
+        }
+        const uniqueMappings = Array.from(dedupedByAccountCode.values());
+
+        await prisma.$transaction(async (tx) => {
+            await tx.dREMapping.deleteMany({
+                where: {
+                    accounting_id: req.accountingId!,
+                    client_id: null as any,
+                    category: { in: allowedCategories },
+                },
+            });
+
+            if (uniqueMappings.length > 0) {
+                await tx.dREMapping.createMany({
+                    data: uniqueMappings.map((mapping) => ({
+                        accounting_id: req.accountingId!,
+                        client_id: null as any,
+                        account_code: mapping.account_code,
+                        account_name: mapping.account_name,
+                        category: mapping.category,
+                    })),
+                });
+            }
+
+            for (const mapping of uniqueMappings) {
+                await syncGlobalMappingState(tx, req.accountingId!, mapping.account_code, mapping.category);
+            }
+        });
+
+        res.json({
+            message: 'Parametrizacao global salva com sucesso',
+            count: uniqueMappings.length,
+            group,
+        });
+    } catch (error: any) {
+        console.error('Erro ao salvar parametrizacao global DRE:', error);
+        res.status(500).json({
+            message: 'Erro ao salvar parametrizacao global DRE',
             detail: error?.message || String(error),
         });
     }
