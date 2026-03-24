@@ -216,7 +216,7 @@ const ClientDashboard = () => {
 
     // State Declarations
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [dreSubTab, setDreSubTab] = useState<DreSubTab>('dre');
     const [dreViewMode, setDreViewMode] = useState<ReportViewMode>('lista');
     const [dreConfigMode, setDreConfigMode] = useState(false);

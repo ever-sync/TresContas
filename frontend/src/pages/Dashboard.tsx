@@ -48,7 +48,7 @@ const Dashboard = () => {
     const [editingClient, setEditingClient] = useState<Client | null>(null);
     const [activeTab, setActiveTab] = useState<'personal' | 'team'>('personal');
     const [activeView, setActiveView] = useState<'dashboard' | 'clients' | 'chartOfAccounts' | 'documents' | 'support' | 'team' | 'audit'>('dashboard');
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [supportFilter, setSupportFilter] = useState<'open' | 'in_progress' | 'closed' | 'all'>('open');
     const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<string | null>(null);
     const [supportReplyDraft, setSupportReplyDraft] = useState('');
@@ -59,6 +59,19 @@ const Dashboard = () => {
     const [editingUser, setEditingUser] = useState<TeamUser | null>(null);
 
     const isAdmin = user?.role === 'admin';
+    const sidebarButtonClass = (active: boolean) =>
+        `group relative transition-all duration-300 ${
+            active
+                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
+                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
+        } ${isSidebarOpen ? 'w-full flex items-center gap-3 px-4 py-4 rounded-2xl justify-start' : 'w-12 h-12 rounded-xl flex items-center justify-center hover:scale-105'}`;
+
+    const sidebarActionClass = (accent = false) =>
+        `group relative transition-all duration-300 ${
+            accent
+                ? 'text-red-400/60 hover:text-red-400 hover:bg-red-500/10'
+                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
+        } ${isSidebarOpen ? 'w-full flex items-center gap-3 px-4 py-4 rounded-2xl justify-start' : 'w-12 h-12 rounded-xl flex items-center justify-center'}`;
 
     const clientsQuery = useQuery({
         queryKey: ['staff-clients'],
@@ -257,106 +270,85 @@ const Dashboard = () => {
 
                 {/* Nav Icons */}
                 <nav className={`flex-1 flex flex-col gap-2 ${isSidebarOpen ? 'items-start pl-2' : 'items-center'}`}>
-                    <button 
+                    <button
                         onClick={() => setActiveView('dashboard')}
                         title="Dashboard"
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                            activeView === 'dashboard' 
-                                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' 
-                                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
-                        }`}
+                        className={sidebarButtonClass(activeView === 'dashboard')}
                     >
-                        <Home className="w-5 h-5" />
+                        <Home className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Dashboard</span> : null}
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveView('clients')}
                         title="Clientes"
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                            activeView === 'clients' 
-                                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' 
-                                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
-                        }`}
+                        className={sidebarButtonClass(activeView === 'clients')}
                     >
-                        <Users className="w-5 h-5" />
+                        <Users className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Clientes</span> : null}
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveView('support')}
                         title="Suporte"
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                            activeView === 'support' 
-                                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400' 
-                                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
-                        }`}
+                        className={sidebarButtonClass(activeView === 'support')}
                     >
-                        <LifeBuoy className="w-5 h-5" />
+                        <LifeBuoy className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Suporte</span> : null}
                     </button>
                     {isAdmin && (
                         <button
                             onClick={() => setActiveView('team')}
                             title="Equipe"
-                            className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                                activeView === 'team'
-                                    ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
-                                    : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
-                            }`}
+                            className={sidebarButtonClass(activeView === 'team')}
                         >
-                            <Shield className="w-5 h-5" />
+                            <Shield className="w-5 h-5 shrink-0" />
+                            {isSidebarOpen ? <span className="text-sm font-medium truncate">Equipe</span> : null}
                         </button>
                     )}
                     {isAdmin && (
                         <button
                             onClick={() => setActiveView('audit')}
                             title="Auditoria"
-                            className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                                activeView === 'audit'
-                                    ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
-                                    : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
-                            }`}
+                            className={sidebarButtonClass(activeView === 'audit')}
                         >
-                            <Shield className="w-5 h-5" />
+                            <Shield className="w-5 h-5 shrink-0" />
+                            {isSidebarOpen ? <span className="text-sm font-medium truncate">Auditoria</span> : null}
                         </button>
                     )}
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Relatórios">
-                        <BarChart3 className="w-5 h-5" />
+                    <button className={sidebarActionClass()} title="Relat?rios">
+                        <BarChart3 className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Relat?rios</span> : null}
                     </button>
                     <button
                         onClick={() => setActiveView('chartOfAccounts')}
                         title="Plano de Contas"
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                            activeView === 'chartOfAccounts'
-                                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
-                                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
-                        }`}
+                        className={sidebarButtonClass(activeView === 'chartOfAccounts')}
                     >
-                        <FileText className="w-5 h-5" />
+                        <FileText className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Plano de Contas</span> : null}
                     </button>
                     <button
                         onClick={() => setActiveView('documents')}
                         title="Documentos"
-                        className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all hover:scale-105 ${
-                            activeView === 'documents'
-                                ? 'bg-linear-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 text-cyan-400'
-                                : 'hover:bg-white/5 text-slate-500 hover:text-slate-300'
-                        }`}
+                        className={sidebarButtonClass(activeView === 'documents')}
                     >
-                        <FileText className="w-5 h-5" />
+                        <FileText className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Documentos</span> : null}
                     </button>
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Configurações">
-                        <Settings className="w-5 h-5" />
+                    <button className={sidebarActionClass()} title="Configura??es">
+                        <Settings className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Configura??es</span> : null}
                     </button>
                 </nav>
 
                 {/* Bottom Icons */}
                 <div className={`flex flex-col gap-2 ${isSidebarOpen ? 'items-start pl-2' : 'items-center'}`}>
-                    <button className="w-12 h-12 rounded-xl hover:bg-white/5 flex items-center justify-center text-slate-500 transition-all hover:text-slate-300" title="Ajuda">
-                        <HelpCircle className="w-5 h-5" />
+                    <button className={sidebarActionClass()} title="Ajuda">
+                        <HelpCircle className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Ajuda</span> : null}
                     </button>
-                    <button 
-                        onClick={handleLogout}
-                        title="Sair"
-                        className="w-12 h-12 rounded-xl hover:bg-red-500/10 flex items-center justify-center text-slate-500 transition-all hover:text-red-400"
-                    >
-                        <LogOut className="w-5 h-5" />
+                    <button onClick={handleLogout} title="Sair" className={sidebarActionClass(true)}>
+                        <LogOut className="w-5 h-5 shrink-0" />
+                        {isSidebarOpen ? <span className="text-sm font-medium truncate">Sair</span> : null}
                     </button>
                 </div>
             </aside>
