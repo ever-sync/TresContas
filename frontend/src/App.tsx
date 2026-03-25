@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect } from 'react';
+import React, { Suspense, lazy, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
@@ -17,7 +17,14 @@ const ClientLogin = lazy(() => import('./pages/ClientLogin'));
 const HeroPage = lazy(() => import('./pages/HeroPage'));
 
 const AuthSessionBootstrap = () => {
+  const didBootstrapRef = useRef(false);
+
   useEffect(() => {
+    if (didBootstrapRef.current) {
+      return;
+    }
+
+    didBootstrapRef.current = true;
     void bootstrapAuthSessions();
   }, []);
 

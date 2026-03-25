@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useMemo, useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -271,6 +271,42 @@ const ComingSoonSection = ({ title, description }: { title: string; description:
         </div>
     </div>
 );
+
+const DeferredChartContainer = ({
+    className,
+    children,
+}: {
+    className?: string;
+    children: React.ReactNode;
+}) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [isReady, setIsReady] = useState(false);
+
+    useLayoutEffect(() => {
+        const el = containerRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') {
+            setIsReady(true);
+            return;
+        }
+
+        const update = () => {
+            const { width, height } = el.getBoundingClientRect();
+            setIsReady(width > 0 && height > 0);
+        };
+
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(el);
+
+        return () => observer.disconnect();
+    }, []);
+
+    return (
+        <div ref={containerRef} className={className}>
+            {isReady ? children : <div className="h-full w-full" />}
+        </div>
+    );
+};
 
 type ModuleTone = 'cyan' | 'emerald' | 'amber' | 'rose' | 'violet';
 type StatusTone = 'ok' | 'warn' | 'info';
@@ -1021,7 +1057,7 @@ const MockModuleSection = ({
                                     ))}
                                 </div>
                             </div>
-                            <div className="h-72 -mx-3">
+                            <DeferredChartContainer className="h-72 -mx-3">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <LineChart data={lineChart.data}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff08" />
@@ -1062,7 +1098,7 @@ const MockModuleSection = ({
                                         ))}
                                     </LineChart>
                                 </ResponsiveContainer>
-                            </div>
+                            </DeferredChartContainer>
                         </div>
                     ) : null}
 
@@ -1072,7 +1108,7 @@ const MockModuleSection = ({
                                 <h4 className="text-white font-bold text-lg">{pieChart.title}</h4>
                                 <p className="text-white/40 text-sm mt-1">{pieChart.description}</p>
                             </div>
-                            <div className="h-64">
+                            <DeferredChartContainer className="h-64">
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                     <RechartsPie>
                                         <Pie
@@ -1105,7 +1141,7 @@ const MockModuleSection = ({
                                         />
                                     </RechartsPie>
                                 </ResponsiveContainer>
-                            </div>
+                            </DeferredChartContainer>
                             <div className="mt-4 space-y-3">
                                 {pieChart.data.map((slice) => (
                                     <div key={slice.name} className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
@@ -1324,7 +1360,19 @@ const ClientDashboard = () => {
     }, []);
     const showLegacyDfc = false;
 
-    useEffect(() => {
+    const scrollPageToTop = () => {
+        if (typeof window === 'undefined') return;
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+    };
+
+    useLayoutEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.history.scrollRestoration = 'manual';
+    }, []);
+
+    useLayoutEffect(() => {
         if (activeTab === 'dfc') {
             setDreSubTab('dfc');
         } else if (activeTab === 'balancoPatrimonial') {
@@ -1332,9 +1380,7 @@ const ClientDashboard = () => {
         } else if (activeTab === 'dre') {
             setDreSubTab('dre');
         }
-        if (contentScrollRef.current) {
-            contentScrollRef.current.scrollTop = 0;
-        }
+        scrollPageToTop();
     }, [activeTab]);
 
     useEffect(() => {
@@ -1343,12 +1389,10 @@ const ClientDashboard = () => {
         }
     }, []);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         setActiveTab('dashboard');
         setDashboardTab('inicio');
-        if (contentScrollRef.current) {
-            contentScrollRef.current.scrollTop = 0;
-        }
+        scrollPageToTop();
     }, [clientId]);
 
     const sidebarItems = [
@@ -2613,7 +2657,7 @@ const ClientDashboard = () => {
 
     return (
         <>
-            <div className="h-screen text-slate-200 font-sans selection:bg-cyan-500/30 overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%)' }}>
+            <div className="min-h-screen text-slate-200 font-sans selection:bg-cyan-500/30 overflow-x-hidden relative" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #0d2137 50%, #0a1628 100%)' }}>
             {/* Ambient Background Glows */}
             <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-600/5 rounded-full blur-[120px] pointer-events-none" />
             <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
@@ -2726,7 +2770,7 @@ const ClientDashboard = () => {
             {/* Main Content */}
             <div
                 ref={contentScrollRef}
-                className="relative z-10 h-screen min-w-0 overflow-y-auto transition-[margin] duration-300"
+                className="relative z-10 min-h-screen min-w-0 transition-[margin] duration-300"
                 style={{ marginLeft: sidebarWidth }}
             >
                 {/* Modern Header */}
@@ -2913,15 +2957,17 @@ const ClientDashboard = () => {
                                         const pieData = revenueCompositionData;
                                         return (
                                             <div className="flex-1 min-h-[220px]">
-                                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                                    <RechartsPie>
-                                                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
-                                                            {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="transparent" />)}
-                                                        </Pie>
-                                                        <Tooltip content={<TooltipCurrency />} />
-                                                        <Legend verticalAlign="bottom" formatter={(value: string) => <span className="text-white/60 text-xs">{value}</span>} />
-                                                    </RechartsPie>
-                                                </ResponsiveContainer>
+                                                <DeferredChartContainer className="h-full w-full min-w-0">
+                                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                                        <RechartsPie>
+                                                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
+                                                                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} stroke="transparent" />)}
+                                                            </Pie>
+                                                            <Tooltip content={<TooltipCurrency />} />
+                                                            <Legend verticalAlign="bottom" formatter={(value: string) => <span className="text-white/60 text-xs">{value}</span>} />
+                                                        </RechartsPie>
+                                                    </ResponsiveContainer>
+                                                </DeferredChartContainer>
                                             </div>
                                         );
                                     })()}
@@ -2938,20 +2984,22 @@ const ClientDashboard = () => {
                                         </div>
                                     </div>
                                     <div className="flex-1 min-h-[220px]">
-                                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                            <AreaChart data={revenueExpenseData}>
-                                                <defs>
-                                                    <linearGradient id="colorRec" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/><stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient>
-                                                    <linearGradient id="colorDesp" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/><stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/></linearGradient>
-                                                </defs>
-                                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold'}} />
-                                                <YAxis hide />
-                                                <Tooltip content={<TooltipCurrency />} />
-                                                <Area type="monotone" dataKey="receita" name="Receita" stroke="#06b6d4" strokeWidth={2} fill="url(#colorRec)" fillOpacity={1} />
-                                                <Area type="monotone" dataKey="despesa" name="Despesa" stroke="#f43f5e" strokeWidth={2} fill="url(#colorDesp)" fillOpacity={1} />
-                                            </AreaChart>
-                                        </ResponsiveContainer>
+                                        <DeferredChartContainer className="h-full w-full min-w-0">
+                                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                                <AreaChart data={revenueExpenseData}>
+                                                    <defs>
+                                                        <linearGradient id="colorRec" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/><stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/></linearGradient>
+                                                        <linearGradient id="colorDesp" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/><stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/></linearGradient>
+                                                    </defs>
+                                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold'}} />
+                                                    <YAxis hide />
+                                                    <Tooltip content={<TooltipCurrency />} />
+                                                    <Area type="monotone" dataKey="receita" name="Receita" stroke="#06b6d4" strokeWidth={2} fill="url(#colorRec)" fillOpacity={1} />
+                                                    <Area type="monotone" dataKey="despesa" name="Despesa" stroke="#f43f5e" strokeWidth={2} fill="url(#colorDesp)" fillOpacity={1} />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        </DeferredChartContainer>
                                     </div>
                                     <div className="flex items-center gap-6 mt-4">
                                         <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-cyan-500" /><span className="text-white/60 text-xs font-bold">Receita</span></div>
@@ -3040,17 +3088,19 @@ const ClientDashboard = () => {
                             <h4 className="text-white font-bold mb-1">Evolução das Margens</h4>
                             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Margem bruta, líquida e EBITDA ao longo do ano (%)</p>
                             <div className="h-[260px]">
-                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                    <LineChart data={marginEvolutionData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
-                                        <Tooltip content={<TooltipPercent />} />
-                                        <Line type="monotone" dataKey="margemBruta"  stroke="#22c55e" strokeWidth={2} dot={false} name="Margem Bruta" />
-                                        <Line type="monotone" dataKey="margemLiq"    stroke="#06b6d4" strokeWidth={2} dot={false} name="Margem Líquida" />
-                                        <Line type="monotone" dataKey="margemEbtida" stroke="#a855f7" strokeWidth={2} dot={false} name="Margem EBITDA" />
-                                    </LineChart>
-                                </ResponsiveContainer>
+                                <DeferredChartContainer className="h-full w-full min-w-0">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                        <LineChart data={marginEvolutionData}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
+                                            <YAxis axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }} tickFormatter={(v: number) => `${v}%`} />
+                                            <Tooltip content={<TooltipPercent />} />
+                                            <Line type="monotone" dataKey="margemBruta"  stroke="#22c55e" strokeWidth={2} dot={false} name="Margem Bruta" />
+                                            <Line type="monotone" dataKey="margemLiq"    stroke="#06b6d4" strokeWidth={2} dot={false} name="Margem Líquida" />
+                                            <Line type="monotone" dataKey="margemEbtida" stroke="#a855f7" strokeWidth={2} dot={false} name="Margem EBITDA" />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </DeferredChartContainer>
                             </div>
                             <div className="flex items-center gap-6 mt-4">
                                 <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-green-500" /><span className="text-white/60 text-xs font-bold">Margem Bruta</span></div>
@@ -3064,19 +3114,21 @@ const ClientDashboard = () => {
                             <h4 className="text-white font-bold mb-1">Para onde vai o dinheiro</h4>
                             <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mb-4">Distribuição da receita bruta por mês</p>
                             <div className="h-[280px]">
-                                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                                    <BarChart data={allocationData} barSize={22}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
-                                        <YAxis hide />
-                                        <Tooltip content={<TooltipCurrency />} />
-                                        <Bar dataKey="deducoes"  name="Deduções"         stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
-                                        <Bar dataKey="custos"    name="Custos"           stackId="a" fill="#ef4444" />
-                                        <Bar dataKey="despOper"  name="Desp. Operac."    stackId="a" fill="#8b5cf6" />
-                                        <Bar dataKey="irpj"      name="IRPJ/CSLL"        stackId="a" fill="#f59e0b" />
-                                        <Bar dataKey="lucro"     name="Lucro Líquido"    stackId="a" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
+                                <DeferredChartContainer className="h-full w-full min-w-0">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                                        <BarChart data={allocationData} barSize={22}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10, fontWeight: 'bold' }} />
+                                            <YAxis hide />
+                                            <Tooltip content={<TooltipCurrency />} />
+                                            <Bar dataKey="deducoes"  name="Deduções"         stackId="a" fill="#f97316" radius={[0, 0, 0, 0]} />
+                                            <Bar dataKey="custos"    name="Custos"           stackId="a" fill="#ef4444" />
+                                            <Bar dataKey="despOper"  name="Desp. Operac."    stackId="a" fill="#8b5cf6" />
+                                            <Bar dataKey="irpj"      name="IRPJ/CSLL"        stackId="a" fill="#f59e0b" />
+                                            <Bar dataKey="lucro"     name="Lucro Líquido"    stackId="a" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </DeferredChartContainer>
                             </div>
                             <div className="flex items-center flex-wrap gap-4 mt-4">
                                 <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-orange-500" /><span className="text-white/60 text-xs font-bold">Deduções</span></div>
@@ -3589,7 +3641,7 @@ const ClientDashboard = () => {
                                                         </div>
                                                     </div>
                                                     
-                                                    <div className="h-32 -mx-2">
+                                                    <DeferredChartContainer className="h-32 -mx-2">
                                                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                                             <AreaChart data={indicator.data}>
                                                                 <defs>
@@ -3599,19 +3651,19 @@ const ClientDashboard = () => {
                                                                     </linearGradient>
                                                                 </defs>
                                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
-                                                                <XAxis 
-                                                                    dataKey="name" 
+                                                                <XAxis
+                                                                    dataKey="name"
                                                                     axisLine={false}
                                                                     tickLine={false}
                                                                     tick={{ fill: '#ffffff40', fontSize: 13, fontWeight: 700 }}
                                                                     interval={1}
                                                                 />
                                                                 <YAxis hide />
-                                                                <Tooltip 
-                                                                    contentStyle={{ 
-                                                                        backgroundColor: '#0f172a', 
-                                                                        border: '1px solid #ffffff10', 
-                                                                        borderRadius: '16px', 
+                                                                <Tooltip
+                                                                    contentStyle={{
+                                                                        backgroundColor: '#0f172a',
+                                                                        border: '1px solid #ffffff10',
+                                                                        borderRadius: '16px',
                                                                         boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)',
                                                                         backdropFilter: 'blur(12px)'
                                                                     }}
@@ -3622,18 +3674,18 @@ const ClientDashboard = () => {
                                                                         return [`R$ ${numericVal?.toLocaleString('pt-BR') || '0,00'}`, 'Valor'];
                                                                     }}
                                                                 />
-                                                                <Area 
-                                                                    type="monotone" 
-                                                                    dataKey="value" 
-                                                                    stroke={indicator.color} 
-                                                                    strokeWidth={3} 
-                                                                    fillOpacity={1} 
+                                                                <Area
+                                                                    type="monotone"
+                                                                    dataKey="value"
+                                                                    stroke={indicator.color}
+                                                                    strokeWidth={3}
+                                                                    fillOpacity={1}
                                                                     fill={`url(#grad-${i})`}
                                                                     activeDot={{ r: 4, fill: '#fff', stroke: indicator.color, strokeWidth: 2 }}
                                                                 />
                                                             </AreaChart>
                                                         </ResponsiveContainer>
-                                                    </div>
+                                                    </DeferredChartContainer>
                                                 </div>
                                             );
                                         })}
@@ -3952,7 +4004,7 @@ const ClientDashboard = () => {
                                                                 <TrendingUp className="w-4 h-4" />
                                                             </div>
                                                         </div>
-                                                        <div className="h-32 -mx-2">
+                                                        <DeferredChartContainer className="h-32 -mx-2">
                                                             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                                                 <AreaChart data={indicator.data}>
                                                                     <defs>
@@ -3976,7 +4028,7 @@ const ClientDashboard = () => {
                                                                     <Area type="monotone" dataKey="value" stroke={indicator.color} strokeWidth={3} fillOpacity={1} fill={`url(#pat-grad-${i})`} activeDot={{ r: 4, fill: '#fff', stroke: indicator.color, strokeWidth: 2 }} />
                                                                 </AreaChart>
                                                             </ResponsiveContainer>
-                                                        </div>
+                                                        </DeferredChartContainer>
                                                     </div>
                                                 );
                                             })}
