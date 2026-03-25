@@ -27,12 +27,14 @@ export interface SupportTicket {
   };
 }
 
+const toArray = <T>(value: unknown): T[] => (Array.isArray(value) ? value : []);
+
 export const supportService = {
   getAll: async (status?: SupportTicket['status']): Promise<SupportTicket[]> => {
     const response = await api.get('/support', {
       params: status ? { status } : undefined,
     });
-    return response.data;
+    return toArray<SupportTicket>(response.data);
   },
   create: async (data: {
     client_id: string;
@@ -49,7 +51,7 @@ export const supportService = {
   },
   getMessages: async (id: string): Promise<SupportTicketMessage[]> => {
     const response = await api.get(`/support/${id}/messages`);
-    return response.data;
+    return toArray<SupportTicketMessage>(response.data);
   },
   reply: async (id: string, body: string): Promise<SupportTicketMessage> => {
     const response = await api.post(`/support/${id}/messages`, { body });

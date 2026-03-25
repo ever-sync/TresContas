@@ -18,10 +18,12 @@ export interface Client {
   updated_at: string;
 }
 
+const toArray = <T>(value: unknown): T[] => (Array.isArray(value) ? value : []);
+
 export const clientService = {
   getAll: async (): Promise<Client[]> => {
     const response = await api.get('/clients');
-    return response.data;
+    return toArray<Client>(response.data);
   },
   getById: async (id: string): Promise<Client> => {
     const response = await api.get(`/clients/${id}`);

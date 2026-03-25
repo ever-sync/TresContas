@@ -80,7 +80,7 @@ const Dashboard = () => {
         queryFn: () => clientService.getAll(),
         staleTime: 60_000,
     });
-    const clients = clientsQuery.data ?? [];
+    const clients = Array.isArray(clientsQuery.data) ? clientsQuery.data : [];
     const isLoading = clientsQuery.isPending;
 
     const handleToggleStatus = async (e: React.MouseEvent, client: Client) => {
@@ -117,7 +117,7 @@ const Dashboard = () => {
         enabled: activeView === 'support',
         staleTime: 30_000,
     });
-    const supportTickets = supportTicketsQuery.data ?? [];
+    const supportTickets = Array.isArray(supportTicketsQuery.data) ? supportTicketsQuery.data : [];
     const isSupportLoading = supportTicketsQuery.isPending;
 
     const teamMembersQuery = useQuery({
@@ -126,7 +126,7 @@ const Dashboard = () => {
         enabled: activeView === 'dashboard' || activeView === 'team',
         staleTime: 60_000,
     });
-    const teamMembers = teamMembersQuery.data ?? [];
+    const teamMembers = Array.isArray(teamMembersQuery.data) ? teamMembersQuery.data : [];
     const isTeamLoading = teamMembersQuery.isPending;
 
     const handleDeleteUser = async (userId: string) => {

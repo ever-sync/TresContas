@@ -37,10 +37,12 @@ export interface UpdateUserData {
     phone?: string;
 }
 
+const toArray = <T>(value: unknown): T[] => (Array.isArray(value) ? value : []);
+
 export const userService = {
     getAll: async (): Promise<User[]> => {
         const response = await api.get('/users');
-        return response.data;
+        return toArray<User>(response.data);
     },
     getById: async (id: string): Promise<User> => {
         const response = await api.get(`/users/${id}`);
