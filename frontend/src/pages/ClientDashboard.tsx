@@ -230,6 +230,19 @@ const CLIENT_TAB_LABELS: Record<string, string> = {
 
 const CLIENT_COMING_SOON_COPY: Record<string, { title: string; description: string }> = {};
 
+const EMPTY_TAB_CONTENT = new Set([
+    'movimentacoes',
+    'fluxoCaixa',
+    'conciliacaoBancaria',
+    'impostos',
+    'guias',
+    'folhaPagamento',
+    'obrigacoes',
+    'arquivos',
+    'servicosContratados',
+    'suporte',
+]);
+
 const LazySectionFallback = ({ label }: { label: string }) => (
     <div className="bg-[#0d1829]/80 backdrop-blur-xl border border-white/5 rounded-2xl p-10 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4 text-center">
@@ -1413,9 +1426,9 @@ const ClientDashboard = () => {
     ] as const;
 
     const activeSidebarLabel = CLIENT_TAB_LABELS[activeTab] ?? 'Dashboard';
-    const moduleMock = CLIENT_MODULE_MOCKS[activeTab];
+    const moduleMock = EMPTY_TAB_CONTENT.has(activeTab) ? undefined : CLIENT_MODULE_MOCKS[activeTab];
     const activeDashboardModule = dashboardTab === 'inicio' ? null : CLIENT_MODULE_MOCKS[dashboardTab];
-    const comingSoonCopy = CLIENT_COMING_SOON_COPY[activeTab];
+    const comingSoonCopy = EMPTY_TAB_CONTENT.has(activeTab) ? undefined : CLIENT_COMING_SOON_COPY[activeTab];
     const isComingSoonTab = Boolean(comingSoonCopy);
     const sidebarWidth = isSidebarOpen ? 256 : 80;
     const isReportTab = activeTab === 'dre' || activeTab === 'dfc' || activeTab === 'balancoPatrimonial';
@@ -4245,13 +4258,13 @@ const ClientDashboard = () => {
                     />
                 ) : null}
 
-                {activeTab === 'arquivos' && isClientView && (
+                {!EMPTY_TAB_CONTENT.has(activeTab) && activeTab === 'arquivos' && isClientView && (
                     <Suspense fallback={<LazySectionFallback label="Documentos do cliente" />}>
                         <ClientDocumentUploadPanel />
                     </Suspense>
                 )}
 
-                {activeTab === 'suporte' && isClientView && (
+                {!EMPTY_TAB_CONTENT.has(activeTab) && activeTab === 'suporte' && isClientView && (
                     <div className="space-y-6 pb-12">
                         <div className="flex items-center justify-between">
                             <div>
