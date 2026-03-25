@@ -7,20 +7,17 @@ SaaS de contabilidade com portal de clientes, dashboards internos, suporte, plan
 - `frontend/`: React + Vite.
 - `backend/`: API Express + Prisma.
 
-## Deploy unificado na Vercel
+## Deploy
 
-O frontend sobe como site estatico e o backend sobe como funcoes `api/` no mesmo deploy.
+O caminho mais simples e menos confuso e manter o backend como deploy separado em `backend/`.
 
-Fluxo recomendado:
+Para a Vercel:
 
-```bash
-npm run build
-```
+- crie o projeto apontando para a pasta `backend/`
+- use `backend/vercel.json`
+- configure as variaveis de ambiente do backend no projeto da Vercel
 
-Na Vercel, o `vercel.json` da raiz faz o build do `frontend` e do `backend`, e o projeto usa:
-
-- `frontend/dist` para os arquivos estaticos
-- `api/[...path].ts` para a API Express
+O frontend continua sendo um app separado e aponta para a URL publica do backend.
 
 ## Comandos
 
@@ -62,8 +59,8 @@ Frontend:
 
 - `VITE_API_URL`
 
-No deploy unico da Vercel, `VITE_API_URL` pode ficar vazio e o app usa `/api`.
-Nesse mesmo deploy, `ALLOWED_ORIGINS` e `FRONTEND_URL` devem receber a URL publica exata do projeto, por exemplo `https://trescontas.vercel.app`.
+No frontend em producao, `VITE_API_URL` deve apontar para a URL publica do backend, por exemplo `https://trescontas-backend.vercel.app/api`.
+No backend em producao, `ALLOWED_ORIGINS` e `FRONTEND_URL` devem receber a URL publica do frontend, por exemplo `https://trescontas.vercel.app`.
 
 ## Documentos
 

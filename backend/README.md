@@ -46,7 +46,7 @@ Se quiser apenas validar o schema localmente:
 npm run generate:prisma
 ```
 
-## Frontend integrado
+## Deploy separado
 
-Se o build do frontend estiver em `../frontend/dist`, o backend o serve na mesma origem.
-No deploy unico da Vercel, a API fica em `api/` e o frontend fica em `frontend/dist`.
+Na Vercel, crie o projeto usando `backend/` como root directory e use `backend/vercel.json`.
+O frontend deve ser outro deploy e apontar `VITE_API_URL` para a URL publica do backend.
