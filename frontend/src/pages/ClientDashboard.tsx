@@ -243,7 +243,7 @@ const LazySectionFallback = ({ label }: { label: string }) => (
 );
 
 const ComingSoonSection = ({ title, description }: { title: string; description: string }) => (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+    <div className="space-y-6 pb-12">
         <div className="flex items-start justify-between gap-4">
             <div>
                 <h3 className="text-3xl font-bold text-white tracking-tight">{title}</h3>
@@ -912,7 +912,7 @@ const MockModuleSection = ({
     const heroCards = module.cards.slice(0, 3);
 
     return (
-        <div ref={reportRef} className="space-y-6 animate-in fade-in duration-500 pb-12">
+        <div ref={reportRef} className="space-y-6 pb-12">
             <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
                 <div className="xl:col-span-3 relative overflow-hidden rounded-[28px] border border-cyan-500/15 bg-linear-to-br from-[#12304d] via-[#0d1829] to-[#101f35] p-7 shadow-2xl shadow-black/20">
                     <div className="absolute -right-16 -top-20 h-56 w-56 rounded-full bg-cyan-400/10 blur-3xl" />
@@ -1253,6 +1253,7 @@ const ClientDashboard = () => {
     const tableContainerRef = useRef<HTMLDivElement>(null);
     const reportRef = useRef<HTMLDivElement>(null);
     const sidebarScrollRef = useRef<HTMLDivElement>(null);
+    const contentScrollRef = useRef<HTMLDivElement>(null);
     const dreImportInputRef = useRef<HTMLInputElement>(null);
     const patrimonialImportInputRef = useRef<HTMLInputElement>(null);
 
@@ -1331,6 +1332,9 @@ const ClientDashboard = () => {
         } else if (activeTab === 'dre') {
             setDreSubTab('dre');
         }
+        if (contentScrollRef.current) {
+            contentScrollRef.current.scrollTop = 0;
+        }
     }, [activeTab]);
 
     useEffect(() => {
@@ -1338,6 +1342,14 @@ const ClientDashboard = () => {
             sidebarScrollRef.current.scrollTop = 0;
         }
     }, []);
+
+    useEffect(() => {
+        setActiveTab('dashboard');
+        setDashboardTab('inicio');
+        if (contentScrollRef.current) {
+            contentScrollRef.current.scrollTop = 0;
+        }
+    }, [clientId]);
 
     const sidebarItems = [
         { id: 'dashboard', icon: BarChart3, label: 'Dashboard' },
@@ -2713,6 +2725,7 @@ const ClientDashboard = () => {
 
             {/* Main Content */}
             <div
+                ref={contentScrollRef}
                 className="relative z-10 h-screen min-w-0 overflow-y-auto transition-[margin] duration-300"
                 style={{ marginLeft: sidebarWidth }}
             >
@@ -2788,9 +2801,9 @@ const ClientDashboard = () => {
                 </header>
 
                 <div className="py-6 px-4 md:px-12 relative z-10 transition-all duration-500">
-                    <div className="w-full">
+                    <div className="w-full" key={activeTab}>
                         {activeTab === 'dashboard' && (
-                            <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+                            <div className="space-y-6 pb-12" key={dashboardTab}>
                                 <div className="flex flex-wrap gap-3 rounded-[24px] border border-white/10 bg-[#0d1829]/80 p-3 backdrop-blur-xl shadow-2xl shadow-black/20">
                                     {DASHBOARD_OVERVIEW_TABS.map((tab) => (
                                         <button
@@ -3268,7 +3281,7 @@ const ClientDashboard = () => {
                 )}
 
                 {(activeTab === 'dre' || activeTab === 'dfc' || activeTab === 'balancoPatrimonial') && (
-                    <div className="space-y-2 animate-in fade-in duration-500 pb-2">
+                    <div className="space-y-2 pb-2" key={dreSubTab}>
                         <div className="flex gap-4 p-2 bg-white/5 backdrop-blur-xl border border-white/10 w-fit rounded-[20px]">
                             {DRE_TABS.filter((tab) => tab.show).map((tab) => (
                                 <button
@@ -4180,7 +4193,7 @@ const ClientDashboard = () => {
                 )}
 
                 {activeTab === 'suporte' && isClientView && (
-                    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+                    <div className="space-y-6 pb-12">
                         <div className="flex items-center justify-between">
                             <div>
                                 <h3 className="text-2xl font-bold text-white tracking-tight">Meus Chamados</h3>
@@ -4444,5 +4457,3 @@ const ClientDashboard = () => {
 };
 
 export default ClientDashboard;
-
-
