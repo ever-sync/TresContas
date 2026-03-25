@@ -2662,6 +2662,7 @@ const ClientDashboard = () => {
             <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-600/5 rounded-full blur-[120px] pointer-events-none" />
             <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/5 rounded-full blur-[120px] pointer-events-none" />
 
+            <div className="flex min-h-screen min-w-0">
             {/* Sidebar Navigation */}
             <div className={`fixed top-0 left-0 shrink-0 h-screen bg-[#0d1829]/80 backdrop-blur-xl border-r border-white/5 flex flex-col py-8 z-50 transition-all duration-300 overflow-hidden relative ${isSidebarOpen ? 'w-64 items-start px-3' : 'w-20 items-center px-0'}`}>
                 <button
@@ -2770,7 +2771,7 @@ const ClientDashboard = () => {
             {/* Main Content */}
             <div
                 ref={contentScrollRef}
-                className="relative z-10 min-h-screen min-w-0 transition-[margin] duration-300"
+                className="relative z-10 min-h-screen min-w-0 flex-1 transition-[margin] duration-300"
                 style={{ marginLeft: sidebarWidth }}
             >
                 {/* Modern Header */}
@@ -4496,6 +4497,8 @@ const ClientDashboard = () => {
                     </div>
                 </div>
             )}
+            </div>
+
             {/* Floating Support Button */}
             <button 
                 onClick={() => setIsSupportOpen(true)}
