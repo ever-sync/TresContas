@@ -1,5 +1,7 @@
 import 'dotenv/config';
+import { existsSync } from 'fs';
 import { randomUUID } from 'crypto';
+import path from 'path';
 import express from 'express';
 import helmet from 'helmet';
 
@@ -22,6 +24,9 @@ import { errorHandler, notFoundHandler } from './middlewares/error.middleware';
 
 const app = express();
 const port = process.env.PORT || 3001;
+const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
+const frontendIndexPath = path.join(frontendDistPath, 'index.html');
+const frontendBuildExists = existsSync(frontendIndexPath);
 
 const requiredEnv = ['DATABASE_URL', 'JWT_SECRET'];
 const missingEnv = requiredEnv.filter((key) => !process.env[key]);
@@ -143,6 +148,22 @@ app.get('/readyz', async (_req, res) => {
 app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
 });
+
+if (frontendBuildExists) {
+    app.use(express.static(frontendDistPath, { index: false }));
+
+    app.get(/^\/(?!api(?:\/|$)|livez$|readyz$|health$).*/, (req, res, next) => {
+        if (req.method !== 'GET' || !req.accepts('html')) {
+            return next();
+        }
+
+        if (path.extname(req.path)) {
+            return next();
+        }
+
+        return res.sendFile(frontendIndexPath);
+    });
+}
 
 app.use(notFoundHandler);
 app.use(errorHandler);

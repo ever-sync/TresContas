@@ -45,3 +45,8 @@ Se quiser apenas validar o schema localmente:
 ```bash
 npm run generate:prisma
 ```
+
+## Frontend integrado
+
+Se o build do frontend estiver em `../frontend/dist`, o backend o serve na mesma origem.
+Isso permite publicar tudo em um unico servico, sem depender de um frontend separado.

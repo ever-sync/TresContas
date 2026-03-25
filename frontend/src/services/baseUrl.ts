@@ -7,10 +7,13 @@ const readViteEnv = (): Record<string, string | undefined> => {
 };
 
 export const resolveApiBaseUrl = () => {
-    const rawBaseUrl = readViteEnv().VITE_API_URL || 'http://localhost:3001/api';
-    const normalizedBaseUrl = rawBaseUrl.replace(/\/+$/, '');
+    const configured = readViteEnv().VITE_API_URL;
 
-    return normalizedBaseUrl.endsWith('/api')
-        ? normalizedBaseUrl
-        : `${normalizedBaseUrl}/api`;
+    if (configured) {
+        const normalized = configured.replace(/\/+$/, '');
+        return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
+    }
+
+    // Default: relative /api — works with Vite proxy (dev) and Vercel rewrite (prod)
+    return '/api';
 };

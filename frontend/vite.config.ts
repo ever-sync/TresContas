@@ -7,6 +7,11 @@ export default defineConfig(({ mode }) => ({
   define: {
     'process.env.NODE_ENV': JSON.stringify(mode),
   },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:3001',
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),
