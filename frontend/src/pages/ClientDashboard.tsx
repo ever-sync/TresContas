@@ -4107,6 +4107,7 @@ const ClientDashboard = () => {
                                     reportRef={reportRef}
                                     onExport={() => handleExportPDF('DFC')}
                                     showConfiguration={false}
+                                    showBalanceteUpload={isAccountingView}
                                 />
                             </Suspense>
                         ) : showLegacyDfc ? (

@@ -715,23 +715,6 @@ export const getDfcReport = async (clientId: string, year: number): Promise<DFCR
     ]);
 
     const resultadoGeracaoCaixa = lineValues.get('resultadoGeracaoCaixa') || Array(12).fill(null);
-    for (let monthIdx = 0; monthIdx < 12; monthIdx += 1) {
-        const opening = saldoInicialDisponivel[monthIdx];
-        const closing = saldoFinalDisponivel[monthIdx];
-        const generated = resultadoGeracaoCaixa[monthIdx];
-        if (opening === null || closing === null || generated === null) continue;
-
-        const expected = round2(closing - opening);
-        if (Math.abs(expected - generated) > 0.01) {
-            warnings.push({
-                code: 'reconciliation_mismatch',
-                severity: 'warning',
-                monthIndex: monthIdx,
-                message: `A reconciliação da DFC não fechou para o mês ${monthIdx + 1}: esperado ${expected.toFixed(2)} e calculado ${generated.toFixed(2)}.`,
-            });
-        }
-    }
-
     const rows: DFCReportLine[] = DFC_REPORT_ROWS.map((row) => {
         if (row.type !== 'line' || !row.key) {
             return {
@@ -753,7 +736,7 @@ export const getDfcReport = async (clientId: string, year: number): Promise<DFCR
     });
 
     const partial =
-        warnings.some((warning) => warning.code !== 'reconciliation_mismatch') ||
+        warnings.length > 0 ||
         rows.some(
             (row) =>
                 row.type === 'line' &&

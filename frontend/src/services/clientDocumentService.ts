@@ -33,6 +33,11 @@ export interface UploadClientDocumentPayload {
     client_id?: string;
 }
 
+export interface ListStaffClientDocumentsOptions {
+    clientId?: string;
+    documentType?: string;
+}
+
 const downloadBlob = (blob: Blob, fileName: string) => {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -45,8 +50,13 @@ const downloadBlob = (blob: Blob, fileName: string) => {
 };
 
 export const clientDocumentService = {
-    listForStaff: async (): Promise<StaffClientDocument[]> => {
-        const response = await api.get('/client-documents');
+    listForStaff: async (options: ListStaffClientDocumentsOptions = {}): Promise<StaffClientDocument[]> => {
+        const response = await api.get('/client-documents', {
+            params: {
+                clientId: options.clientId,
+                documentType: options.documentType,
+            },
+        });
         return response.data;
     },
 
@@ -100,6 +110,28 @@ export const clientDocumentService = {
         }
 
         const response = await api.post('/client-documents', formData);
+        return response.data;
+    },
+
+    uploadBalanceteForStaff: async (
+        clientId: string,
+        payload: Omit<UploadClientDocumentPayload, 'client_id'>
+    ): Promise<StaffClientDocument> => {
+        const formData = new FormData();
+        formData.append('document', payload.file, payload.file.name);
+        formData.append('display_name', payload.display_name);
+        formData.append('category', payload.category);
+        if (payload.document_type) {
+            formData.append('document_type', payload.document_type);
+        }
+        if (typeof payload.period_year === 'number') {
+            formData.append('period_year', String(payload.period_year));
+        }
+        if (typeof payload.period_month === 'number') {
+            formData.append('period_month', String(payload.period_month));
+        }
+
+        const response = await api.post(`/client-documents/clients/${clientId}`, formData);
         return response.data;
     },
 

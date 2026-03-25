@@ -149,6 +149,24 @@ const getClientMappings = async (accountingId: string, clientId: string) => {
     return mappings;
 };
 
+const findReferenceClientId = async (accountingId: string) => {
+    const clients = await prisma.client.findMany({
+        where: { accounting_id: accountingId },
+        orderBy: [{ created_at: 'asc' }],
+        select: {
+            id: true,
+            name: true,
+        },
+    });
+
+    if (clients.length === 0) {
+        return null;
+    }
+
+    const referenceClient = clients.find((client) => normalizeCategoryKey(client.name).includes('cocacola')) || clients[0];
+    return referenceClient.id;
+};
+
 const getGlobalMappings = async (accountingId: string) => {
     const pool = getPool();
     const result = await pool.query(
@@ -161,6 +179,15 @@ const getGlobalMappings = async (accountingId: string) => {
     );
 
     return result.rows;
+};
+
+const getReferenceClientMappings = async (accountingId: string) => {
+    const referenceClientId = await findReferenceClientId(accountingId);
+    if (!referenceClientId) {
+        return [];
+    }
+
+    return getClientMappings(accountingId, referenceClientId);
 };
 
 const syncGlobalMappingState = async (
@@ -217,7 +244,12 @@ export const getAccountingDREMappings = async (req: AuthRequest, res: Response) 
         if (!req.accountingId) return res.status(401).json({ message: 'Nao autorizado' });
 
         const mappings = await getGlobalMappings(req.accountingId);
-        res.json(mappings);
+        if (mappings.length > 0) {
+            return res.json(mappings);
+        }
+
+        const referenceMappings = await getReferenceClientMappings(req.accountingId);
+        res.json(referenceMappings);
     } catch (error: any) {
         console.error('Erro ao buscar parametrizacao global DRE:', error);
         res.status(500).json({

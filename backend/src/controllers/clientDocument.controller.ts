@@ -110,6 +110,18 @@ const parseBase64Content = (value: unknown) => {
 const isNonEmptyString = (value: unknown) =>
     typeof value === 'string' && value.trim().length > 0;
 
+const getQueryString = (value: unknown) => {
+    if (typeof value === 'string') {
+        return value.trim();
+    }
+
+    if (Array.isArray(value) && typeof value[0] === 'string') {
+        return value[0].trim();
+    }
+
+    return '';
+};
+
 const setDownloadHeaders = (
     res: Response,
     fileName: string,
@@ -277,11 +289,97 @@ const parseDocumentUpload = async (req: AuthRequest) => {
     return parseJsonDocument(req);
 };
 
+const persistStaffDocument = async (
+    req: AuthRequest,
+    upload: UploadedDocumentInput,
+    clientId: string
+) => {
+    const documentId = randomUUID();
+    const storagePath = buildDocumentStoragePath(req.accountingId!, clientId, documentId);
+
+    await writeDocumentStorage(storagePath, upload.content);
+
+    try {
+        await prisma.$executeRaw(Prisma.sql`
+            INSERT INTO "ClientDocument" (
+                id,
+                accounting_id,
+                client_id,
+                original_name,
+                display_name,
+                category,
+                document_type,
+                period_year,
+                period_month,
+                mime_type,
+                size_bytes,
+                storage_path,
+                content,
+                created_at,
+                updated_at
+            ) VALUES (
+                ${documentId},
+                ${req.accountingId},
+                ${clientId},
+                ${upload.originalName},
+                ${upload.displayName},
+                ${upload.category},
+                ${upload.documentType},
+                ${upload.periodYear},
+                ${upload.periodMonth},
+                ${upload.mimeType},
+                ${upload.content.byteLength},
+                ${storagePath},
+                ${null},
+                ${new Date()},
+                ${new Date()}
+            )
+        `);
+
+        const createdRows = await prisma.$queryRaw<BaseDocumentRow[]>(Prisma.sql`
+            SELECT
+                id,
+                original_name,
+                display_name,
+                category,
+                document_type,
+                period_year,
+                period_month,
+                mime_type,
+                size_bytes,
+                created_at,
+                updated_at
+            FROM "ClientDocument"
+            WHERE id = ${documentId}
+            LIMIT 1
+        `);
+        const created = createdRows[0];
+
+        if (!created) {
+            throw new Error('Documento nao encontrado apos envio');
+        }
+
+        return { created, storagePath };
+    } catch (error) {
+        await deleteDocumentStorage(storagePath);
+        throw error;
+    }
+};
+
 export const listClientDocuments = async (req: AuthRequest, res: Response) => {
     try {
         if (!req.accountingId) {
             return res.status(401).json({ message: 'Nao autorizado' });
         }
+
+        const clientIdFilter = getQueryString(req.query.clientId);
+        const documentTypeFilter = getQueryString(req.query.documentType);
+        const clientClause = clientIdFilter
+            ? Prisma.sql` AND d.client_id = ${clientIdFilter}`
+            : Prisma.empty;
+        const documentTypeClause = documentTypeFilter
+            ? Prisma.sql` AND d.document_type = ${documentTypeFilter}`
+            : Prisma.empty;
 
         const documents = await prisma.$queryRaw<StaffDocumentRow[]>(Prisma.sql`
             SELECT
@@ -302,7 +400,12 @@ export const listClientDocuments = async (req: AuthRequest, res: Response) => {
             FROM "ClientDocument" d
             INNER JOIN "Client" c ON c.id = d.client_id
             WHERE d.accounting_id = ${req.accountingId}
-            ORDER BY d.created_at DESC
+            ${clientClause}
+            ${documentTypeClause}
+            ORDER BY
+                COALESCE(d.period_year, EXTRACT(YEAR FROM d.created_at)::int) DESC,
+                COALESCE(d.period_month, EXTRACT(MONTH FROM d.created_at)::int) DESC,
+                d.created_at DESC
         `);
 
         res.json(documents.map(mapStaffDocument));
@@ -500,91 +603,63 @@ export const createClientDocument = async (req: AuthRequest, res: Response) => {
             return res.status(400).json({ message: 'Cliente obrigatorio' });
         }
 
-        const documentId = randomUUID();
-        const storagePath = buildDocumentStoragePath(req.accountingId, clientId, documentId);
+        const { created } = await persistStaffDocument(req, upload, clientId);
 
-        await writeDocumentStorage(storagePath, upload.content);
+        await recordAuditEvent({
+            action: 'client.document.upload',
+            entityType: 'client_document',
+            entityId: created.id,
+            accountingId: req.accountingId,
+            clientId,
+            actorId: req.userId,
+            actorRole: req.role,
+            request: req,
+            metadata: {
+                category: created.category,
+                sizeBytes: created.size_bytes,
+            },
+        });
 
-        try {
-            await prisma.$executeRaw(Prisma.sql`
-                INSERT INTO "ClientDocument" (
-                    id,
-                    accounting_id,
-                    client_id,
-                    original_name,
-                    display_name,
-                    category,
-                    document_type,
-                    period_year,
-                    period_month,
-                    mime_type,
-                    size_bytes,
-                    storage_path,
-                    content,
-                    created_at,
-                    updated_at
-                ) VALUES (
-                    ${documentId},
-                    ${req.accountingId},
-                    ${clientId},
-                    ${upload.originalName},
-                    ${upload.displayName},
-                    ${upload.category},
-                    ${upload.documentType},
-                    ${upload.periodYear},
-                    ${upload.periodMonth},
-                    ${upload.mimeType},
-                    ${upload.content.byteLength},
-                    ${storagePath},
-                    ${null},
-                    ${new Date()},
-                    ${new Date()}
-                )
-            `);
+        res.status(201).json(mapBaseDocument(created));
+    } catch (error) {
+        console.error('Erro ao criar documento do cliente:', error);
+        const message = error instanceof Error ? error.message : 'Erro ao enviar documento';
+        res.status(400).json({ message });
+    }
+};
 
-            const createdRows = await prisma.$queryRaw<BaseDocumentRow[]>(Prisma.sql`
-                SELECT
-                    id,
-                    original_name,
-                    display_name,
-                    category,
-                    document_type,
-                    period_year,
-                    period_month,
-                    mime_type,
-                    size_bytes,
-                    created_at,
-                    updated_at
-                FROM "ClientDocument"
-                WHERE id = ${documentId}
-                LIMIT 1
-            `);
-            const created = createdRows[0];
-
-            if (!created) {
-                throw new Error('Documento nao encontrado apos envio');
-            }
-
-            await recordAuditEvent({
-                action: 'client.document.upload',
-                entityType: 'client_document',
-                entityId: created.id,
-                accountingId: req.accountingId,
-                clientId,
-                actorId: req.userId,
-                actorRole: req.role,
-                request: req,
-                metadata: {
-                    category: created.category,
-                    sizeBytes: created.size_bytes,
-                },
-            });
-
-            res.status(201).json(mapBaseDocument(created));
-        } catch (error) {
-            await deleteDocumentStorage(storagePath);
-            throw error;
+export const createClientDocumentForClient = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.accountingId) {
+            return res.status(401).json({ message: 'Nao autorizado' });
         }
+
+        const upload = await parseDocumentUpload(req);
+        const routeClientId = String(req.params.clientId || '').trim();
+        const clientId = routeClientId || upload.clientId;
+
+        if (!clientId) {
+            return res.status(400).json({ message: 'Cliente obrigatorio' });
+        }
+
+        const { created } = await persistStaffDocument(req, upload, clientId);
+
+        await recordAuditEvent({
+            action: 'client.document.upload',
+            entityType: 'client_document',
+            entityId: created.id,
+            accountingId: req.accountingId,
+            clientId,
+            actorId: req.userId,
+            actorRole: req.role,
+            request: req,
+            metadata: {
+                category: created.category,
+                sizeBytes: created.size_bytes,
+            },
+        });
+
+        res.status(201).json(mapBaseDocument(created));
     } catch (error) {
         console.error('Erro ao criar documento do cliente:', error);
         const message = error instanceof Error ? error.message : 'Erro ao enviar documento';

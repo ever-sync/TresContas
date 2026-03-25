@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-    AlertTriangle,
     ChevronDown,
     Download,
     FileSpreadsheet,
@@ -26,7 +25,7 @@ import type {
     DFCConfigLine,
     DFCDisplayType,
 } from '../services/dfcService';
-import type { ClientDocument } from '../services/clientDocumentService';
+import type { StaffClientDocument } from '../services/clientDocumentService';
 
 const formatLocaleNumber = (number: number) =>
     Math.abs(number).toLocaleString('pt-BR', {
@@ -64,14 +63,6 @@ interface ClientDfcSectionProps {
     showBalanceteUpload?: boolean;
     showConfiguration?: boolean;
 }
-
-type DfcBalanceteDocument = ClientDocument & {
-    client?: {
-        id: string;
-        name: string;
-        cnpj: string;
-    };
-};
 
 const SECTION_LABELS: Record<string, string> = {
     resultado_contabil: 'Resultado Contábil',
@@ -125,9 +116,17 @@ export const ClientDfcSection = ({
     const [balanceteFile, setBalanceteFile] = useState<File | null>(null);
     const [balanceteMonth, setBalanceteMonth] = useState(selectedMonthIndex + 1);
     const [balanceteYear, setBalanceteYear] = useState(selectedYear);
-    const [selectedBalancete, setSelectedBalancete] = useState<DfcBalanceteDocument | null>(null);
 
     const queryClient = useQueryClient();
+    const resolvedClientId = typeof clientId === 'string' ? clientId.trim() : '';
+    const getBalancetePeriodLabel = (document: { period_month: number | null; period_year: number | null }) => {
+        if (!document.period_month || !document.period_year) {
+            return 'Período não informado';
+        }
+
+        const monthLabel = months[document.period_month - 1] ?? 'Mês';
+        return `${monthLabel}/${document.period_year}`;
+    };
 
     useEffect(() => {
         setMode(initialMode);
@@ -209,57 +208,85 @@ export const ClientDfcSection = ({
         toast.error(message);
     }, [configQuery.error, configQuery.isError]);
 
-    const balanceteDocumentsQuery = useQuery({
-        queryKey: ['client-dfc-balancetes', clientId ?? 'self', isAccountingView ? 'accounting' : 'client'],
-        queryFn: async (): Promise<DfcBalanceteDocument[]> => {
-            if (!showBalanceteUpload) {
-                return [];
-            }
-
+    const uploadBalanceteMutation = useMutation({
+        mutationFn: async (payload: Parameters<typeof clientDocumentService.uploadForClient>[0]) => {
             if (isAccountingView) {
-                const documents = await clientDocumentService.listForStaff();
-                return documents
-                    .filter((document) => document.document_type === DFC_BALANCETE_DOCUMENT_TYPE)
-                    .filter((document) => !clientId || document.client.id === clientId);
+                if (!resolvedClientId) {
+                    throw new Error('Selecione um cliente antes de enviar o balancete');
+                }
+
+                return clientDocumentService.uploadBalanceteForStaff(resolvedClientId, payload);
             }
 
-            const documents = await clientDocumentService.listForClient();
-            return documents.filter((document) => document.document_type === DFC_BALANCETE_DOCUMENT_TYPE);
+            return clientDocumentService.uploadForClient(payload);
         },
-        enabled: showBalanceteUpload,
+        onSuccess: async (createdDocument) => {
+            setBalanceteFile(null);
+            if (isAccountingView) {
+                setSelectedBalancete(createdDocument as StaffClientDocument);
+            }
+            await queryClient.invalidateQueries({
+                queryKey: ['client-dashboard-dfc-balancetes', resolvedClientId, DFC_BALANCETE_DOCUMENT_TYPE],
+            });
+        },
+    });
+    const balanceteDocumentsQuery = useQuery({
+        queryKey: ['client-dashboard-dfc-balancetes', resolvedClientId, DFC_BALANCETE_DOCUMENT_TYPE],
+        queryFn: () =>
+            clientDocumentService.listForStaff({
+                clientId: resolvedClientId,
+                documentType: DFC_BALANCETE_DOCUMENT_TYPE,
+            }),
+        enabled: showBalanceteUpload && isAccountingView && Boolean(resolvedClientId),
         staleTime: 30_000,
     });
+    const balanceteDocuments = useMemo<StaffClientDocument[]>(
+        () =>
+            [...(balanceteDocumentsQuery.data ?? [])].sort((left, right) => {
+                const leftYear = left.period_year ?? new Date(left.created_at).getFullYear();
+                const rightYear = right.period_year ?? new Date(right.created_at).getFullYear();
+                if (rightYear !== leftYear) {
+                    return rightYear - leftYear;
+                }
 
-    const uploadBalanceteMutation = useMutation({
-        mutationFn: (payload: Parameters<typeof clientDocumentService.uploadForStaff>[0]) =>
-            clientDocumentService.uploadForStaff(payload),
-    });
+                const leftMonth = left.period_month ?? new Date(left.created_at).getMonth() + 1;
+                const rightMonth = right.period_month ?? new Date(right.created_at).getMonth() + 1;
+                if (rightMonth !== leftMonth) {
+                    return rightMonth - leftMonth;
+                }
 
-    const balanceteDocuments = useMemo(() => {
-        const documents = balanceteDocumentsQuery.data ?? [];
-        return [...documents]
-            .filter((document) => document.document_type === DFC_BALANCETE_DOCUMENT_TYPE)
-            .sort((a, b) => {
-                const yearA = a.period_year ?? 0;
-                const yearB = b.period_year ?? 0;
-                if (yearA !== yearB) return yearB - yearA;
-                const monthA = a.period_month ?? 0;
-                const monthB = b.period_month ?? 0;
-                if (monthA !== monthB) return monthB - monthA;
-                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
+            }),
+        [balanceteDocumentsQuery.data]
+    );
+    const balanceteGroups = useMemo(() => {
+        const groups = new Map<string, { label: string; documents: StaffClientDocument[] }>();
+
+        for (const document of balanceteDocuments) {
+            const year = document.period_year ?? new Date(document.created_at).getFullYear();
+            const month = document.period_month ?? new Date(document.created_at).getMonth() + 1;
+            const key = `${year}-${String(month).padStart(2, '0')}`;
+            const label = `${months[month - 1] ?? 'Mês'}/${year}`;
+
+            const current = groups.get(key);
+            if (current) {
+                current.documents.push(document);
+                continue;
+            }
+
+            groups.set(key, {
+                label,
+                documents: [document],
             });
-    }, [balanceteDocumentsQuery.data]);
+        }
+
+        return [...groups.entries()]
+            .sort((left, right) => right[0].localeCompare(left[0]))
+            .map(([, value]) => value);
+    }, [balanceteDocuments, months]);
     const loadingBalancetes = balanceteDocumentsQuery.isPending;
     const isUploadingBalancete = uploadBalanceteMutation.isPending;
-
-    useEffect(() => {
-        if (!balanceteDocumentsQuery.isError) return;
-
-        const message = balanceteDocumentsQuery.error instanceof Error
-            ? balanceteDocumentsQuery.error.message
-            : 'Erro ao carregar balancetes';
-        toast.error(message);
-    }, [balanceteDocumentsQuery.error, balanceteDocumentsQuery.isError]);
+    const [selectedBalancete, setSelectedBalancete] = useState<StaffClientDocument | null>(null);
 
     useEffect(() => {
         if (!config) return;
@@ -357,7 +384,7 @@ export const ClientDfcSection = ({
             return;
         }
 
-        if (!clientId && isAccountingView) {
+        if (!resolvedClientId && isAccountingView) {
             toast.error('Selecione um cliente antes de enviar o balancete');
             return;
         }
@@ -370,12 +397,10 @@ export const ClientDfcSection = ({
                 document_type: DFC_BALANCETE_DOCUMENT_TYPE,
                 period_month: balanceteMonth,
                 period_year: balanceteYear,
-                client_id: isAccountingView ? clientId : undefined,
             });
 
             toast.success('Balancete enviado');
             setBalanceteFile(null);
-            await balanceteDocumentsQuery.refetch();
         } catch (error: unknown) {
             console.error('Erro ao enviar balancete:', error);
             const message = axios.isAxiosError(error)
@@ -503,25 +528,6 @@ export const ClientDfcSection = ({
                 </div>
             </div>
 
-            {showReport && report?.warnings?.length ? (
-                <div className="p-6 border-b border-white/5 space-y-3">
-                    {report.warnings.map((warning, index) => (
-                        <div
-                            key={`${warning.code}-${warning.monthIndex ?? 'x'}-${index}`}
-                            className="flex items-start gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-amber-100"
-                        >
-                            <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0 text-amber-300" />
-                            <div>
-                                <p className="text-xs font-black uppercase tracking-[0.2em] text-amber-300/80 mb-1">
-                                    {warning.code.replace(/_/g, ' ')}
-                                </p>
-                                <p className="text-sm text-amber-50/90">{warning.message}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            ) : null}
-
             {showBalanceteUpload && (
             <div className="p-6 border-b border-white/5 space-y-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
@@ -584,44 +590,79 @@ export const ClientDfcSection = ({
                     )}
                 </div>
 
-                <div className="flex gap-4 overflow-x-auto pb-2">
+                <div className="space-y-4 pb-2">
                     {loadingBalancetes ? (
-                        <div className="flex items-center gap-3 text-white/40 py-4">
+                        <div className="flex items-center gap-3 py-4 text-white/40">
                             <Loader2 className="w-5 h-5 animate-spin" />
                             Carregando balancetes...
                         </div>
-                    ) : balanceteDocuments.length === 0 ? (
+                    ) : balanceteGroups.length === 0 ? (
                         <div className="min-w-full rounded-2xl border border-dashed border-white/10 bg-black/10 p-8 text-center text-white/30">
                             Nenhum balancete enviado ainda.
                         </div>
                     ) : (
-                        balanceteDocuments.map((document) => {
-                            const monthLabel = document.period_month ? months[document.period_month - 1] : 'Mês';
-                            const periodLabel = document.period_year ? `${monthLabel}/${document.period_year}` : monthLabel;
-                            return (
-                                <button
-                                    key={document.id}
-                                    type="button"
-                                    onClick={() => setSelectedBalancete(document)}
-                                    className="min-w-[240px] max-w-[240px] rounded-2xl border border-white/10 bg-[#0d1829]/90 p-4 text-left transition-all hover:border-cyan-500/30 hover:bg-white/5"
-                                >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70">Balancete</p>
-                                            <h5 className="mt-2 truncate text-lg font-bold text-white">{periodLabel}</h5>
-                                            <p className="mt-1 truncate text-xs text-white/35">{document.display_name}</p>
-                                        </div>
-                                        <div className="rounded-xl bg-cyan-500/10 p-2 text-cyan-300">
-                                            <FileSpreadsheet className="w-5 h-5" />
-                                        </div>
+                        balanceteGroups.map((group) => (
+                            <div key={group.label} className="rounded-3xl border border-white/10 bg-white/5 p-4 md:p-5">
+                                <div className="mb-4 flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70">Balancete mensal</p>
+                                        <h5 className="mt-1 text-lg font-bold text-white">{group.label}</h5>
+                                        <p className="mt-1 text-xs text-white/35">
+                                            {group.documents.length === 1
+                                                ? '1 arquivo vinculado ao cliente'
+                                                : `${group.documents.length} arquivos vinculados ao cliente`}
+                                        </p>
                                     </div>
-                                    <div className="mt-4 flex items-center justify-between text-xs text-white/30">
-                                        <span>{formatFileSize(document.size_bytes)}</span>
-                                        <span>{new Date(document.created_at).toLocaleDateString('pt-BR')}</span>
+                                    <div className="rounded-2xl border border-white/10 bg-black/10 px-3 py-2 text-xs font-semibold text-white/45">
+                                        {group.documents.length}
                                     </div>
-                                </button>
-                            );
-                        })
+                                </div>
+
+                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                    {group.documents.map((document, index) => {
+                                        const periodLabel = getBalancetePeriodLabel(document);
+                                        const statusLabel = group.documents.length === 1
+                                            ? 'Importado'
+                                            : index === 0
+                                                ? 'Em uso no DFC'
+                                                : 'Substituído por versão mais nova';
+                                        const statusClass = group.documents.length === 1
+                                            ? 'border-cyan-500/20 bg-cyan-500/10 text-cyan-200'
+                                            : index === 0
+                                                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+                                                : 'border-amber-500/20 bg-amber-500/10 text-amber-200';
+                                        return (
+                                            <button
+                                                key={document.id}
+                                                type="button"
+                                                onClick={() => setSelectedBalancete(document)}
+                                                className="rounded-2xl border border-white/10 bg-[#0d1829]/90 p-4 text-left transition-all hover:border-cyan-500/30 hover:bg-white/5"
+                                            >
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70">Balancete</p>
+                                                        <h6 className="mt-2 truncate text-base font-bold text-white">{periodLabel}</h6>
+                                                        <p className="mt-1 truncate text-xs text-white/35">{document.display_name}</p>
+                                                    </div>
+                                                    <div className="rounded-xl bg-cyan-500/10 p-2 text-cyan-300">
+                                                        <FileSpreadsheet className="w-5 h-5" />
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3">
+                                                    <span className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${statusClass}`}>
+                                                        {statusLabel}
+                                                    </span>
+                                                </div>
+                                                <div className="mt-4 flex items-center justify-between text-xs text-white/30">
+                                                    <span>{formatFileSize(document.size_bytes)}</span>
+                                                    <span>{new Date(document.created_at).toLocaleDateString('pt-BR')}</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))
                     )}
                 </div>
             </div>
@@ -866,9 +907,7 @@ export const ClientDfcSection = ({
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70">Balancete mensal</p>
                                 <h4 className="mt-2 text-2xl font-bold text-white">
-                                    {selectedBalancete.period_month
-                                        ? `${months[selectedBalancete.period_month - 1]}/${selectedBalancete.period_year ?? ''}`
-                                        : selectedBalancete.display_name}
+                                    {getBalancetePeriodLabel(selectedBalancete)}
                                 </h4>
                                 <p className="mt-1 text-sm text-white/35">{selectedBalancete.display_name}</p>
                             </div>
