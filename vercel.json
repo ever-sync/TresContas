@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm run build:frontend",
+  "installCommand": "cd frontend && npm install",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

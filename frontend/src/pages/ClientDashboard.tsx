@@ -44,6 +44,7 @@ import { chartOfAccountsService, clientChartOfAccountsService } from '../service
 import type { ImportAccount } from '../services/chartOfAccountsService';
 import { movementService } from '../services/movementService';
 import type { MovementRow } from '../services/movementService';
+import { resolveApiBaseUrl } from '../services/baseUrl';
 import toast from 'react-hot-toast';
 import { useClientAuthStore } from '../stores/useClientAuthStore';
 import { TooltipCurrency, TooltipPercent } from '../components/client-dashboard/ChartTooltips';
@@ -3173,7 +3174,7 @@ const ClientDashboard = () => {
                                                 await authService.getClientMe();
                                             }
 
-                                            const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/+$/, '');
+                                            const baseUrl = resolveApiBaseUrl();
                                             const apiUrl = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`;
                                             const response = await fetch(`${apiUrl}/client-portal/ai-analysis`, {
                                                 method: 'POST',

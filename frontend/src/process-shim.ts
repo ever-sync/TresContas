@@ -6,6 +6,11 @@ const globalWithProcess = globalThis as typeof globalThis & { process?: ProcessL
 const processGlobal = globalWithProcess.process ?? (globalWithProcess.process = {});
 
 processGlobal.env = processGlobal.env ?? {};
-processGlobal.env.NODE_ENV = import.meta.env.MODE;
+
+try {
+    processGlobal.env.NODE_ENV = (import.meta as ImportMeta & { env?: { MODE?: string } }).env?.MODE || 'development';
+} catch {
+    processGlobal.env.NODE_ENV = 'development';
+}
 
 export {};
