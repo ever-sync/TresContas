@@ -72,16 +72,20 @@ export const ChartOfAccountsManager = ({
         toast.error(message);
     }, [chartAccountsQuery.error, chartAccountsQuery.isError]);
 
+    const chartAccounts = useMemo(
+        () => (Array.isArray(chartAccountsQuery.data) ? chartAccountsQuery.data : []),
+        [chartAccountsQuery.data]
+    );
+
     const filteredAccounts = useMemo(() => {
-        const accounts = chartAccountsQuery.data ?? [];
         const normalizedSearch = searchTerm.toLowerCase();
-        if (!normalizedSearch) return accounts;
-        return accounts.filter((account) =>
+        if (!normalizedSearch) return chartAccounts;
+        return chartAccounts.filter((account) =>
             account.code.includes(searchTerm) ||
             account.name.toLowerCase().includes(normalizedSearch) ||
             (account.alias || '').toLowerCase().includes(normalizedSearch)
         );
-    }, [chartAccountsQuery.data, searchTerm]);
+    }, [chartAccounts, searchTerm]);
 
     const handleImportPlanoDeContas = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -230,7 +234,7 @@ export const ChartOfAccountsManager = ({
             <div className="bg-[#0d1829]/80 backdrop-blur-xl rounded-2xl border border-white/5 overflow-hidden">
                 <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
                     <h3 className="text-white font-semibold">Plano compartilhado</h3>
-                    <span className="text-xs text-slate-500">{(chartAccountsQuery.data ?? []).length} contas</span>
+                    <span className="text-xs text-slate-500">{chartAccounts.length} contas</span>
                 </div>
 
                 {chartAccountsQuery.isPending ? (
@@ -252,7 +256,7 @@ export const ChartOfAccountsManager = ({
                             Recarregar
                         </button>
                     </div>
-                ) : (chartAccountsQuery.data ?? []).length === 0 ? (
+                ) : chartAccounts.length === 0 ? (
                     <div className="p-16 text-center">
                         <FileSpreadsheet className="w-16 h-16 text-white/10 mx-auto mb-4" />
                         <h4 className="text-lg font-bold text-white/40 mb-2">Nenhum plano de contas</h4>

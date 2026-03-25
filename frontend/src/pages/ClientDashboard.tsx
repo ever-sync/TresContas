@@ -1524,10 +1524,15 @@ const ClientDashboard = () => {
 
 
 
+    const chartAccounts = useMemo(
+        () => (Array.isArray(chartAccountsQuery.data) ? chartAccountsQuery.data : []),
+        [chartAccountsQuery.data]
+    );
+
     useEffect(() => {
         if (chartAccountsQuery.data === undefined) return;
 
-        const mapped: Account[] = chartAccountsQuery.data.map((account) => ({
+        const mapped: Account[] = chartAccounts.map((account) => ({
             classification: account.code,
             reduced_code: account.reduced_code || undefined,
             name: account.name.trim(),
@@ -1539,7 +1544,7 @@ const ClientDashboard = () => {
             report_category: account.report_category || undefined,
         }));
         setAccounts(mapped);
-    }, [chartAccountsQuery.data]);
+    }, [chartAccounts, chartAccountsQuery.data]);
 
     useEffect(() => {
         if (!isAccountingView || !clientId) {

@@ -26,11 +26,13 @@ export interface ImportAccount {
     report_category?: string;
 }
 
+const toArray = <T>(value: unknown): T[] => (Array.isArray(value) ? value : []);
+
 /** Staff-side service (uses accounting auth token) */
 export const chartOfAccountsService = {
     getSharedAll: async (): Promise<ChartAccount[]> => {
         const response = await api.get('/chart-of-accounts');
-        return response.data;
+        return toArray<ChartAccount>(response.data);
     },
 
     bulkImportShared: async (accounts: ImportAccount[]): Promise<{ message: string; count: number }> => {
@@ -54,7 +56,7 @@ export const chartOfAccountsService = {
 
     getAll: async (clientId: string): Promise<ChartAccount[]> => {
         const response = await api.get(`/clients/${clientId}/chart-of-accounts`);
-        return response.data;
+        return toArray<ChartAccount>(response.data);
     },
 
     bulkImport: async (clientId: string, accounts: ImportAccount[]): Promise<{ message: string; count: number }> => {
@@ -81,6 +83,6 @@ export const chartOfAccountsService = {
 export const clientChartOfAccountsService = {
     getAll: async (): Promise<ChartAccount[]> => {
         const response = await clientApi.get('/client-portal/chart-of-accounts');
-        return response.data;
+        return toArray<ChartAccount>(response.data);
     },
 };
