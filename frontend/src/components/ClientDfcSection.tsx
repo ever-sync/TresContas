@@ -3,16 +3,20 @@ import {
     AlertTriangle,
     ChevronDown,
     Download,
+    FileSpreadsheet,
     Loader2,
     Plus,
     Save,
     Settings2,
     Trash2,
+    Upload,
+    X,
 } from 'lucide-react';
 import axios from 'axios';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { SearchableAccountSelect, type AccountOption } from './SearchableAccountSelect';
+import { clientDocumentService } from '../services/clientDocumentService';
 import {
     clientPortalDfcService,
     dfcService,
@@ -22,12 +26,21 @@ import type {
     DFCConfigLine,
     DFCDisplayType,
 } from '../services/dfcService';
+import type { ClientDocument } from '../services/clientDocumentService';
 
 const formatLocaleNumber = (number: number) =>
     Math.abs(number).toLocaleString('pt-BR', {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     });
+
+const formatFileSize = (sizeBytes: number) => {
+    if (sizeBytes < 1024) return `${sizeBytes} B`;
+    if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
+    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const DFC_BALANCETE_DOCUMENT_TYPE = 'dfc_balancete';
 
 type DraftMapping = {
     localId: string;
@@ -47,6 +60,14 @@ interface ClientDfcSectionProps {
     onExport: () => void;
     initialMode?: 'view' | 'config';
 }
+
+type DfcBalanceteDocument = ClientDocument & {
+    client?: {
+        id: string;
+        name: string;
+        cnpj: string;
+    };
+};
 
 const SECTION_LABELS: Record<string, string> = {
     resultado_contabil: 'Resultado Contábil',
@@ -93,12 +114,24 @@ export const ClientDfcSection = ({
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
     const [savingConfig, setSavingConfig] = useState(false);
     const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
+    const [balanceteFile, setBalanceteFile] = useState<File | null>(null);
+    const [balanceteMonth, setBalanceteMonth] = useState(selectedMonthIndex + 1);
+    const [balanceteYear, setBalanceteYear] = useState(selectedYear);
+    const [selectedBalancete, setSelectedBalancete] = useState<DfcBalanceteDocument | null>(null);
 
     const queryClient = useQueryClient();
 
     useEffect(() => {
         setMode(initialMode);
     }, [initialMode]);
+
+    useEffect(() => {
+        setBalanceteMonth(selectedMonthIndex + 1);
+    }, [selectedMonthIndex]);
+
+    useEffect(() => {
+        setBalanceteYear(selectedYear);
+    }, [selectedYear]);
 
     const reportQuery = useQuery({
         queryKey: ['client-dashboard-dfc-report', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client'],
@@ -148,6 +181,53 @@ export const ClientDfcSection = ({
             : 'Erro ao carregar configuracao DFC';
         toast.error(message);
     }, [configQuery.error, configQuery.isError]);
+
+    const balanceteDocumentsQuery = useQuery({
+        queryKey: ['client-dfc-balancetes', clientId ?? 'self', isAccountingView ? 'accounting' : 'client'],
+        queryFn: async (): Promise<DfcBalanceteDocument[]> => {
+            if (isAccountingView) {
+                const documents = await clientDocumentService.listForStaff();
+                return documents
+                    .filter((document) => document.document_type === DFC_BALANCETE_DOCUMENT_TYPE)
+                    .filter((document) => !clientId || document.client.id === clientId);
+            }
+
+            const documents = await clientDocumentService.listForClient();
+            return documents.filter((document) => document.document_type === DFC_BALANCETE_DOCUMENT_TYPE);
+        },
+        staleTime: 30_000,
+    });
+
+    const uploadBalanceteMutation = useMutation({
+        mutationFn: (payload: Parameters<typeof clientDocumentService.uploadForStaff>[0]) =>
+            clientDocumentService.uploadForStaff(payload),
+    });
+
+    const balanceteDocuments = useMemo(() => {
+        const documents = balanceteDocumentsQuery.data ?? [];
+        return [...documents]
+            .filter((document) => document.document_type === DFC_BALANCETE_DOCUMENT_TYPE)
+            .sort((a, b) => {
+                const yearA = a.period_year ?? 0;
+                const yearB = b.period_year ?? 0;
+                if (yearA !== yearB) return yearB - yearA;
+                const monthA = a.period_month ?? 0;
+                const monthB = b.period_month ?? 0;
+                if (monthA !== monthB) return monthB - monthA;
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            });
+    }, [balanceteDocumentsQuery.data]);
+    const loadingBalancetes = balanceteDocumentsQuery.isPending;
+    const isUploadingBalancete = uploadBalanceteMutation.isPending;
+
+    useEffect(() => {
+        if (!balanceteDocumentsQuery.isError) return;
+
+        const message = balanceteDocumentsQuery.error instanceof Error
+            ? balanceteDocumentsQuery.error.message
+            : 'Erro ao carregar balancetes';
+        toast.error(message);
+    }, [balanceteDocumentsQuery.error, balanceteDocumentsQuery.isError]);
 
     useEffect(() => {
         if (!config) return;
@@ -236,6 +316,41 @@ export const ClientDfcSection = ({
             ...prev,
             [sectionKey]: !(prev[sectionKey] ?? true),
         }));
+    };
+
+    const handleBalanceteUpload = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!balanceteFile) {
+            toast.error('Selecione a planilha do balancete');
+            return;
+        }
+
+        if (!clientId && isAccountingView) {
+            toast.error('Selecione um cliente antes de enviar o balancete');
+            return;
+        }
+
+        try {
+            await uploadBalanceteMutation.mutateAsync({
+                file: balanceteFile,
+                display_name: `Balancete ${months[balanceteMonth - 1]} ${balanceteYear}`,
+                category: 'Balancete DFC',
+                document_type: DFC_BALANCETE_DOCUMENT_TYPE,
+                period_month: balanceteMonth,
+                period_year: balanceteYear,
+                client_id: isAccountingView ? clientId : undefined,
+            });
+
+            toast.success('Balancete enviado');
+            setBalanceteFile(null);
+            await balanceteDocumentsQuery.refetch();
+        } catch (error: unknown) {
+            console.error('Erro ao enviar balancete:', error);
+            const message = axios.isAxiosError(error)
+                ? error.response?.data?.message || 'Erro ao enviar balancete'
+                : 'Erro ao enviar balancete';
+            toast.error(message);
+        }
     };
 
     let activeSectionKey: string | null = null;
@@ -362,6 +477,109 @@ export const ClientDfcSection = ({
                     ))}
                 </div>
             ) : null}
+
+            <div className="p-6 border-b border-white/5 space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70 mb-2">
+                            Balancetes mensais
+                        </p>
+                        <h4 className="text-lg font-bold text-white">Arquivo por mês e ano</h4>
+                        <p className="text-sm text-white/40 mt-1 max-w-2xl">
+                            Cada envio vira um card. O histórico não sobrescreve o mês anterior.
+                        </p>
+                    </div>
+                    {isAccountingView && (
+                        <form onSubmit={handleBalanceteUpload} className="grid gap-3 md:grid-cols-[1.4fr_0.7fr_0.7fr_auto] items-end w-full md:w-auto">
+                            <div className="space-y-2 md:min-w-[240px]">
+                                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Planilha</label>
+                                <label className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 cursor-pointer hover:bg-white/10 transition-all text-white/80">
+                                    <span className="truncate text-sm">{balanceteFile ? balanceteFile.name : 'Selecionar planilha'}</span>
+                                    <Upload className="w-4 h-4 shrink-0" />
+                                    <input
+                                        type="file"
+                                        accept=".csv,.xlsx,.xls"
+                                        className="hidden"
+                                        onChange={(event) => setBalanceteFile(event.target.files?.[0] || null)}
+                                    />
+                                </label>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Mês</label>
+                                <select
+                                    value={balanceteMonth}
+                                    onChange={(event) => setBalanceteMonth(parseInt(event.target.value, 10))}
+                                    className="w-full rounded-2xl bg-[#0d1829] border border-white/10 text-white px-4 py-3 outline-none"
+                                >
+                                    {months.map((month, index) => (
+                                        <option key={month} value={index + 1} className="bg-[#0d1829]">
+                                            {month}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Ano</label>
+                                <input
+                                    type="number"
+                                    value={balanceteYear}
+                                    onChange={(event) => setBalanceteYear(parseInt(event.target.value, 10) || selectedYear)}
+                                    className="w-full rounded-2xl bg-[#0d1829] border border-white/10 text-white px-4 py-3 outline-none"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={isUploadingBalancete || !balanceteFile}
+                                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 px-5 py-3 font-bold text-white disabled:opacity-50"
+                            >
+                                {isUploadingBalancete ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                Enviar
+                            </button>
+                        </form>
+                    )}
+                </div>
+
+                <div className="flex gap-4 overflow-x-auto pb-2">
+                    {loadingBalancetes ? (
+                        <div className="flex items-center gap-3 text-white/40 py-4">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Carregando balancetes...
+                        </div>
+                    ) : balanceteDocuments.length === 0 ? (
+                        <div className="min-w-full rounded-2xl border border-dashed border-white/10 bg-black/10 p-8 text-center text-white/30">
+                            Nenhum balancete enviado ainda.
+                        </div>
+                    ) : (
+                        balanceteDocuments.map((document) => {
+                            const monthLabel = document.period_month ? months[document.period_month - 1] : 'Mês';
+                            const periodLabel = document.period_year ? `${monthLabel}/${document.period_year}` : monthLabel;
+                            return (
+                                <button
+                                    key={document.id}
+                                    type="button"
+                                    onClick={() => setSelectedBalancete(document)}
+                                    className="min-w-[240px] max-w-[240px] rounded-2xl border border-white/10 bg-[#0d1829]/90 p-4 text-left transition-all hover:border-cyan-500/30 hover:bg-white/5"
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70">Balancete</p>
+                                            <h5 className="mt-2 truncate text-lg font-bold text-white">{periodLabel}</h5>
+                                            <p className="mt-1 truncate text-xs text-white/35">{document.display_name}</p>
+                                        </div>
+                                        <div className="rounded-xl bg-cyan-500/10 p-2 text-cyan-300">
+                                            <FileSpreadsheet className="w-5 h-5" />
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 flex items-center justify-between text-xs text-white/30">
+                                        <span>{formatFileSize(document.size_bytes)}</span>
+                                        <span>{new Date(document.created_at).toLocaleDateString('pt-BR')}</span>
+                                    </div>
+                                </button>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
 
             {mode === 'view' ? (
                 loadingReport ? (
@@ -592,6 +810,68 @@ export const ClientDfcSection = ({
                             ))}
                         </>
                     )}
+                </div>
+            )}
+
+            {selectedBalancete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a1628]/80 p-4 backdrop-blur-md">
+                    <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-[#0d1829]/95 shadow-2xl">
+                        <div className="flex items-start justify-between gap-4 border-b border-white/5 bg-white/5 p-6">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300/70">Balancete mensal</p>
+                                <h4 className="mt-2 text-2xl font-bold text-white">
+                                    {selectedBalancete.period_month
+                                        ? `${months[selectedBalancete.period_month - 1]}/${selectedBalancete.period_year ?? ''}`
+                                        : selectedBalancete.display_name}
+                                </h4>
+                                <p className="mt-1 text-sm text-white/35">{selectedBalancete.display_name}</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedBalancete(null)}
+                                className="rounded-2xl border border-white/10 bg-white/5 p-3 text-white/50 transition-all hover:bg-white/10 hover:text-white"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="grid gap-4 p-6 md:grid-cols-2">
+                            <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Arquivo</p>
+                                <p className="mt-2 text-sm text-white">{selectedBalancete.original_name}</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Tamanho</p>
+                                <p className="mt-2 text-sm text-white">{formatFileSize(selectedBalancete.size_bytes)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Categoria</p>
+                                <p className="mt-2 text-sm text-white">{selectedBalancete.category}</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/5 bg-white/5 p-4">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/35">Enviado em</p>
+                                <p className="mt-2 text-sm text-white">{new Date(selectedBalancete.created_at).toLocaleString('pt-BR')}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-3 border-t border-white/5 p-6">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedBalancete(null)}
+                                className="rounded-2xl border border-white/10 px-5 py-3 text-sm font-bold text-white/60 transition-all hover:bg-white/5 hover:text-white"
+                            >
+                                Fechar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => isAccountingView
+                                    ? clientDocumentService.downloadForStaff(selectedBalancete.id, selectedBalancete.original_name)
+                                    : clientDocumentService.downloadForClient(selectedBalancete.id, selectedBalancete.original_name)}
+                                className="inline-flex items-center gap-2 rounded-2xl bg-linear-to-r from-cyan-500 to-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-cyan-500/20 transition-all hover:opacity-90"
+                            >
+                                <Download className="w-4 h-4" />
+                                Baixar
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

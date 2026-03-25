@@ -49,6 +49,9 @@ type BaseDocumentRow = {
     original_name: string;
     display_name: string;
     category: string;
+    document_type: string;
+    period_year: number | null;
+    period_month: number | null;
     mime_type: string;
     size_bytes: number;
     created_at: Date;
@@ -76,6 +79,10 @@ type UploadedDocumentInput =
         displayName: string;
         category: string;
         mimeType: string;
+        documentType: string;
+        periodYear: number | null;
+        periodMonth: number | null;
+        clientId: string | null;
         content: Buffer;
     }
     | {
@@ -83,6 +90,10 @@ type UploadedDocumentInput =
         displayName: string;
         category: string;
         mimeType: string;
+        documentType: string;
+        periodYear: number | null;
+        periodMonth: number | null;
+        clientId: string | null;
         content: Buffer;
     };
 
@@ -115,6 +126,9 @@ const mapBaseDocument = (row: BaseDocumentRow) => ({
     original_name: row.original_name,
     display_name: row.display_name,
     category: row.category,
+    document_type: row.document_type,
+    period_year: row.period_year,
+    period_month: row.period_month,
     mime_type: row.mime_type,
     size_bytes: row.size_bytes,
     created_at: row.created_at,
@@ -167,11 +181,29 @@ const parseMultipartDocument = async (req: AuthRequest): Promise<UploadedDocumen
 
     const displayName = getFirstString(fields, 'display_name');
     const category = getFirstString(fields, 'category');
+    const clientId = getFirstString(fields, 'client_id') || null;
+    const documentType = getFirstString(fields, 'document_type') || 'general';
+    const periodYearRaw = getFirstString(fields, 'period_year');
+    const periodMonthRaw = getFirstString(fields, 'period_month');
     const mimeType = file.mimetype || 'application/octet-stream';
     const originalName = file.originalFilename || file.newFilename || 'documento';
 
     if (!displayName || !category) {
         throw new Error('Nome, categoria e arquivo sao obrigatorios');
+    }
+
+    const periodYear = periodYearRaw ? parseInt(periodYearRaw, 10) : null;
+    const periodMonth = periodMonthRaw ? parseInt(periodMonthRaw, 10) : null;
+
+    if (documentType === 'dfc_balancete') {
+        if (!Number.isInteger(periodYear) || !Number.isInteger(periodMonth)) {
+            throw new Error('Informe mes e ano do balancete');
+        }
+
+        const safePeriodMonth = periodMonth as number;
+        if (safePeriodMonth < 1 || safePeriodMonth > 12) {
+            throw new Error('Mes do balancete invalido');
+        }
     }
 
     const content = await readFile(file.filepath);
@@ -184,6 +216,10 @@ const parseMultipartDocument = async (req: AuthRequest): Promise<UploadedDocumen
         originalName,
         displayName,
         category,
+        documentType,
+        periodYear,
+        periodMonth,
+        clientId,
         mimeType,
         content,
     };
@@ -193,11 +229,26 @@ const parseJsonDocument = (req: AuthRequest): UploadedDocumentInput => {
     const originalName = isNonEmptyString(req.body?.original_name) ? req.body.original_name.trim() : '';
     const displayName = isNonEmptyString(req.body?.display_name) ? req.body.display_name.trim() : '';
     const category = isNonEmptyString(req.body?.category) ? req.body.category.trim() : '';
+    const clientId = isNonEmptyString(req.body?.client_id) ? req.body.client_id.trim() : null;
+    const documentType = isNonEmptyString(req.body?.document_type) ? req.body.document_type.trim() : 'general';
     const mimeType = isNonEmptyString(req.body?.mime_type) ? req.body.mime_type.trim() : 'application/octet-stream';
+    const periodYear = isNonEmptyString(req.body?.period_year) ? parseInt(req.body.period_year, 10) : null;
+    const periodMonth = isNonEmptyString(req.body?.period_month) ? parseInt(req.body.period_month, 10) : null;
     const content = parseBase64Content(req.body?.content_base64);
 
     if (!originalName || !displayName || !category || !content) {
         throw new Error('Nome, categoria e arquivo sao obrigatorios');
+    }
+
+    if (documentType === 'dfc_balancete') {
+        if (!Number.isInteger(periodYear) || !Number.isInteger(periodMonth)) {
+            throw new Error('Informe mes e ano do balancete');
+        }
+
+        const safePeriodMonth = periodMonth as number;
+        if (safePeriodMonth < 1 || safePeriodMonth > 12) {
+            throw new Error('Mes do balancete invalido');
+        }
     }
 
     if (content.byteLength > MAX_DOCUMENT_SIZE_BYTES) {
@@ -208,6 +259,10 @@ const parseJsonDocument = (req: AuthRequest): UploadedDocumentInput => {
         originalName,
         displayName,
         category,
+        documentType,
+        periodYear,
+        periodMonth,
+        clientId,
         mimeType,
         content,
     };
@@ -234,6 +289,9 @@ export const listClientDocuments = async (req: AuthRequest, res: Response) => {
                 d.original_name,
                 d.display_name,
                 d.category,
+                d.document_type,
+                d.period_year,
+                d.period_month,
                 d.mime_type,
                 d.size_bytes,
                 d.created_at,
@@ -311,6 +369,9 @@ export const getClientPortalDocuments = async (req: AuthRequest, res: Response) 
                 original_name,
                 display_name,
                 category,
+                document_type,
+                period_year,
+                period_month,
                 mime_type,
                 size_bytes,
                 created_at,
@@ -335,7 +396,8 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
 
         const upload = await parseDocumentUpload(req);
         const documentId = randomUUID();
-        const storagePath = buildDocumentStoragePath(req.accountingId, req.clientId, documentId);
+        const clientId = upload.clientId || req.clientId;
+        const storagePath = buildDocumentStoragePath(req.accountingId, clientId, documentId);
 
         await writeDocumentStorage(storagePath, upload.content);
 
@@ -348,6 +410,9 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
                     original_name,
                     display_name,
                     category,
+                    document_type,
+                    period_year,
+                    period_month,
                     mime_type,
                     size_bytes,
                     storage_path,
@@ -357,10 +422,13 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
                 ) VALUES (
                     ${documentId},
                     ${req.accountingId},
-                    ${req.clientId},
+                    ${clientId},
                     ${upload.originalName},
                     ${upload.displayName},
                     ${upload.category},
+                    ${upload.documentType},
+                    ${upload.periodYear},
+                    ${upload.periodMonth},
                     ${upload.mimeType},
                     ${upload.content.byteLength},
                     ${storagePath},
@@ -376,6 +444,9 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
                     original_name,
                     display_name,
                     category,
+                    document_type,
+                    period_year,
+                    period_month,
                     mime_type,
                     size_bytes,
                     created_at,
@@ -398,6 +469,110 @@ export const createClientPortalDocument = async (req: AuthRequest, res: Response
                 clientId: req.clientId,
                 actorId: req.clientId,
                 actorRole: 'client',
+                request: req,
+                metadata: {
+                    category: created.category,
+                    sizeBytes: created.size_bytes,
+                },
+            });
+
+            res.status(201).json(mapBaseDocument(created));
+        } catch (error) {
+            await deleteDocumentStorage(storagePath);
+            throw error;
+        }
+    } catch (error) {
+        console.error('Erro ao criar documento do cliente:', error);
+        const message = error instanceof Error ? error.message : 'Erro ao enviar documento';
+        res.status(400).json({ message });
+    }
+};
+
+export const createClientDocument = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.accountingId) {
+            return res.status(401).json({ message: 'Nao autorizado' });
+        }
+
+        const upload = await parseDocumentUpload(req);
+        const clientId = upload.clientId;
+        if (!clientId) {
+            return res.status(400).json({ message: 'Cliente obrigatorio' });
+        }
+
+        const documentId = randomUUID();
+        const storagePath = buildDocumentStoragePath(req.accountingId, clientId, documentId);
+
+        await writeDocumentStorage(storagePath, upload.content);
+
+        try {
+            await prisma.$executeRaw(Prisma.sql`
+                INSERT INTO "ClientDocument" (
+                    id,
+                    accounting_id,
+                    client_id,
+                    original_name,
+                    display_name,
+                    category,
+                    document_type,
+                    period_year,
+                    period_month,
+                    mime_type,
+                    size_bytes,
+                    storage_path,
+                    content,
+                    created_at,
+                    updated_at
+                ) VALUES (
+                    ${documentId},
+                    ${req.accountingId},
+                    ${clientId},
+                    ${upload.originalName},
+                    ${upload.displayName},
+                    ${upload.category},
+                    ${upload.documentType},
+                    ${upload.periodYear},
+                    ${upload.periodMonth},
+                    ${upload.mimeType},
+                    ${upload.content.byteLength},
+                    ${storagePath},
+                    ${null},
+                    ${new Date()},
+                    ${new Date()}
+                )
+            `);
+
+            const createdRows = await prisma.$queryRaw<BaseDocumentRow[]>(Prisma.sql`
+                SELECT
+                    id,
+                    original_name,
+                    display_name,
+                    category,
+                    document_type,
+                    period_year,
+                    period_month,
+                    mime_type,
+                    size_bytes,
+                    created_at,
+                    updated_at
+                FROM "ClientDocument"
+                WHERE id = ${documentId}
+                LIMIT 1
+            `);
+            const created = createdRows[0];
+
+            if (!created) {
+                throw new Error('Documento nao encontrado apos envio');
+            }
+
+            await recordAuditEvent({
+                action: 'client.document.upload',
+                entityType: 'client_document',
+                entityId: created.id,
+                accountingId: req.accountingId,
+                clientId,
+                actorId: req.userId,
+                actorRole: req.role,
                 request: req,
                 metadata: {
                     category: created.category,

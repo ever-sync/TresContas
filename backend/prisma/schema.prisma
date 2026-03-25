@@ -398,6 +398,9 @@ model ClientDocument {
   original_name String
   display_name  String
   category      String
+  document_type String     @default("general")
+  period_year   Int?
+  period_month  Int?
   mime_type     String
   size_bytes    Int
   storage_path  String?
@@ -411,6 +414,9 @@ model ClientDocument {
   @@index([accounting_id])
   @@index([client_id])
   @@index([category])
+  @@index([document_type])
+  @@index([period_year])
+  @@index([period_month])
   @@index([storage_path])
   @@index([created_at])
 }

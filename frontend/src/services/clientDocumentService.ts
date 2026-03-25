@@ -6,6 +6,9 @@ export interface ClientDocument {
     original_name: string;
     display_name: string;
     category: string;
+    document_type: string;
+    period_year: number | null;
+    period_month: number | null;
     mime_type: string;
     size_bytes: number;
     created_at: string;
@@ -24,6 +27,10 @@ export interface UploadClientDocumentPayload {
     file: File;
     display_name: string;
     category: string;
+    document_type?: string;
+    period_year?: number;
+    period_month?: number;
+    client_id?: string;
 }
 
 const downloadBlob = (blob: Blob, fileName: string) => {
@@ -60,8 +67,39 @@ export const clientDocumentService = {
         formData.append('document', payload.file, payload.file.name);
         formData.append('display_name', payload.display_name);
         formData.append('category', payload.category);
+        if (payload.document_type) {
+            formData.append('document_type', payload.document_type);
+        }
+        if (typeof payload.period_year === 'number') {
+            formData.append('period_year', String(payload.period_year));
+        }
+        if (typeof payload.period_month === 'number') {
+            formData.append('period_month', String(payload.period_month));
+        }
 
         const response = await clientApi.post('/client-portal/documents', formData);
+        return response.data;
+    },
+
+    uploadForStaff: async (payload: UploadClientDocumentPayload): Promise<StaffClientDocument> => {
+        const formData = new FormData();
+        formData.append('document', payload.file, payload.file.name);
+        formData.append('display_name', payload.display_name);
+        formData.append('category', payload.category);
+        if (payload.client_id) {
+            formData.append('client_id', payload.client_id);
+        }
+        if (payload.document_type) {
+            formData.append('document_type', payload.document_type);
+        }
+        if (typeof payload.period_year === 'number') {
+            formData.append('period_year', String(payload.period_year));
+        }
+        if (typeof payload.period_month === 'number') {
+            formData.append('period_month', String(payload.period_month));
+        }
+
+        const response = await api.post('/client-documents', formData);
         return response.data;
     },
 
