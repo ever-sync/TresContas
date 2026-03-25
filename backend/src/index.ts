@@ -105,11 +105,11 @@ app.use('/api/client-portal', clientPortalRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/audit-events', auditRoutes);
 
-app.get('/livez', (_req, res) => {
+app.get(['/livez', '/api/livez'], (_req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 
-app.get('/readyz', async (_req, res) => {
+app.get(['/readyz', '/api/readyz'], async (_req, res) => {
     try {
         const hasQueryRaw = typeof (prisma as { $queryRaw?: unknown }).$queryRaw === 'function';
         let storageStatus: 'up' | 'down' | 'unknown' = 'unknown';
@@ -145,7 +145,7 @@ app.get('/readyz', async (_req, res) => {
     }
 });
 
-app.get('/health', (_req, res) => {
+app.get(['/health', '/api/health'], (_req, res) => {
     res.status(200).json({ status: 'ok' });
 });
 

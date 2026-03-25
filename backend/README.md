@@ -49,4 +49,4 @@ npm run generate:prisma
 ## Frontend integrado
 
 Se o build do frontend estiver em `../frontend/dist`, o backend o serve na mesma origem.
-Isso permite publicar tudo em um unico servico, sem depender de um frontend separado.
+No deploy unico da Vercel, a API fica em `api/` e o frontend fica em `frontend/dist`.

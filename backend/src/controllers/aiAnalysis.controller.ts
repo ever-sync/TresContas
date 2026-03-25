@@ -3,8 +3,6 @@ import { AuthRequest } from '../middlewares/auth.middleware';
 import prisma from '../lib/prisma';
 import Groq from 'groq-sdk';
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-
 const verifyClientOwnership = async (clientId: string, accountingId: string) => {
     const client = await prisma.client.findFirst({
         where: { id: clientId, accounting_id: accountingId },
@@ -104,6 +102,7 @@ Seja direto, use linguagem acessivel para empresarios (nao apenas contadores), e
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.flushHeaders();
 
+        const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
         const stream = await groq.chat.completions.create({
             model: 'llama-3.3-70b-versatile',
             messages: [{ role: 'user', content: prompt }],
