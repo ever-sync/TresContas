@@ -370,7 +370,7 @@ model DREMapping {
 model DFCLineMapping {
   id                    String          @id @default(uuid())
   accounting_id         String
-  client_id             String
+  client_id             String?
   line_key              String
   chart_account_id      String
   account_code_snapshot String
@@ -381,7 +381,7 @@ model DFCLineMapping {
   created_at            DateTime        @default(now())
   updated_at            DateTime        @updatedAt
   accounting            Accounting      @relation(fields: [accounting_id], references: [id])
-  client                Client          @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  client                Client?         @relation(fields: [client_id], references: [id], onDelete: SetNull)
   chart_account         ChartOfAccounts @relation(fields: [chart_account_id], references: [id], onDelete: Cascade)
 
   @@unique([client_id, line_key, chart_account_id], name: "client_id_line_key_chart_account_id")

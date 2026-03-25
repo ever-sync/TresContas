@@ -7,8 +7,9 @@ import { chartOfAccountsService } from '../services/chartOfAccountsService';
 
 const ClientDreConfigPanel = lazy(() => import('./ClientDreConfigPanel'));
 const ClientPatConfigPanel = lazy(() => import('./ClientPatConfigPanel'));
+const ClientDfcSection = lazy(() => import('./ClientDfcSection'));
 
-type ParametrizacaoSection = 'home' | 'dre' | 'patrimonial';
+type ParametrizacaoSection = 'home' | 'dre' | 'patrimonial' | 'dfc';
 
 const SectionCard = ({
     title,
@@ -102,12 +103,12 @@ export const AccountingParametrizacaoPanel = ({ clients }: AccountingParametriza
         return (
             <div className="animate-in space-y-6 fade-in duration-300">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <h2 className="text-3xl font-bold text-white">Parametrizacao</h2>
-                        <p className="text-slate-400">
-                            O que for salvo aqui vale para todos os clientes. DFC continua sendo configurado dentro do cliente.
-                        </p>
-                    </div>
+                <div>
+                    <h2 className="text-3xl font-bold text-white">Parametrizacao</h2>
+                    <p className="text-slate-400">
+                            O que for salvo aqui vale para todos os clientes, inclusive o DFC.
+                    </p>
+                </div>
                     <div className="flex flex-wrap items-center gap-3">
                         <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs font-bold text-white/70">
                             Ano
@@ -140,7 +141,7 @@ export const AccountingParametrizacaoPanel = ({ clients }: AccountingParametriza
                     </div>
                 )}
 
-                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
                     <SectionCard
                         title="DRE"
                         description="Abra a parametrizacao global do DRE usando a base de referencia da Coca-Cola."
@@ -152,6 +153,12 @@ export const AccountingParametrizacaoPanel = ({ clients }: AccountingParametriza
                         description="Abra a parametrizacao global patrimonial usando a mesma base de referencia."
                         icon={Building2}
                         onClick={() => setSection('patrimonial')}
+                    />
+                    <SectionCard
+                        title="DFC"
+                        description="Abra a parametrizacao global do fluxo de caixa."
+                        icon={FileText}
+                        onClick={() => setSection('dfc')}
                     />
                 </div>
             </div>
@@ -175,6 +182,23 @@ export const AccountingParametrizacaoPanel = ({ clients }: AccountingParametriza
             );
         }
 
+        if (section === 'dfc') {
+            return (
+                <Suspense fallback={<div className="rounded-2xl border border-white/10 bg-[#0d1829]/80 p-8 text-slate-400">Carregando parametrizacao DFC...</div>}>
+                    <ClientDfcSection
+                        clientId={referenceClient.id}
+                        isAccountingView={true}
+                        selectedYear={selectedYear}
+                        initialMode="config"
+                        configScope="accounting"
+                        showReport={false}
+                        showBalanceteUpload={false}
+                        showConfiguration={true}
+                    />
+                </Suspense>
+            );
+        }
+
         return (
             <Suspense fallback={<div className="rounded-2xl border border-white/10 bg-[#0d1829]/80 p-8 text-slate-400">Carregando parametrizacao patrimonial...</div>}>
                 <ClientPatConfigPanel
@@ -193,7 +217,11 @@ export const AccountingParametrizacaoPanel = ({ clients }: AccountingParametriza
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h2 className="text-3xl font-bold text-white">
-                        {section === 'dre' ? 'Parametrizacao DRE Global' : 'Parametrizacao Patrimonial Global'}
+                        {section === 'dre'
+                            ? 'Parametrizacao DRE Global'
+                            : section === 'patrimonial'
+                                ? 'Parametrizacao Patrimonial Global'
+                                : 'Parametrizacao DFC Global'}
                     </h2>
                     <p className="text-slate-400">Base de referencia: {referenceClient?.name || 'Sem cliente'}</p>
                 </div>

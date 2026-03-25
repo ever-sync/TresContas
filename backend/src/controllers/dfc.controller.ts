@@ -20,7 +20,7 @@ export const getClientDfcConfig = async (req: AuthRequest, res: Response) => {
             return res.status(404).json({ message: 'Cliente não encontrado' });
         }
 
-        const config = await getDfcConfig(clientId, req.accountingId);
+        const config = await getDfcConfig(req.accountingId, clientId);
         res.json(config);
     } catch (error: any) {
         console.error('Erro ao buscar configuração DFC:', error);
@@ -40,7 +40,7 @@ export const putClientDfcConfig = async (req: AuthRequest, res: Response) => {
         }
 
         const mappings = Array.isArray(req.body?.mappings) ? req.body.mappings : [];
-        const config = await saveDfcConfig(clientId, req.accountingId, mappings);
+        const config = await saveDfcConfig(req.accountingId, mappings);
         res.json(config);
     } catch (error: any) {
         console.error('Erro ao salvar configuração DFC:', error);
@@ -66,6 +66,35 @@ export const getClientDfcReport = async (req: AuthRequest, res: Response) => {
         console.error('Erro ao calcular DFC:', error);
         res.status(error?.status || 500).json({
             message: error?.message || 'Erro ao calcular DFC',
+        });
+    }
+};
+
+export const getAccountingDfcConfig = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.accountingId) return res.status(401).json({ message: 'Não autorizado' });
+
+        const config = await getDfcConfig(req.accountingId);
+        res.json(config);
+    } catch (error: any) {
+        console.error('Erro ao buscar configuração DFC global:', error);
+        res.status(error?.status || 500).json({
+            message: error?.message || 'Erro ao buscar configuração DFC',
+        });
+    }
+};
+
+export const putAccountingDfcConfig = async (req: AuthRequest, res: Response) => {
+    try {
+        if (!req.accountingId) return res.status(401).json({ message: 'Não autorizado' });
+
+        const mappings = Array.isArray(req.body?.mappings) ? req.body.mappings : [];
+        const config = await saveDfcConfig(req.accountingId, mappings);
+        res.json(config);
+    } catch (error: any) {
+        console.error('Erro ao salvar configuração DFC global:', error);
+        res.status(error?.status || 500).json({
+            message: error?.message || 'Erro ao salvar configuração DFC',
         });
     }
 };

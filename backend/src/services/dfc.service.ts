@@ -329,6 +329,70 @@ const toConfigLine = (line: DFCLineDefinition): DFCConfigLine => ({
     isDerived: !line.configurable,
 });
 
+const normalizeText = (value: string) =>
+    value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const findReferenceClientId = async (accountingId: string) => {
+    const clients = await prisma.client.findMany({
+        where: { accounting_id: accountingId },
+        orderBy: [{ created_at: 'asc' }],
+        select: {
+            id: true,
+            name: true,
+        },
+    });
+
+    if (clients.length === 0) {
+        return null;
+    }
+
+    const referenceClient = clients.find((client) => normalizeText(client.name).includes('coca cola')) || clients[0];
+    return referenceClient.id;
+};
+
+const loadPersistedMappings = async (accountingId: string, clientId: string | null) =>
+    prisma.dFCLineMapping.findMany({
+        where: {
+            accounting_id: accountingId,
+            client_id: clientId,
+        },
+        orderBy: [{ line_key: 'asc' }, { account_code_snapshot: 'asc' }],
+        include: {
+            chart_account: {
+                select: TITLE_ACCOUNT_SELECT,
+            },
+        },
+    });
+
+const loadEffectiveMappings = async (accountingId: string, preferredClientId?: string | null) => {
+    const globalMappings = await loadPersistedMappings(accountingId, null);
+    if (globalMappings.length > 0) {
+        return globalMappings;
+    }
+
+    if (preferredClientId) {
+        const clientMappings = await loadPersistedMappings(accountingId, preferredClientId);
+        if (clientMappings.length > 0) {
+            return clientMappings;
+        }
+    }
+
+    const referenceClientId = await findReferenceClientId(accountingId);
+    if (referenceClientId && referenceClientId !== preferredClientId) {
+        const referenceMappings = await loadPersistedMappings(accountingId, referenceClientId);
+        if (referenceMappings.length > 0) {
+            return referenceMappings;
+        }
+    }
+
+    return [] as Awaited<ReturnType<typeof loadPersistedMappings>>;
+};
+
 const getMappingsByLine = (mappings: PersistedMappingRecord[]) =>
     mappings.reduce<Record<string, PersistedMappingRecord[]>>((acc, mapping) => {
         if (!acc[mapping.line_key]) acc[mapping.line_key] = [];
@@ -380,22 +444,17 @@ const calculateConfiguredLineValues = (
     );
 };
 
-export const getDfcConfig = async (clientId: string, accountingId: string): Promise<DFCConfigResponse> => {
+export const getDfcConfig = async (
+    accountingId: string,
+    preferredClientId?: string | null
+): Promise<DFCConfigResponse> => {
     const [accounts, mappings] = await Promise.all([
         prisma.chartOfAccounts.findMany({
             where: { accounting_id: accountingId },
             orderBy: [{ code: 'asc' }],
             select: TITLE_ACCOUNT_SELECT,
         }),
-        prisma.dFCLineMapping.findMany({
-            where: { client_id: clientId },
-            orderBy: [{ line_key: 'asc' }, { account_code_snapshot: 'asc' }],
-            include: {
-                chart_account: {
-                    select: TITLE_ACCOUNT_SELECT,
-                },
-            },
-        }),
+        loadEffectiveMappings(accountingId, preferredClientId),
     ]);
 
     return {
@@ -411,7 +470,6 @@ export const getDfcConfig = async (clientId: string, accountingId: string): Prom
 };
 
 export const saveDfcConfig = async (
-    clientId: string,
     accountingId: string,
     mappingsInput: DFCConfigMappingInput[]
 ) => {
@@ -453,7 +511,7 @@ export const saveDfcConfig = async (
 
         return {
             accounting_id: accountingId,
-            client_id: clientId,
+            client_id: null,
             line_key: mapping.line_key,
             chart_account_id: account.id,
             account_code_snapshot: effectiveCode,
@@ -466,7 +524,10 @@ export const saveDfcConfig = async (
 
     await prisma.$transaction([
         prisma.dFCLineMapping.deleteMany({
-            where: { client_id: clientId },
+            where: {
+                accounting_id: accountingId,
+                client_id: null,
+            },
         }),
         prisma.dFCLineMapping.createMany({
             data: payload,
@@ -474,20 +535,23 @@ export const saveDfcConfig = async (
         }),
     ]);
 
-    return getDfcConfig(clientId, accountingId);
+    return getDfcConfig(accountingId);
 };
 
 export const getDfcReport = async (clientId: string, year: number): Promise<DFCReportResponse> => {
+    const client = await prisma.client.findUnique({
+        where: { id: clientId },
+        select: {
+            accounting_id: true,
+        },
+    });
+
+    if (!client) {
+        throw badRequest('Cliente nao encontrado');
+    }
+
     const [mappings, dreMovements, patrimonialMovements, priorYearPatrimonialMovements] = await Promise.all([
-        prisma.dFCLineMapping.findMany({
-            where: { client_id: clientId },
-            orderBy: [{ line_key: 'asc' }, { account_code_snapshot: 'asc' }],
-            include: {
-                chart_account: {
-                    select: TITLE_ACCOUNT_SELECT,
-                },
-            },
-        }),
+        loadEffectiveMappings(client.accounting_id, clientId),
         prisma.monthlyMovement.findMany({
             where: { client_id: clientId, year, type: 'dre' },
             orderBy: { code: 'asc' },
@@ -514,7 +578,7 @@ export const getDfcReport = async (clientId: string, year: number): Promise<DFCR
         warnings.push({
             code: 'missing_configuration',
             severity: 'warning',
-            message: 'A DFC ainda não possui contas-título configuradas para este cliente.',
+            message: 'A DFC ainda nao possui contas-titulo parametrizadas para esta contabilidade.',
         });
     }
 

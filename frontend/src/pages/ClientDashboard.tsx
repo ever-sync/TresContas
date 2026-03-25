@@ -4093,6 +4093,7 @@ const ClientDashboard = () => {
                                     months={months}
                                     reportRef={reportRef}
                                     onExport={() => handleExportPDF('DFC')}
+                                    showConfiguration={false}
                                 />
                             </Suspense>
                         ) : showLegacyDfc ? (

@@ -87,8 +87,18 @@ export const dfcService = {
         return response.data;
     },
 
+    getAccountingConfig: async (): Promise<DFCConfigResponse> => {
+        const response = await api.get('/accounting/dfc-config');
+        return response.data;
+    },
+
     saveConfig: async (clientId: string, payload: SaveDFCConfigPayload): Promise<DFCConfigResponse> => {
         const response = await api.put(`/clients/${clientId}/dfc-config`, payload);
+        return response.data;
+    },
+
+    saveAccountingConfig: async (payload: SaveDFCConfigPayload): Promise<DFCConfigResponse> => {
+        const response = await api.put('/accounting/dfc-config', payload);
         return response.data;
     },
 

@@ -1,0 +1,10 @@
+ALTER TABLE "DFCLineMapping"
+ALTER COLUMN "client_id" DROP NOT NULL;
+
+ALTER TABLE "DFCLineMapping"
+DROP CONSTRAINT IF EXISTS "DFCLineMapping_client_id_fkey";
+
+ALTER TABLE "DFCLineMapping"
+ADD CONSTRAINT "DFCLineMapping_client_id_fkey"
+FOREIGN KEY ("client_id") REFERENCES "Client"("id")
+ON DELETE SET NULL ON UPDATE CASCADE;

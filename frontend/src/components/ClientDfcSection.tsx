@@ -53,12 +53,16 @@ type DraftMapping = {
 interface ClientDfcSectionProps {
     clientId?: string;
     isAccountingView: boolean;
-    selectedYear: number;
-    selectedMonthIndex: number;
-    months: string[];
-    reportRef: React.RefObject<HTMLDivElement | null>;
-    onExport: () => void;
+    selectedYear?: number;
+    selectedMonthIndex?: number;
+    months?: string[];
+    reportRef?: React.RefObject<HTMLDivElement | null>;
+    onExport?: () => void;
     initialMode?: 'view' | 'config';
+    configScope?: 'client' | 'accounting';
+    showReport?: boolean;
+    showBalanceteUpload?: boolean;
+    showConfiguration?: boolean;
 }
 
 type DfcBalanceteDocument = ClientDocument & {
@@ -103,12 +107,16 @@ const isAccountCompatibleWithLine = (account: DFCEligibleAccount, line: DFCConfi
 export const ClientDfcSection = ({
     clientId,
     isAccountingView,
-    selectedYear,
-    selectedMonthIndex,
-    months,
+    selectedYear = new Date().getFullYear(),
+    selectedMonthIndex = 0,
+    months = [],
     reportRef,
-    onExport,
+    onExport = () => undefined,
     initialMode = 'view',
+    configScope = 'client',
+    showReport = true,
+    showBalanceteUpload = true,
+    showConfiguration = true,
 }: ClientDfcSectionProps) => {
     const [mode, setMode] = useState<'view' | 'config'>(initialMode);
     const [draftMappings, setDraftMappings] = useState<DraftMapping[]>([]);
@@ -126,6 +134,17 @@ export const ClientDfcSection = ({
     }, [initialMode]);
 
     useEffect(() => {
+        if (!showConfiguration) {
+            setMode('view');
+            return;
+        }
+
+        if (!showReport) {
+            setMode('config');
+        }
+    }, [showConfiguration, showReport]);
+
+    useEffect(() => {
         setBalanceteMonth(selectedMonthIndex + 1);
     }, [selectedMonthIndex]);
 
@@ -134,7 +153,7 @@ export const ClientDfcSection = ({
     }, [selectedYear]);
 
     const reportQuery = useQuery({
-        queryKey: ['client-dashboard-dfc-report', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client'],
+        queryKey: ['client-dashboard-dfc-report', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client', configScope],
         queryFn: async () => {
             if (isAccountingView && clientId) {
                 return dfcService.getReport(clientId, selectedYear);
@@ -142,20 +161,28 @@ export const ClientDfcSection = ({
 
             return clientPortalDfcService.getReport(selectedYear);
         },
-        enabled: (isAccountingView && Boolean(clientId)) || !isAccountingView,
+        enabled: showReport && ((isAccountingView && Boolean(clientId)) || !isAccountingView),
         staleTime: 30_000,
     });
 
     const configQuery = useQuery({
-        queryKey: ['client-dashboard-dfc-config', clientId ?? 'self'],
+        queryKey: ['client-dashboard-dfc-config', configScope, clientId ?? 'self'],
         queryFn: async () => {
+            if (!showConfiguration) {
+                throw new Error('Configuracao DFC indisponivel');
+            }
+
+            if (configScope === 'accounting') {
+                return dfcService.getAccountingConfig();
+            }
+
             if (!isAccountingView || !clientId) {
                 throw new Error('Configuracao DFC indisponivel');
             }
 
             return dfcService.getConfig(clientId);
         },
-        enabled: isAccountingView && Boolean(clientId),
+        enabled: showConfiguration && ((configScope === 'accounting') || (isAccountingView && Boolean(clientId))),
         staleTime: 30_000,
     });
 
@@ -185,6 +212,10 @@ export const ClientDfcSection = ({
     const balanceteDocumentsQuery = useQuery({
         queryKey: ['client-dfc-balancetes', clientId ?? 'self', isAccountingView ? 'accounting' : 'client'],
         queryFn: async (): Promise<DfcBalanceteDocument[]> => {
+            if (!showBalanceteUpload) {
+                return [];
+            }
+
             if (isAccountingView) {
                 const documents = await clientDocumentService.listForStaff();
                 return documents
@@ -195,6 +226,7 @@ export const ClientDfcSection = ({
             const documents = await clientDocumentService.listForClient();
             return documents.filter((document) => document.document_type === DFC_BALANCETE_DOCUMENT_TYPE);
         },
+        enabled: showBalanceteUpload,
         staleTime: 30_000,
     });
 
@@ -357,7 +389,8 @@ export const ClientDfcSection = ({
     let activeSectionExpanded = true;
 
     const handleSaveConfig = async () => {
-        if (!clientId) return;
+        if (configScope !== 'accounting' && !clientId) return;
+        const targetClientId = clientId;
 
         try {
             setSavingConfig(true);
@@ -372,13 +405,20 @@ export const ClientDfcSection = ({
                     })),
             };
 
-            await dfcService.saveConfig(clientId, payload);
+            if (configScope === 'accounting') {
+                await dfcService.saveAccountingConfig(payload);
+            } else {
+                if (!targetClientId) return;
+                await dfcService.saveConfig(targetClientId, payload);
+            }
             await Promise.all([
-                queryClient.invalidateQueries({ queryKey: ['client-dashboard-dfc-config', clientId ?? 'self'] }),
-                queryClient.invalidateQueries({ queryKey: ['client-dashboard-dfc-report', clientId ?? 'self'] }),
+                queryClient.invalidateQueries({ queryKey: ['client-dashboard-dfc-config', configScope, clientId ?? 'self'] }),
+                ...(showReport ? [queryClient.invalidateQueries({ queryKey: ['client-dashboard-dfc-report', clientId ?? 'self', selectedYear, isAccountingView ? 'accounting' : 'client', configScope] })] : []),
             ]);
             toast.success('Configuracao DFC salva');
-            setMode('view');
+            if (showReport) {
+                setMode('view');
+            }
         } catch (error: unknown) {
             console.error('Erro ao salvar configuração DFC:', error);
             const msg = axios.isAxiosError(error)
@@ -410,17 +450,21 @@ export const ClientDfcSection = ({
             <div className="p-8 border-b border-white/5 flex flex-wrap justify-between items-center gap-4 bg-white/5">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
-                        <h3 className="text-2xl font-bold text-white tracking-tight">Demonstração do Fluxo de Caixa</h3>
-                        {report?.partial && (
+                        <h3 className="text-2xl font-bold text-white tracking-tight">
+                            {showReport ? 'Demonstração do Fluxo de Caixa' : 'Parametrização DFC'}
+                        </h3>
+                        {showReport && report?.partial && (
                             <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-300 text-[10px] font-black uppercase tracking-[0.2em]">
                                 Parcial
                             </span>
                         )}
                     </div>
-                    <p className="text-sm text-white/40">Método Indireto • {selectedYear}</p>
+                    <p className="text-sm text-white/40">
+                        {showReport ? `Método Indireto • ${selectedYear}` : 'Configuração global da contabilidade'}
+                    </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {isAccountingView && (
+                    {showConfiguration && isAccountingView && showReport && (
                         <div className="flex p-1 bg-black/30 border border-white/5 rounded-2xl">
                             <button
                                 onClick={() => setMode('view')}
@@ -437,7 +481,7 @@ export const ClientDfcSection = ({
                             </button>
                         </div>
                     )}
-                    {mode === 'view' && (
+                    {showReport && mode === 'view' && (
                         <button
                             onClick={onExport}
                             className="p-3 bg-white/5 border border-white/10 rounded-2xl hover:bg-white/10 transition-all text-white/40 hover:text-white"
@@ -446,10 +490,10 @@ export const ClientDfcSection = ({
                             <Download className="w-5 h-5" />
                         </button>
                     )}
-                    {mode === 'config' && isAccountingView && (
+                    {showConfiguration && mode === 'config' && (
                         <button
                             onClick={handleSaveConfig}
-                            disabled={savingConfig || !clientId}
+                            disabled={savingConfig || (configScope !== 'accounting' && !clientId)}
                             className="flex items-center gap-2 bg-linear-to-r from-cyan-500 to-blue-600 hover:opacity-90 disabled:opacity-50 text-white px-5 py-3 rounded-2xl transition-all font-bold shadow-lg shadow-cyan-500/20"
                         >
                             {savingConfig ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -459,7 +503,7 @@ export const ClientDfcSection = ({
                 </div>
             </div>
 
-            {report?.warnings?.length ? (
+            {showReport && report?.warnings?.length ? (
                 <div className="p-6 border-b border-white/5 space-y-3">
                     {report.warnings.map((warning, index) => (
                         <div
@@ -478,6 +522,7 @@ export const ClientDfcSection = ({
                 </div>
             ) : null}
 
+            {showBalanceteUpload && (
             <div className="p-6 border-b border-white/5 space-y-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -580,8 +625,9 @@ export const ClientDfcSection = ({
                     )}
                 </div>
             </div>
+            )}
 
-            {mode === 'view' ? (
+            {showReport && mode === 'view' ? (
                 loadingReport ? (
                     <div className="p-12 flex items-center justify-center text-white/40 gap-3">
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -813,7 +859,7 @@ export const ClientDfcSection = ({
                 </div>
             )}
 
-            {selectedBalancete && (
+            {showBalanceteUpload && selectedBalancete && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a1628]/80 p-4 backdrop-blur-md">
                     <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-[#0d1829]/95 shadow-2xl">
                         <div className="flex items-start justify-between gap-4 border-b border-white/5 bg-white/5 p-6">
