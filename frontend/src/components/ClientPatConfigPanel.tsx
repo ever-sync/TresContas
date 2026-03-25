@@ -365,9 +365,6 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
         setDraftMappings((prev) => prev.filter((m) => m.localId !== localId));
     };
 
-    const categoryLabel = (key: string) =>
-        PAT_SECTIONS.flatMap((s) => s.categories).find((c) => c.key === key)?.label || key;
-
     const handleSave = async () => {
         try {
             setSaving(true);
@@ -378,7 +375,7 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
                     mappings: draftMappings.map((m) => ({
                         account_code: m.account_code,
                         account_name: m.account_name,
-                        category: categoryLabel(m.category),
+                        category: m.category,
                     })),
                 });
             } else {
@@ -393,7 +390,7 @@ export const ClientPatConfigPanel: React.FC<Props> = ({
                         mappings: draftMappings.map((m) => ({
                             account_code: m.account_code,
                             account_name: m.account_name,
-                            category: categoryLabel(m.category),
+                            category: m.category,
                         })),
                     });
                 }

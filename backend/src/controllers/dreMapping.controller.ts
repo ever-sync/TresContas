@@ -9,6 +9,45 @@ const stripAccents = (s: string) =>
 const normalizeCategoryKey = (s: string) =>
     stripAccents(s).replace(/\s+/g, '');
 
+const PATRIMONIAL_CATEGORY_ALIASES: Record<string, string> = {
+    disponivel: 'Disponivel',
+    clientes: 'Clientes',
+    adiantamentos: 'Adiantamentos',
+    estoques: 'Estoques',
+    'tributos a compensarcp': 'Tributos A CompensarCP',
+    'outras contas a receber': 'Outras Contas A Receber',
+    'despesas antecipadas': 'Despesas Antecipadas',
+    'contas a receber lp': 'Contas A Receber Lp',
+    'processos judiciais': 'Processos Judiciais',
+    'partes relacionadas a receber': 'Partes Relacionadas A Receber',
+    'outras contas a receber lp': 'Outras Contas A Receber Lp',
+    'tributos a recuperarlp': 'Tributos A RecuperarLP',
+    investimentos: 'Investimentos',
+    imobilizado: 'Imobilizado',
+    intangivel: 'Intangivel',
+    fornecedores: 'Fornecedores',
+    'emprestimos e financiamentos cp': 'Emprestimos E Financiamentos Cp',
+    'obrigacoes trabalhistas': 'Obrigacoes Trabalhistas',
+    'obrigacoes tributarias': 'Obrigacoes Tributarias',
+    'contas a pagar cp': 'Contas A Pagar Cp',
+    'parcelamentos cp': 'Parcelamentos Cp',
+    'processos a pagar cp': 'Processos A Pagar Cp',
+    'emprestimos e financiamentos lp': 'Emprestimos E Financiamentos Lp',
+    'conta corrente dos socios': 'Conta Corrente Dos Socios',
+    'emprestimos partes relacionadas': 'Emprestimos Partes Relacionadas',
+    'parcelamentos lp': 'Parcelamentos Lp',
+    'processos a pagar lp': 'Processos A Pagar Lp',
+    'impostos diferidos': 'Impostos Diferidos',
+    'outras contas a pagar lp': 'Outras Contas A Pagar Lp',
+    'receita de exercicio futuro lp': 'Receita De Exercicio Futuro Lp',
+    'provisao para contingencias': 'Provisao Para Contingencias',
+    'capital social': 'Capital Social',
+    'reserva de capital': 'Reserva de Capital',
+    'reserva de lucros': 'Reserva de Lucros',
+    'resultado do exercicio': 'Resultado Do Exercicio',
+    'distribuicao de lucros': 'Distribuicao De Lucros',
+};
+
 const VALID_DRE_CATEGORIES = [
     // DRE categories
     'Custos Das Vendas', 'Custos Dos Servicos', 'Deducoes', 'Deducoes De Vendas',
@@ -42,7 +81,9 @@ const VALID_DRE_CATEGORIES_NORMALIZED = new Set(VALID_DRE_CATEGORIES.map(normali
 const isValidCategory = (category: string) => VALID_DRE_CATEGORIES_NORMALIZED.has(normalizeCategoryKey(category));
 
 const resolveCanonicalCategory = (category: string, allowedCategories: string[]) =>
-    allowedCategories.find((candidate) => normalizeCategoryKey(candidate) === normalizeCategoryKey(category)) || null;
+    allowedCategories.find((candidate) => normalizeCategoryKey(candidate) === normalizeCategoryKey(category)) ||
+    allowedCategories.find((candidate) => candidate === PATRIMONIAL_CATEGORY_ALIASES[normalizeCategoryKey(category)]) ||
+    null;
 
 const GLOBAL_DRE_GROUP_CATEGORIES = {
     dre: VALID_DRE_CATEGORIES.slice(0, 15),
@@ -225,7 +266,7 @@ export const replaceGlobalDREMappings = async (req: AuthRequest, res: Response) 
             }
 
             const canonicalCategory = resolveCanonicalCategory(mapping.category, allowedCategories);
-            if (!canonicalCategory || !allowedCategoriesNormalized.has(normalizeCategoryKey(mapping.category))) {
+            if (!canonicalCategory || !allowedCategoriesNormalized.has(normalizeCategoryKey(canonicalCategory))) {
                 invalidMappings.push(mapping.category);
                 continue;
             }
@@ -381,11 +422,11 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
 
         const accountCode = String(account_code).trim();
         const accountName = String(account_name).trim();
-        const normalizedCategory = String(category).trim();
+        const canonicalCategory = resolveCanonicalCategory(String(category).trim(), VALID_DRE_CATEGORIES);
 
-        if (!isValidCategory(normalizedCategory)) {
+        if (!canonicalCategory) {
             return res.status(400).json({
-                message: `Categoria invalida: ${normalizedCategory}. Categorias validas: ${VALID_DRE_CATEGORIES.join(', ')}`,
+                message: `Categoria invalida: ${String(category).trim()}. Categorias validas: ${VALID_DRE_CATEGORIES.join(', ')}`,
             });
         }
 
@@ -398,7 +439,7 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
             },
             update: {
                 account_name: accountName,
-                category: normalizedCategory,
+                category: canonicalCategory,
                 updated_at: new Date(),
             },
             create: {
@@ -406,12 +447,12 @@ export const createOrUpdateDREMapping = async (req: AuthRequest, res: Response) 
                 client_id: clientId,
                 account_code: accountCode,
                 account_name: accountName,
-                category: normalizedCategory,
+                category: canonicalCategory,
             },
         });
 
         // Sync em modo direto evita expiração de interactive transaction em bases maiores.
-        await syncMappingState(prisma, req.accountingId!, clientId, accountCode, normalizedCategory);
+        await syncMappingState(prisma, req.accountingId!, clientId, accountCode, canonicalCategory);
 
         res.json({ message: 'Mapeamento DRE compartilhado salvo com sucesso', mapping });
     } catch (error: any) {
@@ -518,22 +559,30 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
             return res.status(400).json({ message: 'mappings deve ser um array nao vazio' });
         }
 
-        const normalizedMappings = mappings.map((mapping: any) => ({
-            account_code: String(mapping.account_code || '').trim(),
-            account_name: String(mapping.account_name || '').trim(),
-            category: String(mapping.category || '').trim(),
-        }));
-
+        const canonicalMappings: Array<{ account_code: string; account_name: string; category: string }> = [];
         const invalidMappings: string[] = [];
-        for (const mapping of normalizedMappings) {
-            if (!mapping.account_code || !mapping.account_name || !mapping.category) {
+        for (const mapping of mappings as any[]) {
+            const account_code = String(mapping.account_code || '').trim();
+            const account_name = String(mapping.account_name || '').trim();
+            const rawCategory = String(mapping.category || '').trim();
+
+            if (!account_code || !account_name || !rawCategory) {
                 return res.status(400).json({
                     message: 'Cada mapeamento deve ter account_code, account_name e category',
                 });
             }
-            if (!isValidCategory(mapping.category)) {
-                invalidMappings.push(mapping.category);
+
+            const canonicalCategory = resolveCanonicalCategory(rawCategory, VALID_DRE_CATEGORIES);
+            if (!canonicalCategory) {
+                invalidMappings.push(rawCategory);
+                continue;
             }
+
+            canonicalMappings.push({
+                account_code,
+                account_name,
+                category: canonicalCategory,
+            });
         }
 
         if (invalidMappings.length > 0) {
@@ -547,7 +596,7 @@ export const bulkCreateDREMappings = async (req: AuthRequest, res: Response) => 
         // Evita conflito de upsert quando o payload traz o mesmo account_code repetido.
         // Regra: o ultimo mapeamento recebido para a conta prevalece.
         const dedupedByAccountCode = new Map<string, { account_code: string; account_name: string; category: string }>();
-        for (const mapping of normalizedMappings) {
+        for (const mapping of canonicalMappings) {
             dedupedByAccountCode.set(mapping.account_code, mapping);
         }
         const uniqueMappings = Array.from(dedupedByAccountCode.values());
