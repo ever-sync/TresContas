@@ -20,7 +20,7 @@ npm run build
 Na Vercel, o `vercel.json` da raiz faz o build do `frontend` e do `backend`, e o projeto usa:
 
 - `frontend/dist` para os arquivos estaticos
-- `api/[...path].js` para a API Express
+- `api/[...path].ts` para a API Express
 
 ## Comandos
 
